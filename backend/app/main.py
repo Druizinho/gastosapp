@@ -1,26 +1,22 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+import os
 
 from .routers import expenses
 from .database import engine, Base
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Depending on how the db is managed, you might want to create tables here if not using migrations
-    # But since we use Supabase with raw sql script, it's optional.
-    # Leaving it here just in case local sqlite is used for testing in the future
-    # async with engine.begin() as conn:
-    #     await conn.run_sync(Base.metadata.create_all)
     yield
     await engine.dispose()
 
 app = FastAPI(title="GastosApp API", lifespan=lifespan)
 
-# Allow CORS for local development frontend and any Railway frontend domain
+# Configuración de CORS permitiendo todos los orígenes para conectar con Vercel
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # In production, restrict this
+    allow_origins=["*"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -31,3 +27,9 @@ app.include_router(expenses.router)
 @app.get("/")
 def read_root():
     return {"message": "Welcome to GastosApp API"}
+
+if __name__ == "__main__":
+    import uvicorn
+    # Usa dinámicamente la variable de entorno PORT asignada por Render (o 8000 en local)
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("app.main:app", host="0.0.0.0", port=port)

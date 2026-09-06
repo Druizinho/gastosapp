@@ -42,7 +42,7 @@ El frontend es lo que ves en pantalla (botones, listas, diseño).
 ## 🗺️ Siguientes pasos por hacer (Roadmap)
 Aún hay muchas funciones planeadas para mejorar la aplicación. Estos son los siguientes pasos que vamos a implementar:
 
-- [ ] **Despliegue (Deploy) a producción:** Subir la app a internet (Railway / Vercel) para que cualquiera pueda usarla.
+- [ ] **Despliegue (Deploy) a producción:** Subir la app a internet (Vercel para Frontend / Render para Backend) para que cualquiera pueda usarla.
 - [ ] **Sistema de Autenticación:** Permitir que los usuarios se registren e inicien sesión (usando Supabase Auth).
 - [ ] **Filtros avanzados:** Filtrar los gastos por fechas específicas, etiquetas o montos.
 - [ ] **Gráficos interactivos:** Mostrar gráficas (de pastel o barras) para visualizar mejor en qué se gasta el dinero.
@@ -82,7 +82,27 @@ Aún hay muchas funciones planeadas para mejorar la aplicación. Estos son los s
    VITE_API_URL=http://localhost:8000/api
    ```
 
-## ☁️ Despliegue en Railway
-Este proyecto está listo para ser separado en dos servicios de Railway:
-1. **Backend:** Conecta la carpeta `backend` en Railway. Detectará el archivo `Procfile`. Agrega tu variable `DATABASE_URL`.
-2. **Frontend:** Conecta la carpeta `frontend`. Railway detectará Vite y compilará la app automáticamente. Asegúrate de agregar la variable `VITE_API_URL` apuntando al backend en producción.
+## ☁️ Despliegue en Producción (Vercel y Render)
+Este proyecto está preparado para ser desplegado en dos servicios separados para mayor eficiencia y menor costo.
+
+### 1. Despliegue del Backend (Render)
+1. Inicia sesión en [Render](https://render.com/) y conecta tu cuenta de GitHub.
+2. Haz clic en **New +** y selecciona **Web Service**.
+3. Conecta tu repositorio `gastosapp`.
+4. En **Root Directory**, escribe `backend`.
+5. Asegúrate de que el entorno o **Runtime** sea **Python**.
+6. En **Build Command**, escribe `pip install -r requirements.txt`.
+7. En **Start Command**, escribe `python -m app.main`.
+8. Expande la sección **Advanced** y haz clic en **Add Environment Variable**:
+   - `DATABASE_URL` (la misma URI de Supabase que usas en local).
+   - Render inyecta la variable `PORT` automáticamente al arrancar el servidor.
+
+### 2. Despliegue del Frontend (Vercel)
+1. Inicia sesión en [Vercel](https://vercel.com/) y conecta tu cuenta de GitHub.
+2. Haz clic en **Add New...** -> **Project** e importa tu repositorio `gastosapp`.
+3. En la configuración del proyecto, Vercel suele detectar que es un proyecto Vite automáticamente.
+4. En **Root Directory**, haz clic en Edit y selecciona la carpeta `/frontend`.
+5. Abre la pestaña **Environment Variables** y agrega:
+   - Nombre: `VITE_API_URL`
+   - Valor: La URL pública que te dio Render al desplegar el backend (asegúrate de que termine en `/api`, por ejemplo: `https://tu-app-backend.onrender.com/api`).
+6. Haz clic en **Deploy**. ¡Tu frontend ahora se comunicará exitosamente con tu backend en Render!
