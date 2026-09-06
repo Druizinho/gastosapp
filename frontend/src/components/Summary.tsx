@@ -1,4 +1,4 @@
-import React from 'react';
+
 import type { SummaryResponse } from '../types';
 
 interface SummaryProps {

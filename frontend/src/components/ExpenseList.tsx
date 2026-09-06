@@ -1,4 +1,4 @@
-import React from 'react';
+
 import type { Expense } from '../types';
 import ExpenseItem from './ExpenseItem';
 

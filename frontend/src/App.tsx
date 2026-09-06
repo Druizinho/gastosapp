@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { getExpenses, getSummary, createExpense, updateExpense, deleteExpense } from './api';
 import type { Expense, SummaryResponse, ExpenseCreate, ExpenseUpdate } from './types';
 import Summary from './components/Summary';

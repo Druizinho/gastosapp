@@ -1,4 +1,4 @@
-import React from 'react';
+
 import type { Expense } from '../types';
 import { format, parseISO } from 'date-fns';
 import { Pencil, Trash2 } from 'lucide-react';

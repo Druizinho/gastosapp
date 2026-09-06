@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import type { ExpenseCreate, ExpenseUpdate, Expense } from '../types';
 
 interface ExpenseFormProps {
