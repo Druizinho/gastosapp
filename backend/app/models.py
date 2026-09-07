@@ -13,4 +13,5 @@ class Expense(Base):
     description = Column(String, nullable=False)
     category = Column(String, nullable=False)
     date = Column(Date, nullable=False, default=date.today)
+    user_id = Column(UUID(as_uuid=True), nullable=False) # Enlaza cada gasto a un usuario en Supabase
     created_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -20,7 +20,7 @@ elif SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
 engine = create_async_engine(
     SQLALCHEMY_DATABASE_URL, 
     echo=True,
-    connect_args={"prepared_statement_cache_size": 0}
+    connect_args={"statement_cache_size": 0}
 )
 
 SessionLocal = async_sessionmaker(

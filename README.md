@@ -4,9 +4,13 @@ Una aplicación moderna para el seguimiento de gastos personales, diseñada para
 
 ## 🚀 Cómo probar la aplicación en tu computadora (Guía fácil)
 
-Si quieres correr la aplicación y probarla localmente, solo tienes que seguir estos dos pasos. Asegúrate de tener **Python** y **Node.js** instalados en tu computadora.
+Si quieres correr la aplicación y probarla localmente, solo tienes que seguir estos pasos. Asegúrate de tener **Python** y **Node.js** instalados en tu computadora.
 
-### Paso 1: Encender el Backend (El cerebro de la app)
+### Paso 1: Configurar las Variables de Entorno (Claves secretas)
+1. Ve a la carpeta `frontend` y asegúrate de que el archivo `.env` tenga tu `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`.
+2. Ve a la carpeta `backend` y asegúrate de que el archivo `.env` tenga tu `DATABASE_URL` y tu `SUPABASE_JWT_SECRET`.
+
+### Paso 2: Encender el Backend (El cerebro de la app)
 El backend guarda los datos y procesa las peticiones.
 1. Abre tu terminal (Símbolo del sistema o PowerShell).
 2. Ve a la carpeta del proyecto y luego a la carpeta `backend`.
@@ -20,7 +24,7 @@ El backend guarda los datos y procesa las peticiones.
    ```
    *¡Listo! Verás que el servidor arranca y se queda escuchando.*
 
-### Paso 2: Encender el Frontend (La interfaz gráfica)
+### Paso 3: Encender el Frontend (La interfaz gráfica)
 El frontend es lo que ves en pantalla (botones, listas, diseño).
 1. Abre **otra** ventana nueva de terminal (deja la anterior abierta corriendo el backend).
 2. Ve a la carpeta `frontend`.
@@ -42,8 +46,8 @@ El frontend es lo que ves en pantalla (botones, listas, diseño).
 ## 🗺️ Siguientes pasos por hacer (Roadmap)
 Aún hay muchas funciones planeadas para mejorar la aplicación. Estos son los siguientes pasos que vamos a implementar:
 
+- [x] **Sistema de Autenticación:** Permitir que los usuarios se registren e inicien sesión (usando Supabase Auth).
 - [ ] **Despliegue (Deploy) a producción:** Subir la app a internet (Vercel para Frontend / Render para Backend) para que cualquiera pueda usarla.
-- [ ] **Sistema de Autenticación:** Permitir que los usuarios se registren e inicien sesión (usando Supabase Auth).
 - [ ] **Filtros avanzados:** Filtrar los gastos por fechas específicas, etiquetas o montos.
 - [ ] **Gráficos interactivos:** Mostrar gráficas (de pastel o barras) para visualizar mejor en qué se gasta el dinero.
 - [ ] **Presupuestos mensuales:** Establecer un límite de gastos por categoría y recibir alertas si se supera.

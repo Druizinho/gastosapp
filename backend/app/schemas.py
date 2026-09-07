@@ -21,6 +21,7 @@ class ExpenseUpdate(BaseModel):
 
 class ExpenseResponse(ExpenseBase):
     id: UUID
+    user_id: UUID
     date: datetime.date
     created_at: datetime.datetime
     
