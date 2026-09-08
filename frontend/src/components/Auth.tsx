@@ -30,7 +30,9 @@ export const Auth: React.FC = () => {
           phone: phone || undefined,
         });
         if (error) throw error;
-        setMessage({ type: 'success', text: '¡Registro exitoso! Revisa tu correo o inicia sesión.' });
+        setMessage({ type: 'success', text: '¡Registro exitoso! Por favor, revisa tu correo electrónico para verificar tu cuenta.' });
+        setIsLogin(true);
+        setPassword('');
       }
     } catch (error: any) {
       setMessage({ type: 'error', text: error.message || 'Ha ocurrido un error.' });

@@ -47,7 +47,7 @@ El frontend es lo que ves en pantalla (botones, listas, diseño).
 Aún hay muchas funciones planeadas para mejorar la aplicación. Estos son los siguientes pasos que vamos a implementar:
 
 - [x] **Sistema de Autenticación:** Permitir que los usuarios se registren e inicien sesión (usando Supabase Auth).
-- [ ] **Despliegue (Deploy) a producción:** Subir la app a internet (Vercel para Frontend / Render para Backend) para que cualquiera pueda usarla.
+- [x] **Despliegue (Deploy) a producción:** Subir la app a internet (Vercel para Frontend / Render para Backend) para que cualquiera pueda usarla.
 - [ ] **Filtros avanzados:** Filtrar los gastos por fechas específicas, etiquetas o montos.
 - [ ] **Gráficos interactivos:** Mostrar gráficas (de pastel o barras) para visualizar mejor en qué se gasta el dinero.
 - [ ] **Presupuestos mensuales:** Establecer un límite de gastos por categoría y recibir alertas si se supera.
