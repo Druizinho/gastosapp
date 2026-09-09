@@ -54,7 +54,7 @@ const ExpenseItem: React.FC<ExpenseItemProps> = ({ expense, onEdit, onDelete, ca
         </div>
         {expense.currency === 'USD_CASH' && (
           <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#f59e0b', fontStyle: 'italic' }}>
-            * Las equivalencias y el resumen usan la tasa del mercado (la más alta).
+            * Para transacciones en efectivo, se usa la tasa mas alta o la facilitada por el usuario.*
           </div>
         )}
       </div>

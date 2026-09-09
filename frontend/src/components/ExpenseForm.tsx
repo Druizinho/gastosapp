@@ -18,7 +18,6 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ initialData, onSubmit, onCanc
   
   const [rates, setRates] = useState<ExchangeRates | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [isLoadingRates, setIsLoadingRates] = useState(true);
   const [isLoadingCats, setIsLoadingCats] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -53,7 +52,6 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ initialData, onSubmit, onCanc
       } catch (error) {
         console.error("Failed to fetch data", error);
       } finally {
-        setIsLoadingRates(false);
         setIsLoadingCats(false);
       }
     };
