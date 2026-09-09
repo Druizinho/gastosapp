@@ -1,18 +1,22 @@
 import { useState, useMemo, useEffect } from 'react';
-import type { Expense, Category } from '../types';
+import type { Expense, Category, DateFilter, DatePreset } from '../types';
 import { getCategories } from '../api';
 import ExpenseItem from './ExpenseItem';
+import { Filter, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface ExpenseListProps {
   expenses: Expense[];
   onEdit: (expense: Expense) => void;
   onDelete: (id: string) => void;
+  dateFilter?: DateFilter;
+  onDateChange?: (filter: DateFilter) => void;
 }
 
-const ExpenseList: React.FC<ExpenseListProps> = ({ expenses, onEdit, onDelete }) => {
+const ExpenseList: React.FC<ExpenseListProps> = ({ expenses, onEdit, onDelete, dateFilter, onDateChange }) => {
   const [filterCategory, setFilterCategory] = useState<string>('All');
   const [filterCurrency, setFilterCurrency] = useState<string>('All');
   const [categories, setCategories] = useState<Category[]>([]);
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
     const fetchCats = async () => {
@@ -24,7 +28,7 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ expenses, onEdit, onDelete })
       }
     };
     fetchCats();
-  }, [expenses]); // Re-fetch if expenses change, as a simple way to stay reasonably up to date, or just on mount.
+  }, [expenses]);
 
   const filteredExpenses = useMemo(() => {
     return expenses.filter(expense => {
@@ -37,25 +41,13 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ expenses, onEdit, onDelete })
   const currencyStats = useMemo(() => {
     if (filterCurrency === 'All') return null;
 
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-
-    let totalAllTime = 0;
-    let totalThisMonth = 0;
-
+    let totalPeriod = 0;
     filteredExpenses.forEach(exp => {
       const amount = typeof exp.amount === 'string' ? parseFloat(exp.amount) : exp.amount;
-      totalAllTime += amount;
-      const expDate = new Date(exp.date);
-      // exp.date is typically YYYY-MM-DD. Need to handle timezone issues correctly.
-      // It's safe to parse and get UTC month or local month. Let's use local since user entered it.
-      if (expDate.getMonth() === currentMonth && expDate.getFullYear() === currentYear) {
-        totalThisMonth += amount;
-      }
+      totalPeriod += amount;
     });
 
-    return { totalAllTime, totalThisMonth };
+    return { totalPeriod };
   }, [filteredExpenses, filterCurrency]);
 
   const getCurrencyLabel = (currency: string) => {
@@ -68,78 +60,180 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ expenses, onEdit, onDelete })
     }
   };
 
-  if (expenses.length === 0) {
-    return (
-      <div className="empty-state glass-panel">
-        <p>No expenses yet. Add one to get started!</p>
-      </div>
-    );
-  }
+  const selectStyle = {
+    padding: '0.6rem 1rem', 
+    borderRadius: '8px', 
+    background: 'var(--surface-color)', 
+    color: 'var(--text-primary)', 
+    border: '1px solid var(--border-color)',
+    fontSize: '0.9rem',
+    outline: 'none',
+    width: '100%',
+    maxWidth: '200px'
+  };
+
+  const activeFiltersCount = (filterCategory !== 'All' ? 1 : 0) + (filterCurrency !== 'All' ? 1 : 0) + (dateFilter?.preset !== 'month' ? 1 : 0);
+
+  const ITEMS_PER_PAGE = 10;
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterCategory, filterCurrency, dateFilter]);
+
+  const totalPages = Math.ceil(filteredExpenses.length / ITEMS_PER_PAGE);
+  const paginatedExpenses = filteredExpenses.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
   return (
     <div className="expense-list-container">
-      <div className="filters-bar" style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', padding: '1rem', borderRadius: '12px', flexWrap: 'wrap' }}>
-        <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Filtros</h3>
-        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-          <select
-            value={filterCategory}
-            onChange={(e) => setFilterCategory(e.target.value)}
-            style={{ padding: '0.5rem', borderRadius: '8px', background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.2)' }}
-          >
-            <option value="All" style={{ color: 'black' }}>Todas las Categorías</option>
-            {categories.map(cat => (
-              <option key={cat.id} value={cat.name} style={{ color: 'black' }}>{cat.name}</option>
-            ))}
-            <option value="Sin Categoría" style={{ color: 'black' }}>Sin Categoría</option>
-          </select>
-
-          <select
-            value={filterCurrency}
-            onChange={(e) => setFilterCurrency(e.target.value)}
-            style={{ padding: '0.5rem', borderRadius: '8px', background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.2)' }}
-          >
-            <option value="All" style={{ color: 'black' }}>Todas las Monedas</option>
-            <option value="BS_USD" style={{ color: 'black' }}>BS (tasa dolar BCV)</option>
-            <option value="BS_EUR" style={{ color: 'black' }}>BS (tasa euro BCV)</option>
-            <option value="USDT" style={{ color: 'black' }}>USDT</option>
-            <option value="USD_CASH" style={{ color: 'black' }}>Dólares (Efectivo)</option>
-          </select>
-        </div>
+      
+      {/* Botón para Mostrar/Ocultar Filtros */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
+        <button 
+          onClick={() => setShowFilters(!showFilters)}
+          style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '0.5rem', 
+            background: showFilters ? 'var(--surface-muted)' : 'var(--surface-color)', 
+            border: '1px solid var(--border-color)', 
+            padding: '0.5rem 1rem', 
+            borderRadius: '20px', 
+            color: 'var(--text-primary)',
+            fontSize: '0.85rem',
+            fontWeight: 500,
+            cursor: 'pointer',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          <Filter size={14} />
+          {showFilters ? 'Ocultar Filtros' : 'Filtros'}
+          {!showFilters && activeFiltersCount > 0 && (
+            <span style={{ background: 'var(--accent-color)', color: '#fff', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>
+              {activeFiltersCount}
+            </span>
+          )}
+          {showFilters ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        </button>
       </div>
 
-      {filterCurrency !== 'All' && currencyStats && (
-        <div className="currency-stats-card glass-panel" style={{ marginBottom: '1rem', padding: '1.5rem', display: 'flex', justifyContent: 'space-around', textAlign: 'center', backgroundColor: 'rgba(56, 189, 248, 0.1)', border: '1px solid rgba(56, 189, 248, 0.2)' }}>
-          <div>
-            <h4 style={{ margin: '0 0 0.5rem 0', color: '#bae6fd', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Gastado este mes ({getCurrencyLabel(filterCurrency)})</h4>
-            <p style={{ margin: 0, fontSize: '1.8rem', fontWeight: 'bold', color: '#fff' }}>
-              {currencyStats.totalThisMonth.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </p>
+      {/* Panel de Filtros Desplegable */}
+      {showFilters && (
+        <div 
+          className="soft-card" 
+          style={{ 
+            padding: '1.25rem', 
+            marginBottom: '1.5rem', 
+            display: 'flex', 
+            flexWrap: 'wrap', 
+            gap: '1rem',
+            animation: 'fadeIn 0.2s ease'
+          }}
+        >
+          {dateFilter && onDateChange && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: '1 1 180px' }}>
+              <label style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', fontWeight: 500 }}>Período</label>
+              <select
+                value={dateFilter.preset}
+                onChange={(e) => {
+                  const preset = e.target.value as DatePreset;
+                  if (preset !== 'custom') {
+                    onDateChange({ preset, from: undefined, to: undefined });
+                  } else {
+                    const today = new Date().toISOString().split('T')[0];
+                    onDateChange({ preset: 'custom', from: dateFilter.from || today, to: dateFilter.to || today });
+                  }
+                }}
+                style={{...selectStyle, maxWidth: '100%'}}
+              >
+                <option value="today">Hoy</option>
+                <option value="week">Esta Semana</option>
+                <option value="month">Este Mes</option>
+                <option value="year">Este Año</option>
+                <option value="all">Todo</option>
+                <option value="custom">Personalizado</option>
+              </select>
+            </div>
+          )}
+
+          {dateFilter?.preset === 'custom' && onDateChange && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: '1 1 250px' }}>
+              <label style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', fontWeight: 500 }}>Fechas Custom</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <input 
+                  type="date"
+                  value={dateFilter.from || ''}
+                  max={dateFilter.to || undefined}
+                  onChange={(e) => onDateChange({ ...dateFilter, preset: 'custom', from: e.target.value || undefined })}
+                  style={{...selectStyle, maxWidth: '100%'}}
+                />
+                <span style={{ color: 'var(--text-tertiary)' }}>-</span>
+                <input 
+                  type="date"
+                  value={dateFilter.to || ''}
+                  min={dateFilter.from || undefined}
+                  onChange={(e) => onDateChange({ ...dateFilter, preset: 'custom', to: e.target.value || undefined })}
+                  style={{...selectStyle, maxWidth: '100%'}}
+                />
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: '1 1 180px' }}>
+            <label style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', fontWeight: 500 }}>Categoría</label>
+            <select
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
+              style={{...selectStyle, maxWidth: '100%'}}
+            >
+              <option value="All">Todas las Categorías</option>
+              {categories.map(cat => (
+                <option key={cat.id} value={cat.name}>{cat.name}</option>
+              ))}
+              <option value="Sin Categoría">Sin Categoría</option>
+            </select>
           </div>
-          <div style={{ width: '1px', backgroundColor: 'rgba(255,255,255,0.1)' }}></div>
-          <div>
-            <h4 style={{ margin: '0 0 0.5rem 0', color: '#bae6fd', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Histórico ({getCurrencyLabel(filterCurrency)})</h4>
-            <p style={{ margin: 0, fontSize: '1.8rem', fontWeight: 'bold', color: '#fff' }}>
-              {currencyStats.totalAllTime.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: '1 1 180px' }}>
+            <label style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', fontWeight: 500 }}>Moneda</label>
+            <select
+              value={filterCurrency}
+              onChange={(e) => setFilterCurrency(e.target.value)}
+              style={{...selectStyle, maxWidth: '100%'}}
+            >
+              <option value="All">Todas las Monedas</option>
+              <option value="BS_USD">BS (tasa dolar BCV)</option>
+              <option value="BS_EUR">BS (tasa euro BCV)</option>
+              <option value="USDT">USDT</option>
+              <option value="USD_CASH">Dólares (Efectivo)</option>
+            </select>
           </div>
         </div>
       )}
 
-      <div className="currency-legend" style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginBottom: '1rem', padding: '0.5rem', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: '8px', fontSize: '0.85rem', flexWrap: 'wrap' }}>
-        <span><strong>Leyenda de Conversiones:</strong></span>
-        <span>🇻🇪 Bolívares</span>
-        <span>🇺🇸 Dólares (BCV)</span>
-        <span>🇪🇺 Euros (BCV)</span>
-        <span>🪙 USDT (Binance)</span>
-      </div>
+      {filterCurrency !== 'All' && currencyStats && (
+        <div className="soft-card" style={{ marginBottom: '1.5rem', padding: '1.5rem', textAlign: 'center' }}>
+          <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--text-tertiary)', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Total del Período ({getCurrencyLabel(filterCurrency)})
+          </h4>
+          <p style={{ margin: 0, fontSize: '2rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>
+            {currencyStats.totalPeriod.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </p>
+        </div>
+      )}
 
-      {filteredExpenses.length === 0 ? (
-        <div className="empty-state glass-panel">
+      {expenses.length === 0 ? (
+        <div className="soft-card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-tertiary)' }}>
+          <p>No hay gastos en este período. ¡Añade uno para empezar!</p>
+        </div>
+      ) : filteredExpenses.length === 0 ? (
+        <div className="soft-card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-tertiary)' }}>
           <p>No se encontraron gastos con estos filtros.</p>
         </div>
       ) : (
         <div className="expense-list">
-          {filteredExpenses.map(expense => {
+          {paginatedExpenses.map(expense => {
             const cat = categories.find(c => c.name === expense.category);
             const color = cat ? cat.color : undefined;
             return (
@@ -152,6 +246,46 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ expenses, onEdit, onDelete })
               />
             );
           })}
+          
+          {totalPages > 1 && (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '1.5rem', paddingBottom: '1rem' }}>
+              <button 
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                style={{
+                  padding: '0.5rem 1rem',
+                  borderRadius: '12px',
+                  border: 'none',
+                  background: currentPage === 1 ? 'var(--surface-color)' : 'var(--accent-light)',
+                  color: currentPage === 1 ? 'var(--text-tertiary)' : 'var(--accent-color)',
+                  fontWeight: 600,
+                  cursor: currentPage === 1 ? 'not-allowed' : 'pointer'
+                }}
+              >
+                Anterior
+              </button>
+              
+              <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
+                Página {currentPage} de {totalPages}
+              </span>
+              
+              <button 
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                style={{
+                  padding: '0.5rem 1rem',
+                  borderRadius: '12px',
+                  border: 'none',
+                  background: currentPage === totalPages ? 'var(--surface-color)' : 'var(--accent-light)',
+                  color: currentPage === totalPages ? 'var(--text-tertiary)' : 'var(--accent-color)',
+                  fontWeight: 600,
+                  cursor: currentPage === totalPages ? 'not-allowed' : 'pointer'
+                }}
+              >
+                Siguiente
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

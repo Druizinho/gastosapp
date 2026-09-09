@@ -73,3 +73,26 @@ export interface CategoryCreate {
   name: string;
   color?: string;
 }
+
+export type DatePreset = 'today' | 'week' | 'month' | 'year' | 'all' | 'custom';
+
+export interface DateFilter {
+  preset: DatePreset;
+  from?: string; // YYYY-MM-DD
+  to?: string;   // YYYY-MM-DD
+}
+
+export interface RangeSummaryResponse {
+  date_from: string;
+  date_to: string;
+  days_in_range: number;
+  total_bs: number;
+  total_usd: number;
+  total_eur: number;
+  total_usdt: number;
+  daily_avg_bs: number;
+  daily_avg_usd: number;
+  daily_avg_eur: number;
+  daily_avg_usdt: number;
+  by_category: CategorySummary[];
+}

@@ -82,3 +82,17 @@ class SummaryResponse(BaseModel):
     total_this_month_eur: Decimal
     total_this_month_usdt: Decimal
     by_category: List[CategorySummary]
+
+class RangeSummaryResponse(BaseModel):
+    date_from: datetime.date
+    date_to: datetime.date
+    days_in_range: int
+    total_bs: Decimal
+    total_usd: Decimal
+    total_eur: Decimal
+    total_usdt: Decimal
+    daily_avg_bs: Decimal
+    daily_avg_usd: Decimal
+    daily_avg_eur: Decimal
+    daily_avg_usdt: Decimal
+    by_category: List[CategorySummary]

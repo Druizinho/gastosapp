@@ -29,7 +29,7 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ initialData, onSubmit, onCanc
       setDate(initialData.date);
       setCurrency(initialData.currency);
       
-      // Cargar la tasa histórica para que el usuario la vea y no se sobreescriba con la de hoy al guardar
+      // Cargar la tasa histórica
       if (initialData.currency === 'BS_EUR' && initialData.rate_eur_bs) {
         setManualRate(initialData.rate_eur_bs.toString());
       } else if (initialData.currency === 'USDT' && initialData.rate_usdt_bs) {
@@ -82,18 +82,18 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ initialData, onSubmit, onCanc
   };
 
   const currentRate = rates?.usd_bs;
-  // Mostramos el campo de tasa siempre en edición, o si es USD_CASH, o si no cargaron las tasas (offline), o simplemente como opcional siempre.
-  // Vamos a mostrarlo siempre como opcional para mayor transparencia.
 
   return (
     <div className="modal-backdrop">
-      <div className="expense-form-container glass-panel" style={{ maxWidth: '500px' }}>
-        <h2>{initialData ? 'Edit Expense' : 'Add Expense'}</h2>
-        <form onSubmit={handleSubmit} className="expense-form">
+      <div className="soft-card" style={{ maxWidth: '500px', width: '100%', padding: '2rem', animation: 'slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards' }}>
+        <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '1.5rem', textAlign: 'center' }}>
+          {initialData ? 'Editar Gasto' : 'Añadir Gasto'}
+        </h2>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           
-          <div className="form-group row">
-            <div className="form-group half">
-              <label>Amount</label>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <label style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)' }}>Monto</label>
               <input 
                 type="number" 
                 step="0.01" 
@@ -104,8 +104,8 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ initialData, onSubmit, onCanc
                 placeholder="0.00"
               />
             </div>
-            <div className="form-group half">
-              <label>Currency</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <label style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)' }}>Moneda</label>
               <select value={currency} onChange={(e) => setCurrency(e.target.value as CurrencyType)} required>
                 <option value="BS_USD">Bs (Tasa Dólar BCV)</option>
                 <option value="BS_EUR">Bs (Tasa Euro BCV)</option>
@@ -115,10 +115,10 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ initialData, onSubmit, onCanc
             </div>
           </div>
 
-          <div className="form-group" style={{ marginBottom: '1rem' }}>
-            <label style={{ color: '#cbd5e1', display: 'flex', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <label style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between' }}>
               <span>Tasa de Cambio {initialData ? '(Histórica)' : ''}</span>
-              <span style={{ fontSize: '0.8rem', color: '#64748b' }}>(Opcional)</span>
+              <span style={{ color: 'var(--text-tertiary)' }}>(Opcional)</span>
             </label>
             <input 
               type="text" 
@@ -130,32 +130,32 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ initialData, onSubmit, onCanc
               }}
               placeholder={currentRate ? `Por defecto usa la del mercado` : "Ej. 36.50"}
             />
-            <small style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '0.25rem', display: 'block' }}>
+            <small style={{ color: 'var(--text-tertiary)', fontSize: '0.75rem' }}>
               {initialData ? "Esta fue la tasa usada. Modifícala solo si deseas recalcular." : "Déjalo en blanco para usar la tasa automática."}
             </small>
           </div>
 
-          <div className="form-group">
-            <label>Description</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <label style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)' }}>Descripción</label>
             <input 
               type="text" 
               value={description} 
               onChange={(e) => setDescription(e.target.value)} 
               required 
-              placeholder="What did you buy?"
+              placeholder="¿Qué compraste?"
             />
           </div>
           
-          <div className="form-group row">
-            <div className="form-group half">
-              <label>Category</label>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <label style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)' }}>Categoría</label>
               <select value={category} onChange={(e) => setCategory(e.target.value)} required disabled={isLoadingCats}>
                 <option value="Sin Categoría">Sin Categoría</option>
                 {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
               </select>
             </div>
-            <div className="form-group half">
-              <label>Date</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <label style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)' }}>Fecha</label>
               <input 
                 type="date" 
                 value={date} 
@@ -165,10 +165,21 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ initialData, onSubmit, onCanc
             </div>
           </div>
 
-          <div className="form-actions">
-            <button type="button" onClick={onCancel} className="btn-cancel" disabled={isSubmitting}>Cancel</button>
-            <button type="submit" className="btn-submit" disabled={isSubmitting}>
-              {isSubmitting ? 'Saving...' : 'Save'}
+          <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+            <button 
+              type="button" 
+              onClick={onCancel} 
+              disabled={isSubmitting}
+              style={{ flex: 1, padding: '0.875rem', borderRadius: '12px', border: 'none', background: 'var(--surface-muted)', color: 'var(--text-primary)', fontWeight: 600, cursor: 'pointer' }}
+            >
+              Cancelar
+            </button>
+            <button 
+              type="submit" 
+              disabled={isSubmitting}
+              style={{ flex: 1, padding: '0.875rem', borderRadius: '12px', border: 'none', background: 'var(--accent-color)', color: 'white', fontWeight: 600, cursor: 'pointer' }}
+            >
+              {isSubmitting ? 'Guardando...' : 'Guardar'}
             </button>
           </div>
         </form>

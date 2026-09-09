@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Expense, ExpenseCreate, ExpenseUpdate, SummaryResponse, ExchangeRates } from './types';
+import type { Expense, ExpenseCreate, ExpenseUpdate, SummaryResponse, ExchangeRates, RangeSummaryResponse } from './types';
 import { supabase } from './supabaseClient';
 
 const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
@@ -18,8 +18,11 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
-export const getExpenses = async (): Promise<Expense[]> => {
-  const response = await api.get('/expenses/');
+export const getExpenses = async (from?: string, to?: string): Promise<Expense[]> => {
+  const params: any = {};
+  if (from) params.date_from = from;
+  if (to) params.date_to = to;
+  const response = await api.get('/expenses/', { params });
   return response.data;
 };
 
@@ -30,6 +33,13 @@ export const getRates = async (): Promise<ExchangeRates> => {
 
 export const getSummary = async (): Promise<SummaryResponse> => {
   const response = await api.get('/expenses/summary');
+  return response.data;
+};
+
+export const getSummaryRange = async (from: string, to: string): Promise<RangeSummaryResponse> => {
+  const response = await api.get('/expenses/summary-range', { 
+    params: { date_from: from, date_to: to }
+  });
   return response.data;
 };
 

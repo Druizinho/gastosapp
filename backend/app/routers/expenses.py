@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List
+from typing import List, Optional
 from uuid import UUID
 
 from .. import crud, schemas, bcv_service
 from ..database import get_db
 from ..auth import get_current_user
-from datetime import datetime
+from datetime import datetime, date
 
 router = APIRouter(
     prefix="/api/expenses",
@@ -16,6 +16,15 @@ router = APIRouter(
 @router.get("/summary", response_model=schemas.SummaryResponse)
 async def read_summary(db: AsyncSession = Depends(get_db), user_id: UUID = Depends(get_current_user)):
     return await crud.get_summary(db, user_id)
+
+@router.get("/summary-range", response_model=schemas.RangeSummaryResponse)
+async def read_summary_range(
+    date_from: date,
+    date_to: date,
+    db: AsyncSession = Depends(get_db), 
+    user_id: UUID = Depends(get_current_user)
+):
+    return await crud.get_summary_range(db, user_id, date_from, date_to)
 
 @router.get("/rates", response_model=schemas.ExchangeRateResponse)
 async def read_rates():
@@ -39,8 +48,15 @@ async def create_expense(expense: schemas.ExpenseCreate, db: AsyncSession = Depe
     return await crud.create_expense(db=db, expense=expense, user_id=user_id, extra_data=equivalents)
 
 @router.get("/", response_model=List[schemas.ExpenseResponse])
-async def read_expenses(skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_db), user_id: UUID = Depends(get_current_user)):
-    expenses = await crud.get_expenses(db, user_id=user_id, skip=skip, limit=limit)
+async def read_expenses(
+    skip: int = 0, 
+    limit: int = 100, 
+    date_from: Optional[date] = None, 
+    date_to: Optional[date] = None,
+    db: AsyncSession = Depends(get_db), 
+    user_id: UUID = Depends(get_current_user)
+):
+    expenses = await crud.get_expenses(db, user_id=user_id, skip=skip, limit=limit, date_from=date_from, date_to=date_to)
     return expenses
 
 @router.get("/{expense_id}", response_model=schemas.ExpenseResponse)

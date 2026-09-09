@@ -23,10 +23,16 @@ async def create_expense(db: AsyncSession, expense: schemas.ExpenseCreate, user_
     await db.refresh(db_expense)
     return db_expense
 
-async def get_expenses(db: AsyncSession, user_id: UUID, skip: int = 0, limit: int = 100):
-    result = await db.execute(
-        select(models.Expense).filter(models.Expense.user_id == user_id).order_by(models.Expense.date.desc(), models.Expense.created_at.desc()).offset(skip).limit(limit)
-    )
+async def get_expenses(db: AsyncSession, user_id: UUID, skip: int = 0, limit: int = 100, date_from: date = None, date_to: date = None):
+    query = select(models.Expense).filter(models.Expense.user_id == user_id)
+    
+    if date_from:
+        query = query.filter(models.Expense.date >= date_from)
+    if date_to:
+        query = query.filter(models.Expense.date <= date_to)
+    
+    query = query.order_by(models.Expense.date.desc(), models.Expense.created_at.desc()).offset(skip).limit(limit)
+    result = await db.execute(query)
     return result.scalars().all()
 
 async def get_expense(db: AsyncSession, expense_id: UUID, user_id: UUID):
@@ -110,6 +116,61 @@ async def get_summary(db: AsyncSession, user_id: UUID):
         total_this_month_usd=month_usd,
         total_this_month_eur=month_eur,
         total_this_month_usdt=month_usdt,
+        by_category=by_category
+    )
+
+async def get_summary_range(db: AsyncSession, user_id: UUID, date_from: date, date_to: date):
+    """Calcula totales y desglose por categoría para un rango de fechas arbitrario."""
+    def sum_cols():
+        return [
+            func.coalesce(func.sum(models.Expense.amount_bs), 0),
+            func.coalesce(func.sum(models.Expense.amount_usd), 0),
+            func.coalesce(func.sum(models.Expense.amount_eur), 0),
+            func.coalesce(func.sum(models.Expense.amount_usdt), 0)
+        ]
+
+    # Totales del rango
+    total_result = await db.execute(
+        select(*sum_cols())
+        .filter(models.Expense.user_id == user_id)
+        .filter(models.Expense.date >= date_from)
+        .filter(models.Expense.date <= date_to)
+    )
+    total_bs, total_usd, total_eur, total_usdt = total_result.first()
+
+    # Por categoría
+    category_result = await db.execute(
+        select(models.Expense.category, *sum_cols())
+        .filter(models.Expense.user_id == user_id)
+        .filter(models.Expense.date >= date_from)
+        .filter(models.Expense.date <= date_to)
+        .group_by(models.Expense.category)
+    )
+
+    by_category = []
+    for row in category_result.all():
+        by_category.append(schemas.CategorySummary(
+            category=row[0],
+            total_bs=row[1],
+            total_usd=row[2],
+            total_eur=row[3],
+            total_usdt=row[4]
+        ))
+
+    days_in_range = max((date_to - date_from).days + 1, 1)  # mínimo 1 para evitar div/0
+
+    return schemas.RangeSummaryResponse(
+        date_from=date_from,
+        date_to=date_to,
+        days_in_range=days_in_range,
+        total_bs=total_bs,
+        total_usd=total_usd,
+        total_eur=total_eur,
+        total_usdt=total_usdt,
+        daily_avg_bs=total_bs / days_in_range,
+        daily_avg_usd=total_usd / days_in_range,
+        daily_avg_eur=total_eur / days_in_range,
+        daily_avg_usdt=total_usdt / days_in_range,
         by_category=by_category
     )
 
