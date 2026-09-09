@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import os
 
-from .routers import expenses
+from .routers import expenses, categories
 from .database import engine, Base
 
 @asynccontextmanager
@@ -23,7 +23,7 @@ app.add_middleware(
 )
 
 app.include_router(expenses.router)
-
+app.include_router(categories.router)
 @app.get("/")
 def read_root():
     return {"message": "Welcome to GastosApp API"}

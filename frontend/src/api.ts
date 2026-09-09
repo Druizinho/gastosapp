@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Expense, ExpenseCreate, ExpenseUpdate, SummaryResponse } from './types';
+import type { Expense, ExpenseCreate, ExpenseUpdate, SummaryResponse, ExchangeRates } from './types';
 import { supabase } from './supabaseClient';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
@@ -21,6 +21,11 @@ export const getExpenses = async (): Promise<Expense[]> => {
   return response.data;
 };
 
+export const getRates = async (): Promise<ExchangeRates> => {
+  const response = await api.get('/expenses/rates');
+  return response.data;
+};
+
 export const getSummary = async (): Promise<SummaryResponse> => {
   const response = await api.get('/expenses/summary');
   return response.data;
@@ -38,4 +43,18 @@ export const updateExpense = async (id: string, expense: ExpenseUpdate): Promise
 
 export const deleteExpense = async (id: string): Promise<void> => {
   await api.delete(`/expenses/${id}`);
+};
+
+export const getCategories = async (): Promise<any[]> => {
+  const response = await api.get('/categories/');
+  return response.data;
+};
+
+export const createCategory = async (category: any): Promise<any> => {
+  const response = await api.post('/categories/', category);
+  return response.data;
+};
+
+export const deleteCategory = async (id: string): Promise<void> => {
+  await api.delete(`/categories/${id}`);
 };

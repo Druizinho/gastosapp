@@ -4,7 +4,9 @@ import type { Expense, SummaryResponse, ExpenseCreate, ExpenseUpdate } from '../
 import Summary from './Summary';
 import ExpenseList from './ExpenseList';
 import ExpenseForm from './ExpenseForm';
-import { Plus, LogOut } from 'lucide-react';
+import CategoryManager from './CategoryManager';
+import ConfirmModal from './ConfirmModal';
+import { Plus, LogOut, Settings } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import '../index.css';
 
@@ -13,8 +15,11 @@ const Dashboard: React.FC = () => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  const [confirmDelete, setConfirmDelete] = useState({ isOpen: false, expenseId: '' });
 
   const fetchData = async () => {
     try {
@@ -51,14 +56,19 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this expense?')) return;
+  const openDeleteConfirm = (id: string) => {
+    setConfirmDelete({ isOpen: true, expenseId: id });
+  };
+
+  const handleConfirmDelete = async () => {
     try {
-      await deleteExpense(id);
+      await deleteExpense(confirmDelete.expenseId);
+      setConfirmDelete({ isOpen: false, expenseId: '' });
       await fetchData();
     } catch (error) {
       console.error('Error deleting expense:', error);
       alert('Failed to delete expense');
+      setConfirmDelete({ isOpen: false, expenseId: '' });
     }
   };
 
@@ -82,6 +92,9 @@ const Dashboard: React.FC = () => {
       <header className="app-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1>GastosApp</h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <button onClick={() => setIsCategoryManagerOpen(true)} style={{ background: 'none', border: 'none', color: '#cbd5e1', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Settings size={18} /> Categorías
+          </button>
           <span style={{ fontSize: '0.9rem', color: '#94a3b8' }}>{user?.email}</span>
           <button onClick={signOut} style={{ background: 'none', border: 'none', color: '#fca5a5', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <LogOut size={18} /> Salir
@@ -101,7 +114,7 @@ const Dashboard: React.FC = () => {
             <ExpenseList 
               expenses={expenses} 
               onEdit={handleEdit} 
-              onDelete={handleDelete} 
+              onDelete={openDeleteConfirm} 
             />
           </>
         )}
@@ -111,11 +124,26 @@ const Dashboard: React.FC = () => {
         <Plus size={24} />
       </button>
 
+      <ConfirmModal 
+        isOpen={confirmDelete.isOpen}
+        title="¿Borrar gasto?"
+        message="¿Seguro que quieres borrar este gasto? Esta acción no se puede deshacer."
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setConfirmDelete({ isOpen: false, expenseId: '' })}
+      />
+
       {isFormOpen && (
         <ExpenseForm 
           initialData={editingExpense}
           onSubmit={handleCreateOrUpdate}
           onCancel={handleCloseForm}
+        />
+      )}
+
+      {isCategoryManagerOpen && (
+        <CategoryManager 
+          onClose={() => setIsCategoryManagerOpen(false)}
+          onCategoriesChanged={() => fetchData()}
         />
       )}
     </div>
