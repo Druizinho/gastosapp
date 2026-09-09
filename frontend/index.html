@@ -4,15 +4,7 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
-    <script>
-      window.addEventListener('error', function(e) {
-        document.body.innerHTML = '<div style="color: white; padding: 20px; font-family: sans-serif; word-wrap: break-word;"><h2>Error en la Aplicación</h2><p>Esto puede ayudar a encontrar el problema:</p><pre style="color: #ff6b6b; background: #1e1e1e; padding: 10px; border-radius: 5px;">' + (e.error ? e.error.stack : e.message) + '</pre></div>';
-      });
-      window.addEventListener('unhandledrejection', function(e) {
-        document.body.innerHTML = '<div style="color: white; padding: 20px; font-family: sans-serif; word-wrap: break-word;"><h2>Promesa Rechazada</h2><pre style="color: #ff6b6b; background: #1e1e1e; padding: 10px; border-radius: 5px;">' + e.reason + '</pre></div>';
-      });
-    </script>
+    <title>GastosApp</title>
   </head>
   <body>
     <div id="root"></div>
