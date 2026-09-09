@@ -44,7 +44,7 @@ const RatesModal: React.FC<RatesModalProps> = ({ onClose }) => {
   // Calculator Logic
   const calcResults = useMemo(() => {
     if (!rates) return null;
-    const amount = parseFloat(calcAmount) || 0;
+    const amount = parseFloat(calcAmount.replace(',', '.')) || 0;
     
     // First, convert everything to Bolívares (the base unit the backend uses)
     let amountInBs = 0;
@@ -126,10 +126,13 @@ const RatesModal: React.FC<RatesModalProps> = ({ onClose }) => {
               
               <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
                 <input 
-                  type="number" 
-                  step="any"
+                  type="text" 
+                  inputMode="decimal"
                   value={calcAmount}
-                  onChange={(e) => setCalcAmount(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/[^0-9.,]/g, '');
+                    setCalcAmount(val);
+                  }}
                   className="form-input"
                   style={{ flex: 2, padding: '0.75rem', borderRadius: '8px', color: '#fff', backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
                 />
