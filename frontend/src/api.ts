@@ -2,7 +2,9 @@ import axios from 'axios';
 import type { Expense, ExpenseCreate, ExpenseUpdate, SummaryResponse, ExchangeRates } from './types';
 import { supabase } from './supabaseClient';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+// Asegurarnos de que siempre termine en /api, incluso si en Vercel lo configuraron sin él
+const API_URL = rawApiUrl.endsWith('/api') ? rawApiUrl : `${rawApiUrl}/api`;
 
 const api = axios.create({
   baseURL: API_URL,
