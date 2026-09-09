@@ -5,8 +5,9 @@ import Summary from './Summary';
 import ExpenseList from './ExpenseList';
 import ExpenseForm from './ExpenseForm';
 import CategoryManager from './CategoryManager';
+import RatesModal from './RatesModal';
 import ConfirmModal from './ConfirmModal';
-import { Plus, LogOut, Settings } from 'lucide-react';
+import { Plus, LogOut, Settings, LineChart } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import '../index.css';
 
@@ -16,6 +17,7 @@ const Dashboard: React.FC = () => {
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
+  const [isRatesModalOpen, setIsRatesModalOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -92,6 +94,9 @@ const Dashboard: React.FC = () => {
       <header className="app-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1>GastosApp</h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <button onClick={() => setIsRatesModalOpen(true)} style={{ background: 'none', border: 'none', color: '#cbd5e1', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <LineChart size={18} /> Tasas
+          </button>
           <button onClick={() => setIsCategoryManagerOpen(true)} style={{ background: 'none', border: 'none', color: '#cbd5e1', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Settings size={18} /> Categorías
           </button>
@@ -145,6 +150,10 @@ const Dashboard: React.FC = () => {
           onClose={() => setIsCategoryManagerOpen(false)}
           onCategoriesChanged={() => fetchData()}
         />
+      )}
+
+      {isRatesModalOpen && (
+        <RatesModal onClose={() => setIsRatesModalOpen(false)} />
       )}
     </div>
   );
