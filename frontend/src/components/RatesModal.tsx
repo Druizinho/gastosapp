@@ -127,6 +127,7 @@ const RatesModal: React.FC<RatesModalProps> = ({ onClose }) => {
               <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
                 <input 
                   type="number" 
+                  step="any"
                   value={calcAmount}
                   onChange={(e) => setCalcAmount(e.target.value)}
                   className="form-input"
