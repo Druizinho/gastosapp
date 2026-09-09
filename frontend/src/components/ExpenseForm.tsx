@@ -29,6 +29,15 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ initialData, onSubmit, onCanc
       setCategory(initialData.category);
       setDate(initialData.date);
       setCurrency(initialData.currency);
+      
+      // Cargar la tasa histórica para que el usuario la vea y no se sobreescriba con la de hoy al guardar
+      if (initialData.currency === 'BS_EUR' && initialData.rate_eur_bs) {
+        setManualRate(initialData.rate_eur_bs.toString());
+      } else if (initialData.currency === 'USDT' && initialData.rate_usdt_bs) {
+        setManualRate(initialData.rate_usdt_bs.toString());
+      } else if (initialData.rate_usd_bs) {
+        setManualRate(initialData.rate_usd_bs.toString());
+      }
     }
   }, [initialData]);
 
@@ -58,12 +67,12 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ initialData, onSubmit, onCanc
     setIsSubmitting(true);
     try {
       await onSubmit({
-        amount: parseFloat(amount),
+        amount: parseFloat(amount.replace(',', '.')),
         description,
         category,
         date,
         currency,
-        manual_rate: manualRate ? parseFloat(manualRate) : undefined
+        manual_rate: manualRate ? parseFloat(manualRate.replace(',', '.')) : undefined
       });
       if (!initialData) {
         setAmount('');
@@ -75,7 +84,8 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ initialData, onSubmit, onCanc
   };
 
   const currentRate = rates?.usd_bs;
-  const showFallback = (!isLoadingRates && !currentRate) || currency === 'USD_CASH';
+  // Mostramos el campo de tasa siempre en edición, o si es USD_CASH, o si no cargaron las tasas (offline), o simplemente como opcional siempre.
+  // Vamos a mostrarlo siempre como opcional para mayor transparencia.
 
   return (
     <div className="modal-backdrop">
@@ -107,19 +117,25 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ initialData, onSubmit, onCanc
             </div>
           </div>
 
-          {showFallback && (
-            <div className="form-group alert-box">
-              <label>{currency === 'USD_CASH' ? 'Tasa de Cambio (Opcional, usa la más alta por defecto)' : 'Error de Red: Ingresa Tasa Manual'}</label>
-              <input 
-                type="number" 
-                step="0.01" 
-                min="0.01" 
-                value={manualRate} 
-                onChange={(e) => setManualRate(e.target.value)} 
-                placeholder="Ej. 36.50"
-              />
-            </div>
-          )}
+          <div className="form-group" style={{ marginBottom: '1rem' }}>
+            <label style={{ color: '#cbd5e1', display: 'flex', justifyContent: 'space-between' }}>
+              <span>Tasa de Cambio {initialData ? '(Histórica)' : ''}</span>
+              <span style={{ fontSize: '0.8rem', color: '#64748b' }}>(Opcional)</span>
+            </label>
+            <input 
+              type="text" 
+              inputMode="decimal"
+              value={manualRate} 
+              onChange={(e) => {
+                const val = e.target.value.replace(/[^0-9.,]/g, '');
+                setManualRate(val);
+              }}
+              placeholder={currentRate ? `Por defecto usa la del mercado` : "Ej. 36.50"}
+            />
+            <small style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '0.25rem', display: 'block' }}>
+              {initialData ? "Esta fue la tasa usada. Modifícala solo si deseas recalcular." : "Déjalo en blanco para usar la tasa automática."}
+            </small>
+          </div>
 
           <div className="form-group">
             <label>Description</label>
@@ -136,8 +152,8 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ initialData, onSubmit, onCanc
             <div className="form-group half">
               <label>Category</label>
               <select value={category} onChange={(e) => setCategory(e.target.value)} required disabled={isLoadingCats}>
+                <option value="Sin Categoría">Sin Categoría</option>
                 {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-                {categories.length === 0 && <option value="Sin Categoría">Sin Categoría</option>}
               </select>
             </div>
             <div className="form-group half">

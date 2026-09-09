@@ -79,10 +79,13 @@ def convert_amount(amount: Decimal, currency: str, rates: dict, manual_rate: Dec
     usdt_bs = rates.get("usdt_bs")
     
     if manual_rate:
-        if not usd_bs: usd_bs = manual_rate
-        if not usdt_bs: usdt_bs = manual_rate
-        if not eur_bs: eur_bs = manual_rate * Decimal('1.05')
-        
+        if currency == 'BS_USD' or currency == 'USD_CASH':
+            usd_bs = manual_rate
+        elif currency == 'BS_EUR':
+            eur_bs = manual_rate
+        elif currency == 'USDT':
+            usdt_bs = manual_rate
+            
     if currency == 'BS_USD':
         amount_bs = amount
         if usd_bs: amount_usd = amount / usd_bs
@@ -101,11 +104,15 @@ def convert_amount(amount: Decimal, currency: str, rates: dict, manual_rate: Dec
             if eur_bs: amount_eur = amount_bs / eur_bs
     elif currency == 'USD_CASH':
         amount_usd = amount
-        available_rates = [r for r in [usd_bs, eur_bs, usdt_bs] if r is not None]
-        highest_rate = max(available_rates) if available_rates else None
-        
-        if highest_rate:
-            amount_bs = amount * highest_rate
+        if manual_rate:
+            amount_bs = amount * manual_rate
+        else:
+            available_rates = [r for r in [usd_bs, eur_bs, usdt_bs] if r is not None]
+            highest_rate = max(available_rates) if available_rates else None
+            if highest_rate:
+                amount_bs = amount * highest_rate
+                
+        if amount_bs:
             if eur_bs: amount_eur = amount_bs / eur_bs
             if usdt_bs: amount_usdt = amount_bs / usdt_bs
 

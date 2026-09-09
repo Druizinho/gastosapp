@@ -44,21 +44,19 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ expenses, onEdit, onDelete })
     let totalAllTime = 0;
     let totalThisMonth = 0;
 
-    expenses.forEach(exp => {
-      if (exp.currency === filterCurrency) {
-        const amount = typeof exp.amount === 'string' ? parseFloat(exp.amount) : exp.amount;
-        totalAllTime += amount;
-        const expDate = new Date(exp.date);
-        // exp.date is typically YYYY-MM-DD. Need to handle timezone issues correctly.
-        // It's safe to parse and get UTC month or local month. Let's use local since user entered it.
-        if (expDate.getMonth() === currentMonth && expDate.getFullYear() === currentYear) {
-          totalThisMonth += amount;
-        }
+    filteredExpenses.forEach(exp => {
+      const amount = typeof exp.amount === 'string' ? parseFloat(exp.amount) : exp.amount;
+      totalAllTime += amount;
+      const expDate = new Date(exp.date);
+      // exp.date is typically YYYY-MM-DD. Need to handle timezone issues correctly.
+      // It's safe to parse and get UTC month or local month. Let's use local since user entered it.
+      if (expDate.getMonth() === currentMonth && expDate.getFullYear() === currentYear) {
+        totalThisMonth += amount;
       }
     });
 
     return { totalAllTime, totalThisMonth };
-  }, [expenses, filterCurrency]);
+  }, [filteredExpenses, filterCurrency]);
 
   const getCurrencyLabel = (currency: string) => {
     switch (currency) {
