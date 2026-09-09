@@ -55,7 +55,7 @@ const ExpenseItem: React.FC<ExpenseItemProps> = ({ expense, onEdit, onDelete, ca
       </div>
       <div className="expense-amount-actions" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.75rem', minWidth: '200px' }}>
         <div className="expense-amount" style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#fff' }}>
-          {formatVal(expense.amount, expense.currency.startsWith('BS') ? 'Bs ' : (expense.currency === 'USDT' ? 'USDT ' : '$'))}
+          {formatVal(expense.amount, (expense.currency || '').startsWith('BS') ? 'Bs ' : (expense.currency === 'USDT' ? 'USDT ' : '$'))}
         </div>
         <div className="expense-equivalents" style={{ fontSize: '0.85rem', color: '#cbd5e1', backgroundColor: 'rgba(0,0,0,0.2)', padding: '0.5rem', borderRadius: '8px', width: '100%' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem', textAlign: 'left' }}>
