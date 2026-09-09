@@ -75,7 +75,7 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ initialData, onSubmit, onCanc
   };
 
   const currentRate = rates?.usd_bs;
-  const showFallback = !isLoadingRates && !currentRate && currency !== 'USD_CASH';
+  const showFallback = (!isLoadingRates && !currentRate) || currency === 'USD_CASH';
 
   return (
     <div className="modal-backdrop">
@@ -109,7 +109,7 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ initialData, onSubmit, onCanc
 
           {showFallback && (
             <div className="form-group alert-box">
-              <label>Network Error: Enter Manual Rate (Bs/USD)</label>
+              <label>{currency === 'USD_CASH' ? 'Tasa de Cambio (Opcional, usa la más alta por defecto)' : 'Error de Red: Ingresa Tasa Manual'}</label>
               <input 
                 type="number" 
                 step="0.01" 
