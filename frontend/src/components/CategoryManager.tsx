@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { Category, CategoryCreate } from '../types';
+import type { Category } from '../types';
 import { getCategories, createCategory, deleteCategory } from '../api';
 import { Trash2 } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
