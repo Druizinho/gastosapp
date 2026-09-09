@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import extract, func
+from sqlalchemy import extract, func, case
 from typing import Optional, List
 from datetime import date
 from uuid import UUID
@@ -63,8 +63,18 @@ async def delete_expense(db: AsyncSession, expense_id: UUID, user_id: UUID):
 async def get_summary(db: AsyncSession, user_id: UUID):
     # Base query helpers
     def sum_cols():
+        highest_rate = func.greatest(
+            func.coalesce(models.Expense.rate_usd_bs, 0),
+            func.coalesce(models.Expense.rate_eur_bs, 0),
+            func.coalesce(models.Expense.rate_usdt_bs, 0)
+        )
         return [
-            func.coalesce(func.sum(models.Expense.amount_bs), 0),
+            func.coalesce(func.sum(
+                case(
+                    (models.Expense.currency == 'USD_CASH', models.Expense.amount * highest_rate),
+                    else_=models.Expense.amount_bs
+                )
+            ), 0),
             func.coalesce(func.sum(models.Expense.amount_usd), 0),
             func.coalesce(func.sum(models.Expense.amount_eur), 0),
             func.coalesce(func.sum(models.Expense.amount_usdt), 0)

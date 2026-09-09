@@ -58,6 +58,11 @@ const ExpenseItem: React.FC<ExpenseItemProps> = ({ expense, onEdit, onDelete, ca
           {formatVal(expense.amount, (expense.currency || '').startsWith('BS') ? 'Bs ' : (expense.currency === 'USDT' ? 'USDT ' : '$'))}
         </div>
         <div className="expense-equivalents" style={{ fontSize: '0.85rem', color: '#cbd5e1', backgroundColor: 'rgba(0,0,0,0.2)', padding: '0.5rem', borderRadius: '8px', width: '100%' }}>
+          {expense.currency === 'USD_CASH' && (
+            <div style={{ marginBottom: '0.4rem', fontSize: '0.75rem', color: '#f59e0b', fontStyle: 'italic', textAlign: 'center' }}>
+              * Se suma al resumen general usando la tasa del mercado (la más alta).
+            </div>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem', textAlign: 'left' }}>
             <span title="Bolívares">🇻🇪 {formatVal(expense.amount_bs, 'Bs ')}</span>
             <span title="Dólares">🇺🇸 {formatVal(expense.amount_usd, '$ ')}</span>
