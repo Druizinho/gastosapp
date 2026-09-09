@@ -92,7 +92,7 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ expenses, onEdit, onDelete })
             {categories.map(cat => (
               <option key={cat.id} value={cat.name} style={{ color: 'black' }}>{cat.name}</option>
             ))}
-            {categories.length === 0 && <option value="Sin Categoría" style={{ color: 'black' }}>Sin Categoría</option>}
+            <option value="Sin Categoría" style={{ color: 'black' }}>Sin Categoría</option>
           </select>
 
           <select
