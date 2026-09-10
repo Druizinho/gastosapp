@@ -30,3 +30,11 @@ CREATE TABLE expenses (
 -- Optional: Create an index on date for faster filtering
 CREATE INDEX idx_expenses_date ON expenses(date);
 CREATE INDEX idx_categories_user ON categories(user_id);
+
+-- User Profiles (linked to Supabase Auth)
+CREATE TABLE IF NOT EXISTS public.profiles (
+    id UUID REFERENCES auth.users ON DELETE CASCADE NOT NULL PRIMARY KEY,
+    display_name TEXT,
+    avatar_url TEXT,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now())
+);

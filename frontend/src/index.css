@@ -2,8 +2,8 @@
 
 :root {
   /* Backgrounds */
-  --bg-color: #EBE6DF;
-  --bg-gradient: radial-gradient(ellipse at top center, #F8F5F0, #EBE6DF 80%);
+  --bg-color: #EDE9E3;
+  --bg-gradient: none;
   --surface-color: #FFFFFF;
   --surface-hover: #FAFAF9;
   --surface-muted: #F3F4F6;
@@ -39,13 +39,13 @@
   --radius-lg: 24px;
   --radius-full: 9999px;
 
-  /* Shadows — Soft UI */
-  --shadow-xs: 0 1px 3px rgba(0, 0, 0, 0.04);
-  --shadow-sm: 0 2px 8px -2px rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 4px 16px -4px rgba(0, 0, 0, 0.08);
-  --shadow-lg: 0 8px 32px -4px rgba(0, 0, 0, 0.08), 0 4px 12px -4px rgba(0, 0, 0, 0.04);
-  --shadow-xl: 0 12px 48px -8px rgba(0, 0, 0, 0.1), 0 6px 20px -6px rgba(0, 0, 0, 0.06);
-  --shadow-nav: 0 -2px 20px rgba(0, 0, 0, 0.06), 0 4px 20px rgba(0, 0, 0, 0.06);
+  /* Shadows — Ultra-soft (Apple/iOS style) */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.03);
+  --shadow-sm: 0 2px 6px -1px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 4px 24px -6px rgba(0, 0, 0, 0.06), 0 2px 8px -4px rgba(0, 0, 0, 0.03);
+  --shadow-xl: 0 8px 32px -8px rgba(0, 0, 0, 0.08), 0 4px 16px -4px rgba(0, 0, 0, 0.04);
+  --shadow-nav: 0 -1px 16px rgba(0, 0, 0, 0.05), 0 4px 16px rgba(0, 0, 0, 0.05);
   --shadow-fab: 0 4px 20px rgba(17, 24, 39, 0.3);
 
   /* Transitions */
@@ -66,8 +66,12 @@
 
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  background: var(--bg-gradient);
   background-color: var(--bg-color);
+  background-image:
+    radial-gradient(ellipse at 15% -5%, rgba(152, 206, 182, 0.35) 0%, transparent 50%),
+    radial-gradient(ellipse at 85% 5%, rgba(186, 213, 175, 0.25) 0%, transparent 45%),
+    radial-gradient(ellipse at 50% 100%, rgba(224, 218, 209, 0.4) 0%, transparent 55%);
+  background-attachment: fixed;
   color: var(--text-primary);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
@@ -85,6 +89,42 @@ body {
   min-height: 100vh;
   padding: 0 1rem;
   padding-bottom: 6rem;
+  position: relative;
+}
+
+/* Decorative mesh blob */
+.app-container::before {
+  content: '';
+  position: fixed;
+  top: -15%;
+  left: -15%;
+  width: 65%;
+  height: 45%;
+  background: radial-gradient(
+    circle,
+    rgba(152, 206, 182, 0.2) 0%,
+    transparent 70%
+  );
+  z-index: -1;
+  pointer-events: none;
+  filter: blur(50px);
+}
+
+.app-container::after {
+  content: '';
+  position: fixed;
+  bottom: 5%;
+  right: -10%;
+  width: 50%;
+  height: 40%;
+  background: radial-gradient(
+    circle,
+    rgba(210, 200, 185, 0.25) 0%,
+    transparent 70%
+  );
+  z-index: -1;
+  pointer-events: none;
+  filter: blur(50px);
 }
 
 .main-content {
@@ -887,14 +927,14 @@ body {
 
 .form-actions {
   display: flex;
-  justify-content: flex-end;
   gap: 0.75rem;
   margin-top: 1.5rem;
 }
 
 .btn-cancel,
 .btn-submit {
-  padding: 0.75rem 1.5rem;
+  flex: 1;
+  padding: 0.875rem 1.5rem;
   border-radius: var(--radius-sm);
   font-weight: 600;
   cursor: pointer;
@@ -905,15 +945,12 @@ body {
 }
 
 .btn-cancel {
-  background-color: transparent;
-  color: var(--text-secondary);
-  border: 1px solid var(--accent-light);
+  background-color: var(--surface-muted);
+  color: var(--text-primary);
 }
 
 .btn-cancel:hover {
-  background-color: var(--surface-muted);
-  color: var(--text-primary);
-  border-color: var(--text-tertiary);
+  background-color: var(--accent-light);
 }
 
 .btn-submit {
@@ -933,6 +970,20 @@ body {
   opacity: 0.5;
   cursor: not-allowed;
   transform: none;
+}
+
+/* Form hint text */
+.form-hint {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  margin-top: 0.35rem;
+  line-height: 1.4;
+}
+
+.form-hint-inline {
+  color: var(--text-tertiary);
+  font-weight: 400;
 }
 
 /* =============================================

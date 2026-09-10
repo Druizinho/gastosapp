@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { supabase } from '../supabaseClient';
 import './Auth.css';
-import { Wallet, Mail, Lock, Phone } from 'lucide-react';
+import { Wallet, Mail, Lock, Phone, User } from 'lucide-react';
 
 export const Auth: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'error' | 'success', text: string } | null>(null);
 
@@ -28,11 +29,17 @@ export const Auth: React.FC = () => {
           email,
           password,
           phone: phone || undefined,
+          options: {
+            data: {
+              display_name: displayName.trim() || undefined,
+            }
+          }
         });
         if (error) throw error;
         setMessage({ type: 'success', text: '¡Registro exitoso! Por favor, revisa tu correo electrónico para verificar tu cuenta.' });
         setIsLogin(true);
         setPassword('');
+        setDisplayName('');
       }
     } catch (error: any) {
       setMessage({ type: 'error', text: error.message || 'Ha ocurrido un error.' });
@@ -59,6 +66,19 @@ export const Auth: React.FC = () => {
         )}
 
         <form onSubmit={handleAuth} className="auth-form">
+          {!isLogin && (
+            <div className="input-group">
+              <User className="input-icon" size={20} />
+              <input
+                type="text"
+                placeholder="Nombre de usuario"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                required
+              />
+            </div>
+          )}
+
           <div className="input-group">
             <Mail className="input-icon" size={20} />
             <input

@@ -1,13 +1,24 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import type { RangeSummaryResponse, DateFilter } from '../types';
-import { TrendingDown, PieChart } from 'lucide-react';
+import { Eye, EyeOff, TrendingDown, PieChart } from 'lucide-react';
 
 interface SummaryProps {
   summary: RangeSummaryResponse | null;
   dateFilter?: DateFilter;
 }
 
+const BALANCE_VISIBLE_KEY = 'gastosapp_balance_visible';
+
 const Summary: React.FC<SummaryProps> = ({ summary, dateFilter }) => {
+  const [balanceVisible, setBalanceVisible] = useState<boolean>(() => {
+    const stored = localStorage.getItem(BALANCE_VISIBLE_KEY);
+    return stored !== null ? stored === 'true' : true;
+  });
+
+  useEffect(() => {
+    localStorage.setItem(BALANCE_VISIBLE_KEY, String(balanceVisible));
+  }, [balanceVisible]);
+
   if (!summary) return <div style={{ height: '200px', animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite' }} />;
 
   const totalUsd = Number(summary.total_usd) || 0;
@@ -32,6 +43,8 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter }) => {
     else if (dateFilter.preset === 'custom') dailyAvgText = 'Promedio Diario (Personalizado)';
   }
 
+  const hiddenAmount = '••••••';
+
   return (
     <div className="summary-section mb-6">
       
@@ -40,51 +53,69 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter }) => {
         <h2 style={{ fontSize: '1rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>
           Total Balance
         </h2>
-        <div style={{ fontSize: '3rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', lineHeight: 1, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          ${totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          <span style={{ fontSize: '0.9rem', fontWeight: 500, color: 'var(--text-tertiary)', background: 'rgba(0,0,0,0.05)', padding: '0.2rem 0.6rem', borderRadius: '20px', marginLeft: '0.5rem' }}>
-            {summary.days_in_range}d
-          </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div style={{ fontSize: '3rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', lineHeight: 1 }}>
+            {balanceVisible 
+              ? `$${totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+              : `$${hiddenAmount}`
+            }
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <button
+              onClick={() => setBalanceVisible(!balanceVisible)}
+              className="balance-toggle"
+              aria-label={balanceVisible ? 'Ocultar balance' : 'Mostrar balance'}
+            >
+              {balanceVisible ? <Eye size={18} /> : <EyeOff size={18} />}
+            </button>
+            <span style={{ fontSize: '0.9rem', fontWeight: 500, color: 'var(--text-tertiary)', background: 'rgba(0,0,0,0.05)', padding: '0.2rem 0.6rem', borderRadius: '20px' }}>
+              {summary.days_in_range}d
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Exchange Rates / Currency Equivalents */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '0 0.5rem', marginBottom: '1rem' }}>
-        <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-primary)' }}>Equivalencias</h3>
-      </div>
-      
-      <div style={{ display: 'flex', gap: '1rem', overflowX: 'auto', paddingBottom: '1rem', paddingLeft: '0.5rem', paddingRight: '0.5rem', scrollSnapType: 'x mandatory' }} className="hide-scrollbar">
-        <div className="soft-card" style={{ flex: '0 0 140px', scrollSnapAlign: 'start', padding: '1.25rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-            <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#FCD34D', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 'bold' }}>Bs</div>
-            <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>VES</span>
+      {/* Exchange Rates / Currency Equivalents — Hidden when balance is hidden */}
+      {balanceVisible && (
+        <>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '0 0.5rem', marginBottom: '1rem' }}>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-primary)' }}>Equivalencias</h3>
           </div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>Bs {totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Bolívares</div>
-        </div>
+          
+          <div style={{ display: 'flex', gap: '1rem', overflowX: 'auto', paddingBottom: '1rem', paddingLeft: '0.5rem', paddingRight: '0.5rem', scrollSnapType: 'x mandatory' }} className="hide-scrollbar">
+            <div className="soft-card" style={{ flex: '0 0 140px', scrollSnapAlign: 'start', padding: '1.25rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+                <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#FCD34D', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 'bold' }}>Bs</div>
+                <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>VES</span>
+              </div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>Bs {totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Bolívares</div>
+            </div>
 
-        <div className="soft-card" style={{ flex: '0 0 140px', scrollSnapAlign: 'start', padding: '1.25rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-            <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#3B82F6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 'bold', color: 'white' }}>€</div>
-            <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>EUR</span>
+            <div className="soft-card" style={{ flex: '0 0 140px', scrollSnapAlign: 'start', padding: '1.25rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+                <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#3B82F6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 'bold', color: 'white' }}>€</div>
+                <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>EUR</span>
+              </div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>€ {totalEur.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Euros</div>
+            </div>
+
+            <div className="soft-card" style={{ flex: '0 0 140px', scrollSnapAlign: 'start', padding: '1.25rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+                <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', fontWeight: 'bold', color: 'white' }}>₮</div>
+                <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>USDT</span>
+              </div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>{totalUsdt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Tether (Crypto)</div>
+            </div>
           </div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>€ {totalEur.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Euros</div>
-        </div>
+        </>
+      )}
 
-        <div className="soft-card" style={{ flex: '0 0 140px', scrollSnapAlign: 'start', padding: '1.25rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-            <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', fontWeight: 'bold', color: 'white' }}>₮</div>
-            <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>USDT</span>
-          </div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>{totalUsdt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Tether (Crypto)</div>
-        </div>
-      </div>
-
-      {/* Daily Average */}
-      {summary.days_in_range > 1 && (
-        <div className="soft-card mt-2" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.25rem' }}>
+      {/* Daily Average — Hidden when balance is hidden */}
+      {balanceVisible && summary.days_in_range > 1 && (
+        <div className="soft-card mt-4" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.25rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <div style={{ background: 'var(--surface-muted)', padding: '0.5rem', borderRadius: '10px', color: 'var(--expense-color)' }}>
               <TrendingDown size={20} />
@@ -97,7 +128,7 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter }) => {
         </div>
       )}
 
-      {/* Top Categories */}
+      {/* Top Categories — Always visible */}
       {sortedCategories.length > 0 && (
         <div className="soft-card mt-4" style={{ padding: '1.25rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
@@ -118,7 +149,9 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter }) => {
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                     <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>{percentage}%</span>
-                    <span style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>${val.toFixed(2)}</span>
+                    <span style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                      {balanceVisible ? `$${val.toFixed(2)}` : `$${hiddenAmount}`}
+                    </span>
                   </div>
                 </div>
               );

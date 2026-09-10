@@ -85,15 +85,13 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ initialData, onSubmit, onCanc
 
   return (
     <div className="modal-backdrop">
-      <div className="soft-card" style={{ maxWidth: '500px', width: '100%', padding: '2rem', animation: 'slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards' }}>
-        <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '1.5rem', textAlign: 'center' }}>
-          {initialData ? 'Editar Gasto' : 'Añadir Gasto'}
-        </h2>
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      <div className="expense-form-container">
+        <h2>{initialData ? 'Editar Gasto' : 'Añadir Gasto'}</h2>
+        <form onSubmit={handleSubmit}>
           
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <label style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)' }}>Monto</label>
+          <div className="form-group row">
+            <div className="form-group half">
+              <label>Monto</label>
               <input 
                 type="number" 
                 step="0.01" 
@@ -104,8 +102,8 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ initialData, onSubmit, onCanc
                 placeholder="0.00"
               />
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <label style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)' }}>Moneda</label>
+            <div className="form-group half">
+              <label>Moneda</label>
               <select value={currency} onChange={(e) => setCurrency(e.target.value as CurrencyType)} required>
                 <option value="BS_USD">Bs (Tasa Dólar BCV)</option>
                 <option value="BS_EUR">Bs (Tasa Euro BCV)</option>
@@ -115,10 +113,10 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ initialData, onSubmit, onCanc
             </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            <label style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between' }}>
+          <div className="form-group">
+            <label style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span>Tasa de Cambio {initialData ? '(Histórica)' : ''}</span>
-              <span style={{ color: 'var(--text-tertiary)' }}>(Opcional)</span>
+              <span className="form-hint-inline">(Opcional)</span>
             </label>
             <input 
               type="text" 
@@ -130,13 +128,13 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ initialData, onSubmit, onCanc
               }}
               placeholder={currentRate ? `Por defecto usa la del mercado` : "Ej. 36.50"}
             />
-            <small style={{ color: 'var(--text-tertiary)', fontSize: '0.75rem' }}>
+            <small className="form-hint">
               {initialData ? "Esta fue la tasa usada. Modifícala solo si deseas recalcular." : "Déjalo en blanco para usar la tasa automática."}
             </small>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            <label style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)' }}>Descripción</label>
+          <div className="form-group">
+            <label>Descripción</label>
             <input 
               type="text" 
               value={description} 
@@ -146,16 +144,16 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ initialData, onSubmit, onCanc
             />
           </div>
           
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <label style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)' }}>Categoría</label>
+          <div className="form-group row">
+            <div className="form-group half">
+              <label>Categoría</label>
               <select value={category} onChange={(e) => setCategory(e.target.value)} required disabled={isLoadingCats}>
                 <option value="Sin Categoría">Sin Categoría</option>
                 {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
               </select>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <label style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)' }}>Fecha</label>
+            <div className="form-group half">
+              <label>Fecha</label>
               <input 
                 type="date" 
                 value={date} 
@@ -165,19 +163,19 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ initialData, onSubmit, onCanc
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+          <div className="form-actions">
             <button 
               type="button" 
               onClick={onCancel} 
               disabled={isSubmitting}
-              style={{ flex: 1, padding: '0.875rem', borderRadius: '12px', border: 'none', background: 'var(--surface-muted)', color: 'var(--text-primary)', fontWeight: 600, cursor: 'pointer' }}
+              className="btn-cancel"
             >
               Cancelar
             </button>
             <button 
               type="submit" 
               disabled={isSubmitting}
-              style={{ flex: 1, padding: '0.875rem', borderRadius: '12px', border: 'none', background: 'var(--accent-color)', color: 'white', fontWeight: 600, cursor: 'pointer' }}
+              className="btn-submit"
             >
               {isSubmitting ? 'Guardando...' : 'Guardar'}
             </button>

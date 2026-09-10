@@ -12,6 +12,18 @@ class CurrencyType(str, Enum):
     USDT = "USDT"
     USD_CASH = "USD_CASH"
 
+class ProfileResponse(BaseModel):
+    id: UUID
+    display_name: Optional[str] = None
+    avatar_url: Optional[str] = None
+    updated_at: Optional[datetime.datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+class ProfileUpdate(BaseModel):
+    display_name: Optional[str] = None
+    avatar_url: Optional[str] = None
+
 class CategoryBase(BaseModel):
     name: str = Field(..., min_length=1)
     color: Optional[str] = Field(default="#cbd5e1")

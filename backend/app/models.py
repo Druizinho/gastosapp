@@ -5,6 +5,14 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from .database import Base
 
+class Profile(Base):
+    __tablename__ = "profiles"
+
+    id = Column(UUID(as_uuid=True), primary_key=True)
+    display_name = Column(String, nullable=True)
+    avatar_url = Column(String, nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now())
+
 class Category(Base):
     __tablename__ = "categories"
     

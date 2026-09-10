@@ -70,3 +70,14 @@ export const createCategory = async (category: any): Promise<any> => {
 export const deleteCategory = async (id: string): Promise<void> => {
   await api.delete(`/categories/${id}`);
 };
+
+// Profile
+export const getProfile = async (): Promise<any> => {
+  const response = await api.get('/profile/');
+  return response.data;
+};
+
+export const updateProfile = async (data: { display_name?: string; avatar_url?: string }): Promise<any> => {
+  const response = await api.put('/profile/', data);
+  return response.data;
+};

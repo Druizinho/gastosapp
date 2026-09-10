@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { getExpenses, getSummaryRange, createExpense, updateExpense, deleteExpense } from '../api';
 import type { Expense, RangeSummaryResponse, ExpenseCreate, ExpenseUpdate, DateFilter, DatePreset } from '../types';
+import { useAuth } from '../context/AuthContext';
 import Summary from './Summary';
 import ExpenseList from './ExpenseList';
 import ExpenseForm from './ExpenseForm';
 import ConfirmModal from './ConfirmModal';
 
 const Dashboard: React.FC = () => {
+  const { displayName } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   
   // Initialize filter from URL or default
@@ -148,17 +150,26 @@ const Dashboard: React.FC = () => {
     }
   };
 
+  // Get user initials for avatar
+  const getInitials = (name: string) => {
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    return name.slice(0, 2).toUpperCase();
+  };
+
   return (
     <div className="dashboard-container" style={{ padding: '1rem', paddingBottom: '6rem' }}>
       {/* Top Header */}
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', paddingTop: '0.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'var(--accent-light)', border: '2px solid white', boxShadow: 'var(--shadow-sm)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-color)' }}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+          <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'var(--accent-light)', border: '2px solid white', boxShadow: 'var(--shadow-sm)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-primary)', fontWeight: 700, fontSize: '0.95rem' }}>
+            {getInitials(displayName)}
           </div>
           <div>
             <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Bienvenido,</div>
-            <div style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--text-primary)' }}>Diego Ruiz</div>
+            <div style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--text-primary)' }}>{displayName}</div>
           </div>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
