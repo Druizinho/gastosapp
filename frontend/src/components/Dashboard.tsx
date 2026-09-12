@@ -10,7 +10,7 @@ import ExpenseForm from './ExpenseForm';
 import ConfirmModal from './ConfirmModal';
 
 const Dashboard: React.FC = () => {
-  const { displayName } = useAuth();
+  const { displayName, avatarUrl } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   
   // Initialize filter from URL or default
@@ -168,8 +168,12 @@ const Dashboard: React.FC = () => {
       {/* Top Header */}
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', paddingTop: '0.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'var(--accent-light)', border: '2px solid white', boxShadow: 'var(--shadow-sm)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-primary)', fontWeight: 700, fontSize: '0.95rem' }}>
-            {getInitials(displayName)}
+          <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'var(--accent-light)', border: '2px solid white', boxShadow: 'var(--shadow-sm)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-primary)', fontWeight: 700, fontSize: '0.95rem', overflow: 'hidden' }}>
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+            ) : (
+              getInitials(displayName)
+            )}
           </div>
           <div>
             <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Bienvenido,</div>
