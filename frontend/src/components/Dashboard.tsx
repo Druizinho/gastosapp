@@ -8,6 +8,7 @@ import PeriodSelector from './PeriodSelector';
 import ExpenseList from './ExpenseList';
 import ExpenseForm from './ExpenseForm';
 import ConfirmModal from './ConfirmModal';
+import { WakeUpLoader } from './WakeUpLoader';
 
 const Dashboard: React.FC = () => {
   const { displayName, avatarUrl } = useAuth();
@@ -28,6 +29,7 @@ const Dashboard: React.FC = () => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [confirmDelete, setConfirmDelete] = useState({ isOpen: false, expenseId: '' });
 
   const fetchData = async () => {
@@ -87,6 +89,7 @@ const Dashboard: React.FC = () => {
       console.error('Error fetching data:', error);
     } finally {
       setIsLoading(false);
+      setIsInitialLoad(false);
     }
   };
 
@@ -187,18 +190,24 @@ const Dashboard: React.FC = () => {
         </div>
       </header>
 
-      <main style={{ opacity: isLoading ? 0.5 : 1, pointerEvents: isLoading ? 'none' : 'auto', transition: 'opacity 0.2s' }}>
-        <PeriodSelector filter={dateFilter} onChange={setDateFilter} />
-        <Summary summary={summary} dateFilter={dateFilter} categories={categories} />
-        <div className="list-header mt-8 mb-4" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Gastos del Período</h2>
-        </div>
-        <ExpenseList 
-          expenses={expenses} 
-          categories={categories}
-          onEdit={(e) => { setEditingExpense(e); setIsFormOpen(true); }} 
-          onDelete={(id) => setConfirmDelete({ isOpen: true, expenseId: id })}
-        />
+      <main style={{ opacity: isLoading && !isInitialLoad ? 0.5 : 1, pointerEvents: isLoading ? 'none' : 'auto', transition: 'opacity 0.2s' }}>
+        {isLoading && isInitialLoad ? (
+          <WakeUpLoader />
+        ) : (
+          <>
+            <PeriodSelector filter={dateFilter} onChange={setDateFilter} />
+            <Summary summary={summary} dateFilter={dateFilter} categories={categories} />
+            <div className="list-header mt-8 mb-4" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Gastos del Período</h2>
+            </div>
+            <ExpenseList 
+              expenses={expenses} 
+              categories={categories}
+              onEdit={(e) => { setEditingExpense(e); setIsFormOpen(true); }} 
+              onDelete={(id) => setConfirmDelete({ isOpen: true, expenseId: id })}
+            />
+          </>
+        )}
       </main>
 
       <ConfirmModal 
