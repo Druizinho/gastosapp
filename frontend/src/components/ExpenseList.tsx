@@ -1,33 +1,22 @@
 import { useState, useMemo, useEffect } from 'react';
 import type { Expense, Category } from '../types';
-import { getCategories } from '../api';
 import ExpenseItem from './ExpenseItem';
 import AmountRangeFilter from './AmountRangeFilter';
-import { Filter, ChevronDown, ChevronUp } from 'lucide-react';
+import { Filter, ChevronDown, ChevronUp, Search } from 'lucide-react';
 
 interface ExpenseListProps {
   expenses: Expense[];
+  categories: Category[];
   onEdit: (expense: Expense) => void;
   onDelete: (id: string) => void;
 }
 
-const ExpenseList: React.FC<ExpenseListProps> = ({ expenses, onEdit, onDelete }) => {
+const ExpenseList: React.FC<ExpenseListProps> = ({ expenses, categories, onEdit, onDelete }) => {
   const [filterCategory, setFilterCategory] = useState<string>('All');
   const [filterCurrency, setFilterCurrency] = useState<string>('All');
-  const [categories, setCategories] = useState<Category[]>([]);
   const [showFilters, setShowFilters] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
-  useEffect(() => {
-    const fetchCats = async () => {
-      try {
-        const cats = await getCategories();
-        setCategories(cats);
-      } catch (err) {
-        console.error("Error fetching categories for filter", err);
-      }
-    };
-    fetchCats();
-  }, [expenses]);
 
   const { globalMin, globalMax } = useMemo(() => {
     if (!expenses.length) return { globalMin: 0, globalMax: 1000 };
@@ -59,9 +48,11 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ expenses, onEdit, onDelete })
       const valUsd = Number(expense.amount_usd) || 0;
       const matchAmount = valUsd >= filterMinAmount && valUsd <= filterMaxAmount;
 
-      return matchCategory && matchCurrency && matchAmount;
+      const matchSearch = expense.description.toLowerCase().includes(searchTerm.toLowerCase());
+
+      return matchCategory && matchCurrency && matchAmount && matchSearch;
     });
-  }, [expenses, filterCategory, filterCurrency, filterMinAmount, filterMaxAmount]);
+  }, [expenses, filterCategory, filterCurrency, filterMinAmount, filterMaxAmount, searchTerm]);
 
   const currencyStats = useMemo(() => {
     if (filterCurrency === 'All') return null;
@@ -108,7 +99,7 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ expenses, onEdit, onDelete })
   // Reset to first page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterCategory, filterCurrency, filterMinAmount, filterMaxAmount]);
+  }, [filterCategory, filterCurrency, filterMinAmount, filterMaxAmount, searchTerm]);
 
   const totalPages = Math.ceil(filteredExpenses.length / ITEMS_PER_PAGE);
   const paginatedExpenses = filteredExpenses.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
@@ -116,8 +107,38 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ expenses, onEdit, onDelete })
   return (
     <div className="expense-list-container">
       
-      {/* Botón para Mostrar/Ocultar Filtros */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
+      {/* Barra de Búsqueda y Botón Filtros */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
+        
+        {/* Input de Búsqueda */}
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          flexGrow: 1, 
+          background: 'var(--surface-color)',
+          border: '1px solid var(--border-color)',
+          borderRadius: '20px',
+          padding: '0.5rem 1rem',
+          gap: '0.5rem'
+        }}>
+          <Search size={16} color="var(--text-tertiary)" />
+          <input 
+            type="text"
+            placeholder="Buscar gasto por descripción..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            style={{
+              border: 'none',
+              background: 'transparent',
+              outline: 'none',
+              width: '100%',
+              color: 'var(--text-primary)',
+              fontSize: '0.9rem'
+            }}
+          />
+        </div>
+
+        {/* Botón de Filtros */}
         <button 
           onClick={() => setShowFilters(!showFilters)}
           style={{ 
@@ -132,7 +153,8 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ expenses, onEdit, onDelete })
             fontSize: '0.85rem',
             fontWeight: 500,
             cursor: 'pointer',
-            transition: 'all 0.2s ease'
+            transition: 'all 0.2s ease',
+            whiteSpace: 'nowrap'
           }}
         >
           <Filter size={14} />

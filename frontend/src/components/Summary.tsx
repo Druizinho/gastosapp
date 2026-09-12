@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import type { RangeSummaryResponse, DateFilter } from '../types';
-import { Eye, EyeOff, TrendingDown, PieChart } from 'lucide-react';
+import type { RangeSummaryResponse, DateFilter, Category } from '../types';
+import { Eye, EyeOff, Coins, PieChart, Package } from 'lucide-react';
+import { ICON_MAP } from './CategoryManager';
 
 interface SummaryProps {
   summary: RangeSummaryResponse | null;
   dateFilter?: DateFilter;
+  categories?: Category[];
 }
 
 const BALANCE_VISIBLE_KEY = 'gastosapp_balance_visible';
 
-const Summary: React.FC<SummaryProps> = ({ summary, dateFilter }) => {
+const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [] }) => {
   const [balanceVisible, setBalanceVisible] = useState<boolean>(() => {
     const stored = localStorage.getItem(BALANCE_VISIBLE_KEY);
     return stored !== null ? stored === 'true' : true;
@@ -117,8 +119,8 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter }) => {
       {balanceVisible && summary.days_in_range > 1 && (
         <div className="soft-card mt-4" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.25rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <div style={{ background: 'var(--surface-muted)', padding: '0.5rem', borderRadius: '10px', color: 'var(--expense-color)' }}>
-              <TrendingDown size={20} />
+            <div style={{ background: 'var(--surface-muted)', padding: '0.5rem', borderRadius: '10px', color: 'var(--expense-color)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Coins size={20} />
             </div>
             <div>
               <div style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-tertiary)' }}>{dailyAvgText}</div>
@@ -141,10 +143,16 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter }) => {
             {sortedCategories.map(c => {
               const val = Number(c.total_usd);
               const percentage = totalUsd > 0 ? ((val / totalUsd) * 100).toFixed(1) : '0.0';
+              
+              const categoryData = categories.find(cat => cat.name === c.category);
+              const IconComponent = categoryData && categoryData.color && ICON_MAP[categoryData.color] ? ICON_MAP[categoryData.color] : Package;
+              
               return (
                 <div key={c.category} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--accent-color)' }} />
+                    <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'var(--surface-color)', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-color)' }}>
+                      <IconComponent size={14} />
+                    </div>
                     <span style={{ fontSize: '0.9rem', fontWeight: 500, color: 'var(--text-primary)' }}>{c.category}</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>

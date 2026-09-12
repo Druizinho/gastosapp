@@ -193,6 +193,31 @@ async def create_category(db: AsyncSession, category: schemas.CategoryCreate, us
     await db.refresh(db_category)
     return db_category
 
+async def update_category(db: AsyncSession, category_id: UUID, category_update: schemas.CategoryCreate, user_id: UUID):
+    db_category = await get_category(db, category_id, user_id)
+    if not db_category:
+        return None
+    
+    # Check if there's a name change and we need to update existing expenses
+    old_name = db_category.name
+    new_name = category_update.name
+    
+    for key, value in category_update.model_dump().items():
+        setattr(db_category, key, value)
+        
+    if old_name != new_name:
+        # Update expenses that used the old category name
+        await db.execute(
+            models.Expense.__table__.update()
+            .where(models.Expense.user_id == user_id)
+            .where(models.Expense.category == old_name)
+            .values(category=new_name)
+        )
+        
+    await db.commit()
+    await db.refresh(db_category)
+    return db_category
+
 async def delete_category(db: AsyncSession, category_id: UUID, user_id: UUID):
     db_category = await get_category(db, category_id, user_id)
     if not db_category:

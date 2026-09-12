@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import type { Expense } from '../types';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Pencil, Trash2, ChevronDown } from 'lucide-react';
+import { Pencil, Trash2, ChevronDown, Package } from 'lucide-react';
+import { ICON_MAP } from './CategoryManager';
 
 interface ExpenseItemProps {
   expense: Expense;
@@ -12,16 +13,20 @@ interface ExpenseItemProps {
   categoryColor?: string;
 }
 
-const getCategoryColor = (category: string) => {
-  const colors: Record<string, string> = {
-    'Food': '#ff9f43',
-    'Transport': '#54a0ff',
-    'Entertainment': '#ee5253',
-    'Bills': '#10ac84',
-    'Shopping': '#f368e0',
-    'Other': '#c8d6e5'
+const getCategoryIcon = (category: string) => {
+  const icons: Record<string, string> = {
+    'Food': 'Utensils',
+    'Transport': 'Car',
+    'Entertainment': 'Tv',
+    'Bills': 'Home',
+    'Shopping': 'ShoppingCart',
+    'Alimentación': 'Utensils',
+    'Vivienda': 'Home',
+    'Ocio': 'Tv',
+    'Salud': 'HeartPulse',
+    'Other': 'Package'
   };
-  return colors[category] || colors['Other'];
+  return icons[category] || 'Package';
 };
 
 const getCurrencyBadge = (currency: string) => {
@@ -41,7 +46,8 @@ const formatVal = (val: number | null | undefined, prefix: string) => {
 
 const ExpenseItem: React.FC<ExpenseItemProps> = ({ expense, onEdit, onDelete, categoryColor }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const bgColor = categoryColor || getCategoryColor(expense.category);
+  const iconName = categoryColor || getCategoryIcon(expense.category);
+  const IconComponent = ICON_MAP[iconName] || Package;
 
   return (
     <div
@@ -59,18 +65,17 @@ const ExpenseItem: React.FC<ExpenseItemProps> = ({ expense, onEdit, onDelete, ca
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
         <div style={{
-          backgroundColor: `${bgColor}20`,
-          color: bgColor,
+          backgroundColor: 'var(--surface-color)',
+          color: 'var(--text-secondary)',
           width: '44px',
           height: '44px',
-          fontSize: '1.25rem',
-          fontWeight: 'bold',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          borderRadius: '12px'
+          borderRadius: '12px',
+          border: '1px solid var(--border-color)'
         }}>
-          {expense.category.charAt(0).toUpperCase()}
+          <IconComponent size={22} />
         </div>
 
         <div style={{ flex: 1 }}>

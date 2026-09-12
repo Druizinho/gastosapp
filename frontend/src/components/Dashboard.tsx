@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { getExpenses, getSummaryRange, createExpense, updateExpense, deleteExpense } from '../api';
-import type { Expense, RangeSummaryResponse, ExpenseCreate, ExpenseUpdate, DateFilter, DatePreset } from '../types';
+import { getExpenses, getSummaryRange, createExpense, updateExpense, deleteExpense, getCategories } from '../api';
+import type { Expense, RangeSummaryResponse, ExpenseCreate, ExpenseUpdate, DateFilter, DatePreset, Category } from '../types';
 import { useAuth } from '../context/AuthContext';
 import Summary from './Summary';
 import PeriodSelector from './PeriodSelector';
@@ -22,6 +22,7 @@ const Dashboard: React.FC = () => {
   });
 
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [summary, setSummary] = useState<RangeSummaryResponse | null>(null);
   
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -74,12 +75,14 @@ const Dashboard: React.FC = () => {
         return;
       }
 
-      const [expensesData, summaryData] = await Promise.all([
+      const [expensesData, summaryData, categoriesData] = await Promise.all([
         getExpenses(resolved.from, resolved.to),
-        getSummaryRange(resolved.from, resolved.to)
+        getSummaryRange(resolved.from, resolved.to),
+        getCategories()
       ]);
       setExpenses(expensesData);
       setSummary(summaryData);
+      setCategories(categoriesData);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -182,12 +185,13 @@ const Dashboard: React.FC = () => {
 
       <main style={{ opacity: isLoading ? 0.5 : 1, pointerEvents: isLoading ? 'none' : 'auto', transition: 'opacity 0.2s' }}>
         <PeriodSelector filter={dateFilter} onChange={setDateFilter} />
-        <Summary summary={summary} dateFilter={dateFilter} />
+        <Summary summary={summary} dateFilter={dateFilter} categories={categories} />
         <div className="list-header mt-8 mb-4" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Gastos del Período</h2>
         </div>
         <ExpenseList 
           expenses={expenses} 
+          categories={categories}
           onEdit={(e) => { setEditingExpense(e); setIsFormOpen(true); }} 
           onDelete={(id) => setConfirmDelete({ isOpen: true, expenseId: id })}
         />

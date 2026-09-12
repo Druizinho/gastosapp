@@ -67,6 +67,11 @@ export const createCategory = async (category: any): Promise<any> => {
   return response.data;
 };
 
+export const updateCategory = async (id: string, category: any): Promise<any> => {
+  const response = await api.put(`/categories/${id}`, category);
+  return response.data;
+};
+
 export const deleteCategory = async (id: string): Promise<void> => {
   await api.delete(`/categories/${id}`);
 };

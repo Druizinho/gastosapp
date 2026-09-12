@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { ExpenseCreate, ExpenseUpdate, Expense, CurrencyType, ExchangeRates, Category } from '../types';
 import { getRates, getCategories } from '../api';
+import { Info } from 'lucide-react';
 
 interface ExpenseFormProps {
   initialData?: Expense | null;
@@ -128,9 +129,10 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ initialData, onSubmit, onCanc
               }}
               placeholder={currentRate ? `Por defecto usa la del mercado` : "Ej. 36.50"}
             />
-            <small className="form-hint">
-              {initialData ? "Esta fue la tasa usada. Modifícala solo si deseas recalcular." : "Déjalo en blanco para usar la tasa automática."}
-            </small>
+            <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'flex-start', gap: '0.5rem', background: 'rgba(59, 130, 246, 0.1)', color: 'var(--accent-color)', padding: '0.75rem', borderRadius: '8px', fontSize: '0.85rem', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
+              <Info size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
+              <span>{initialData ? "Esta fue la tasa de cambio usada en su momento. Modifícala solo si deseas recalcular el gasto." : "💡 Déjalo en blanco para usar la tasa de cambio automática del sistema (BCV o Binance)."}</span>
+            </div>
           </div>
 
           <div className="form-group">

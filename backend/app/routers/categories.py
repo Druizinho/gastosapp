@@ -34,6 +34,21 @@ async def create_category(
         # Pydantic or SQLAlchemy constraint errors
         raise HTTPException(status_code=400, detail="Category may already exist or is invalid")
 
+@router.put("/{category_id}", response_model=schemas.CategoryResponse)
+async def update_category(
+    category_id: UUID,
+    category_update: schemas.CategoryCreate,
+    db: AsyncSession = Depends(get_db),
+    user_id: UUID = Depends(get_current_user)
+):
+    try:
+        updated_category = await crud.update_category(db=db, category_id=category_id, category_update=category_update, user_id=user_id)
+        if not updated_category:
+            raise HTTPException(status_code=404, detail="Category not found")
+        return updated_category
+    except Exception as e:
+        raise HTTPException(status_code=400, detail="Category may already exist or is invalid")
+
 @router.delete("/{category_id}")
 async def delete_category(
     category_id: UUID,
