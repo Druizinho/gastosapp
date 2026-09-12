@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import CategoryManager from './CategoryManager';
 import ProfileManager from './ProfileManager';
-import { supabase } from '../supabaseClient';
+
 import { LogOut, User, Folder, ChevronRight, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
