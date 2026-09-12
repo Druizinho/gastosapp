@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { Expense } from '../types';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -98,72 +99,73 @@ const ExpenseItem: React.FC<ExpenseItemProps> = ({ expense, onEdit, onDelete, ca
         </div>
       </div>
 
-      <div style={{
-        maxHeight: isExpanded ? '300px' : '0',
-        opacity: isExpanded ? 1 : 0,
-        overflow: 'hidden',
-        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        marginTop: isExpanded ? '1rem' : '0'
-      }}>
-        <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      {isExpanded && createPortal(
+        <div className="bottom-sheet-overlay" onClick={() => setIsExpanded(false)}>
+          <div className="bottom-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="bottom-sheet-handle" />
+            <h3 style={{ marginBottom: '1rem', color: 'var(--text-primary)', fontSize: '1.2rem', fontWeight: 600 }}>Detalle del Gasto</h3>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ backgroundColor: 'var(--surface-muted)', color: 'var(--text-secondary)', padding: '2px 8px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 500 }}>
+                  {expense.category}
+                </span>
+                {getCurrencyBadge(expense.currency)}
+              </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <span style={{ backgroundColor: 'var(--surface-muted)', color: 'var(--text-secondary)', padding: '2px 8px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 500 }}>
-              {expense.category}
-            </span>
-            {getCurrencyBadge(expense.currency)}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', background: 'var(--surface-muted)', padding: '1rem', borderRadius: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Dólar BCV</span>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', textAlign: 'right' }}>
+                    {formatVal(expense.rate_usd_bs, '$ ')}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Equiv. Bs</span>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', textAlign: 'right' }}>
+                    {formatVal(expense.amount_bs, 'Bs ')}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Equiv. EUR</span>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', textAlign: 'right' }}>
+                    {formatVal(expense.amount_eur, '€ ')}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Equiv. USDT</span>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', textAlign: 'right' }}>
+                    {formatVal(expense.amount_usdt, '$ ')}
+                  </span>
+                </div>
+              </div>
+
+              {expense.currency === 'USD_CASH' && (
+                <div style={{ fontSize: '0.75rem', color: '#10b981', fontStyle: 'italic' }}>
+                  * Efectivo: se usa la tasa más alta o facilitada.
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', marginTop: '0.5rem' }}>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setIsExpanded(false); onDelete(expense.id); }}
+                  style={{ flex: 1, padding: '0.75rem', borderRadius: '12px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontWeight: 600 }}
+                >
+                  <Trash2 size={18} /> Borrar
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setIsExpanded(false); onEdit(expense); }}
+                  style={{ flex: 1, padding: '0.75rem', borderRadius: '12px', background: 'var(--accent-light)', color: 'var(--text-primary)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontWeight: 600 }}
+                >
+                  <Pencil size={18} /> Editar
+                </button>
+              </div>
+
+            </div>
           </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', background: 'var(--surface-muted)', padding: '1rem', borderRadius: '12px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Dólar BCV</span>
-              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', textAlign: 'right' }}>
-                {formatVal(expense.rate_usd_bs, '$ ')}
-              </span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Equiv. Bs</span>
-              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', textAlign: 'right' }}>
-                {formatVal(expense.amount_bs, 'Bs ')}
-              </span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Equiv. EUR</span>
-              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', textAlign: 'right' }}>
-                {formatVal(expense.amount_eur, '€ ')}
-              </span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Equiv. USDT</span>
-              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', textAlign: 'right' }}>
-                {formatVal(expense.amount_usdt, '$ ')}
-              </span>
-            </div>
-          </div>
-
-          {expense.currency === 'USD_CASH' && (
-            <div style={{ fontSize: '0.75rem', color: '#10b981', fontStyle: 'italic' }}>
-              * Efectivo: se usa la tasa más alta o facilitada.
-            </div>
-          )}
-
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-            <button
-              onClick={(e) => { e.stopPropagation(); onEdit(expense); }}
-              style={{ padding: '0.5rem', borderRadius: '8px', background: 'var(--accent-light)', color: 'var(--accent-color)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            >
-              <Pencil size={18} />
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); onDelete(expense.id); }}
-              style={{ padding: '0.5rem', borderRadius: '8px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            >
-              <Trash2 size={18} />
-            </button>
-          </div>
-
-        </div>
-      </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 };
