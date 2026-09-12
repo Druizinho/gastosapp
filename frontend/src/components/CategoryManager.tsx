@@ -6,7 +6,11 @@ import {
   ShoppingCart, Car, Home, Tv, HeartPulse, 
   Shirt, Plane, Lightbulb, Coffee, Smartphone,
   Utensils, Gamepad2, Briefcase, GraduationCap, Gift,
-  Package
+  Package, CreditCard, Monitor, Book, Music, Film,
+  Dumbbell, Scissors, Wrench, Smile, Star, Heart,
+  Camera, Globe, Map, Key, Umbrella, Truck, Watch,
+  Wifi, Zap, Palette, ScissorsSquare, PiggyBank,
+  PawPrint, Stethoscope, Ticket, Wine
 } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 
@@ -17,7 +21,12 @@ interface CategoryManagerProps {
 export const ICON_MAP: Record<string, React.FC<any>> = {
   ShoppingCart, Car, Home, Tv, HeartPulse, 
   Shirt, Plane, Lightbulb, Coffee, Smartphone,
-  Utensils, Gamepad2, Briefcase, GraduationCap, Gift
+  Utensils, Gamepad2, Briefcase, GraduationCap, Gift,
+  CreditCard, Monitor, Book, Music, Film,
+  Dumbbell, Scissors, Wrench, Smile, Star, Heart,
+  Camera, Globe, Map, Key, Umbrella, Truck, Watch,
+  Wifi, Zap, Palette, ScissorsSquare, PiggyBank,
+  PawPrint, Stethoscope, Ticket, Wine
 };
 
 const DEFAULT_ICONS = Object.keys(ICON_MAP);

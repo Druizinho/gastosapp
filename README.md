@@ -20,7 +20,7 @@ El backend guarda los datos y procesa las peticiones.
    ```
 4. Escribe el siguiente comando para encender el servidor:
    ```bash
-   uvicorn app.main:app --reload
+   python -m uvicorn app.main:app --reload
    ```
    *¡Listo! Verás que el servidor arranca y se queda escuchando.*
 

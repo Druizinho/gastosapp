@@ -47,7 +47,7 @@ async def update_category(
             raise HTTPException(status_code=404, detail="Category not found")
         return updated_category
     except Exception as e:
-        raise HTTPException(status_code=400, detail="Category may already exist or is invalid")
+        raise HTTPException(status_code=400, detail=f"Error updating category: {str(e)}")
 
 @router.delete("/{category_id}")
 async def delete_category(
