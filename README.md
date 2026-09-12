@@ -48,10 +48,11 @@ Aún hay muchas funciones planeadas para mejorar la aplicación. Estos son los s
 
 - [x] **Sistema de Autenticación:** Permitir que los usuarios se registren e inicien sesión (usando Supabase Auth).
 - [x] **Despliegue (Deploy) a producción:** Subir la app a internet (Vercel para Frontend / Render para Backend) para que cualquiera pueda usarla.
-- [ ] **Filtros avanzados:** Filtrar los gastos por fechas específicas, etiquetas o montos.
+- [ ] **Filtros avanzados:** Filtrar los gastos por fechas específicas, que puedan ser periodos de tiempo diferentes, etiquetas o montos.
 - [ ] **Gráficos interactivos:** Mostrar gráficas (de pastel o barras) para visualizar mejor en qué se gasta el dinero.
 - [ ] **Presupuestos mensuales:** Establecer un límite de gastos por categoría y recibir alertas si se supera.
 - [ ] **Exportar datos:** Poder descargar un Excel (CSV) con el historial de gastos.
+- [ ] **Mejora de rendimiento en móviles:**optimizar la app para que funcione mas rapido en dispositivos móviles.
 
 ---
 

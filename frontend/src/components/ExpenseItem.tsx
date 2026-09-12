@@ -43,12 +43,12 @@ const ExpenseItem: React.FC<ExpenseItemProps> = ({ expense, onEdit, onDelete, ca
   const bgColor = categoryColor || getCategoryColor(expense.category);
 
   return (
-    <div 
-      className="soft-card expense-item" 
+    <div
+      className="soft-card expense-item"
       onClick={() => setIsExpanded(!isExpanded)}
-      style={{ 
-        padding: '1.25rem', 
-        marginBottom: '1rem', 
+      style={{
+        padding: '1.25rem',
+        marginBottom: '1rem',
         borderRadius: '16px',
         cursor: 'pointer',
         transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -57,21 +57,21 @@ const ExpenseItem: React.FC<ExpenseItemProps> = ({ expense, onEdit, onDelete, ca
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-        <div style={{ 
-          backgroundColor: `${bgColor}20`, 
+        <div style={{
+          backgroundColor: `${bgColor}20`,
           color: bgColor,
-          width: '44px', 
-          height: '44px', 
-          fontSize: '1.25rem', 
+          width: '44px',
+          height: '44px',
+          fontSize: '1.25rem',
           fontWeight: 'bold',
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'center', 
-          borderRadius: '12px' 
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: '12px'
         }}>
           {expense.category.charAt(0).toUpperCase()}
         </div>
-        
+
         <div style={{ flex: 1 }}>
           <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             {expense.description}
@@ -87,26 +87,26 @@ const ExpenseItem: React.FC<ExpenseItemProps> = ({ expense, onEdit, onDelete, ca
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: 'var(--text-tertiary)', marginTop: '0.25rem' }}>
             <span style={{ fontSize: '0.75rem' }}>Ver más</span>
-            <ChevronDown 
-              size={14} 
-              style={{ 
-                transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)', 
-                transition: 'transform 0.3s ease' 
-              }} 
+            <ChevronDown
+              size={14}
+              style={{
+                transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform 0.3s ease'
+              }}
             />
           </div>
         </div>
       </div>
 
-      <div style={{ 
-        maxHeight: isExpanded ? '300px' : '0', 
-        opacity: isExpanded ? 1 : 0, 
-        overflow: 'hidden', 
+      <div style={{
+        maxHeight: isExpanded ? '300px' : '0',
+        opacity: isExpanded ? 1 : 0,
+        overflow: 'hidden',
         transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
         marginTop: isExpanded ? '1rem' : '0'
       }}>
         <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          
+
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <span style={{ backgroundColor: 'var(--surface-muted)', color: 'var(--text-secondary)', padding: '2px 8px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 500 }}>
               {expense.category}
@@ -114,29 +114,29 @@ const ExpenseItem: React.FC<ExpenseItemProps> = ({ expense, onEdit, onDelete, ca
             {getCurrencyBadge(expense.currency)}
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem', background: 'var(--surface-muted)', padding: '1rem', borderRadius: '12px' }}>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Monto Original</span>
-              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                {formatVal(expense.amount, (expense.currency || '').startsWith('BS') ? 'Bs ' : (expense.currency === 'USDT' ? 'USDT ' : '$'))}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', background: 'var(--surface-muted)', padding: '1rem', borderRadius: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Dólar BCV</span>
+              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', textAlign: 'right' }}>
+                {formatVal(expense.rate_usd_bs, '$ ')}
               </span>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Equiv. Bs</span>
-              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Equiv. Bs</span>
+              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', textAlign: 'right' }}>
                 {formatVal(expense.amount_bs, 'Bs ')}
               </span>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Equiv. EUR</span>
-              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Equiv. EUR</span>
+              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', textAlign: 'right' }}>
                 {formatVal(expense.amount_eur, '€ ')}
               </span>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Equiv. USDT</span>
-              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                {formatVal(expense.amount_usdt, 'USDT ')}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Equiv. USDT</span>
+              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', textAlign: 'right' }}>
+                {formatVal(expense.amount_usdt, '$ ')}
               </span>
             </div>
           </div>
@@ -148,14 +148,14 @@ const ExpenseItem: React.FC<ExpenseItemProps> = ({ expense, onEdit, onDelete, ca
           )}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-            <button 
-              onClick={(e) => { e.stopPropagation(); onEdit(expense); }} 
+            <button
+              onClick={(e) => { e.stopPropagation(); onEdit(expense); }}
               style={{ padding: '0.5rem', borderRadius: '8px', background: 'var(--accent-light)', color: 'var(--accent-color)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             >
               <Pencil size={18} />
             </button>
-            <button 
-              onClick={(e) => { e.stopPropagation(); onDelete(expense.id); }} 
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(expense.id); }}
               style={{ padding: '0.5rem', borderRadius: '8px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             >
               <Trash2 size={18} />

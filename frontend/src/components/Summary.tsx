@@ -47,15 +47,15 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter }) => {
 
   return (
     <div className="summary-section mb-6">
-      
+
       {/* Total Balance (Floating, no card) */}
       <div style={{ marginBottom: '2rem', marginTop: '1rem', padding: '0 0.5rem' }}>
         <h2 style={{ fontSize: '1rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>
-          Total Balance
+          Gastos totales (dolares tasa BCV)
         </h2>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <div style={{ fontSize: '3rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', lineHeight: 1 }}>
-            {balanceVisible 
+            {balanceVisible
               ? `$${totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
               : `$${hiddenAmount}`
             }
@@ -81,7 +81,7 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter }) => {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '0 0.5rem', marginBottom: '1rem' }}>
             <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-primary)' }}>Equivalencias</h3>
           </div>
-          
+
           <div style={{ display: 'flex', gap: '1rem', overflowX: 'auto', paddingBottom: '1rem', paddingLeft: '0.5rem', paddingRight: '0.5rem', scrollSnapType: 'x mandatory' }} className="hide-scrollbar">
             <div className="soft-card" style={{ flex: '0 0 140px', scrollSnapAlign: 'start', padding: '1.25rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
@@ -106,7 +106,7 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter }) => {
                 <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', fontWeight: 'bold', color: 'white' }}>₮</div>
                 <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>USDT</span>
               </div>
-              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>{totalUsdt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.25rem' }}> $ {totalUsdt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Tether (Crypto)</div>
             </div>
           </div>

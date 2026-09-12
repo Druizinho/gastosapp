@@ -1,18 +1,17 @@
 import { useState, useMemo, useEffect } from 'react';
-import type { Expense, Category, DateFilter, DatePreset } from '../types';
+import type { Expense, Category } from '../types';
 import { getCategories } from '../api';
 import ExpenseItem from './ExpenseItem';
+import AmountRangeFilter from './AmountRangeFilter';
 import { Filter, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface ExpenseListProps {
   expenses: Expense[];
   onEdit: (expense: Expense) => void;
   onDelete: (id: string) => void;
-  dateFilter?: DateFilter;
-  onDateChange?: (filter: DateFilter) => void;
 }
 
-const ExpenseList: React.FC<ExpenseListProps> = ({ expenses, onEdit, onDelete, dateFilter, onDateChange }) => {
+const ExpenseList: React.FC<ExpenseListProps> = ({ expenses, onEdit, onDelete }) => {
   const [filterCategory, setFilterCategory] = useState<string>('All');
   const [filterCurrency, setFilterCurrency] = useState<string>('All');
   const [categories, setCategories] = useState<Category[]>([]);
@@ -30,13 +29,39 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ expenses, onEdit, onDelete, d
     fetchCats();
   }, [expenses]);
 
+  const { globalMin, globalMax } = useMemo(() => {
+    if (!expenses.length) return { globalMin: 0, globalMax: 1000 };
+    let min = Infinity;
+    let max = -Infinity;
+    expenses.forEach(e => {
+      const val = Number(e.amount_usd) || 0;
+      if (val < min) min = val;
+      if (val > max) max = val;
+    });
+    if (min === Infinity || max === -Infinity) return { globalMin: 0, globalMax: 1000 };
+    return { globalMin: Math.floor(min), globalMax: Math.ceil(max) };
+  }, [expenses]);
+
+  const [filterMinAmount, setFilterMinAmount] = useState<number>(globalMin);
+  const [filterMaxAmount, setFilterMaxAmount] = useState<number>(globalMax);
+
+  // Sync state if global changes (e.g. initial load)
+  useEffect(() => {
+    setFilterMinAmount(globalMin);
+    setFilterMaxAmount(globalMax);
+  }, [globalMin, globalMax]);
+
   const filteredExpenses = useMemo(() => {
     return expenses.filter(expense => {
       const matchCategory = filterCategory === 'All' || expense.category === filterCategory;
       const matchCurrency = filterCurrency === 'All' || expense.currency === filterCurrency;
-      return matchCategory && matchCurrency;
+      
+      const valUsd = Number(expense.amount_usd) || 0;
+      const matchAmount = valUsd >= filterMinAmount && valUsd <= filterMaxAmount;
+
+      return matchCategory && matchCurrency && matchAmount;
     });
-  }, [expenses, filterCategory, filterCurrency]);
+  }, [expenses, filterCategory, filterCurrency, filterMinAmount, filterMaxAmount]);
 
   const currencyStats = useMemo(() => {
     if (filterCurrency === 'All') return null;
@@ -72,7 +97,10 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ expenses, onEdit, onDelete, d
     maxWidth: '200px'
   };
 
-  const activeFiltersCount = (filterCategory !== 'All' ? 1 : 0) + (filterCurrency !== 'All' ? 1 : 0) + (dateFilter?.preset !== 'month' ? 1 : 0);
+  const activeFiltersCount = 
+    (filterCategory !== 'All' ? 1 : 0) + 
+    (filterCurrency !== 'All' ? 1 : 0) + 
+    (filterMinAmount > globalMin || filterMaxAmount < globalMax ? 1 : 0);
 
   const ITEMS_PER_PAGE = 10;
   const [currentPage, setCurrentPage] = useState(1);
@@ -80,7 +108,7 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ expenses, onEdit, onDelete, d
   // Reset to first page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterCategory, filterCurrency, dateFilter]);
+  }, [filterCategory, filterCurrency, filterMinAmount, filterMaxAmount]);
 
   const totalPages = Math.ceil(filteredExpenses.length / ITEMS_PER_PAGE);
   const paginatedExpenses = filteredExpenses.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
@@ -131,54 +159,19 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ expenses, onEdit, onDelete, d
             animation: 'fadeIn 0.2s ease'
           }}
         >
-          {dateFilter && onDateChange && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: '1 1 180px' }}>
-              <label style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', fontWeight: 500 }}>Período</label>
-              <select
-                value={dateFilter.preset}
-                onChange={(e) => {
-                  const preset = e.target.value as DatePreset;
-                  if (preset !== 'custom') {
-                    onDateChange({ preset, from: undefined, to: undefined });
-                  } else {
-                    const today = new Date().toISOString().split('T')[0];
-                    onDateChange({ preset: 'custom', from: dateFilter.from || today, to: dateFilter.to || today });
-                  }
-                }}
-                style={{...selectStyle, maxWidth: '100%'}}
-              >
-                <option value="today">Hoy</option>
-                <option value="week">Esta Semana</option>
-                <option value="month">Este Mes</option>
-                <option value="year">Este Año</option>
-                <option value="all">Todo</option>
-                <option value="custom">Personalizado</option>
-              </select>
-            </div>
-          )}
-
-          {dateFilter?.preset === 'custom' && onDateChange && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: '1 1 250px' }}>
-              <label style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', fontWeight: 500 }}>Fechas Custom</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <input 
-                  type="date"
-                  value={dateFilter.from || ''}
-                  max={dateFilter.to || undefined}
-                  onChange={(e) => onDateChange({ ...dateFilter, preset: 'custom', from: e.target.value || undefined })}
-                  style={{...selectStyle, maxWidth: '100%'}}
-                />
-                <span style={{ color: 'var(--text-tertiary)' }}>-</span>
-                <input 
-                  type="date"
-                  value={dateFilter.to || ''}
-                  min={dateFilter.from || undefined}
-                  onChange={(e) => onDateChange({ ...dateFilter, preset: 'custom', to: e.target.value || undefined })}
-                  style={{...selectStyle, maxWidth: '100%'}}
-                />
-              </div>
-            </div>
-          )}
+          {/* Amount Range Filter */}
+          <div style={{ width: '100%', marginBottom: '0.5rem' }}>
+            <AmountRangeFilter 
+              min={globalMin} 
+              max={globalMax} 
+              minVal={filterMinAmount} 
+              maxVal={filterMaxAmount} 
+              onChange={(min, max) => {
+                setFilterMinAmount(min);
+                setFilterMaxAmount(max);
+              }}
+            />
+          </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: '1 1 180px' }}>
             <label style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', fontWeight: 500 }}>Categoría</label>

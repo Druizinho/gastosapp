@@ -4,6 +4,7 @@ import { getExpenses, getSummaryRange, createExpense, updateExpense, deleteExpen
 import type { Expense, RangeSummaryResponse, ExpenseCreate, ExpenseUpdate, DateFilter, DatePreset } from '../types';
 import { useAuth } from '../context/AuthContext';
 import Summary from './Summary';
+import PeriodSelector from './PeriodSelector';
 import ExpenseList from './ExpenseList';
 import ExpenseForm from './ExpenseForm';
 import ConfirmModal from './ConfirmModal';
@@ -180,6 +181,7 @@ const Dashboard: React.FC = () => {
       </header>
 
       <main style={{ opacity: isLoading ? 0.5 : 1, pointerEvents: isLoading ? 'none' : 'auto', transition: 'opacity 0.2s' }}>
+        <PeriodSelector filter={dateFilter} onChange={setDateFilter} />
         <Summary summary={summary} dateFilter={dateFilter} />
         <div className="list-header mt-8 mb-4" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Gastos del Período</h2>
@@ -188,8 +190,6 @@ const Dashboard: React.FC = () => {
           expenses={expenses} 
           onEdit={(e) => { setEditingExpense(e); setIsFormOpen(true); }} 
           onDelete={(id) => setConfirmDelete({ isOpen: true, expenseId: id })}
-          dateFilter={dateFilter}
-          onDateChange={setDateFilter}
         />
       </main>
 
