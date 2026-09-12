@@ -132,6 +132,55 @@ body {
 }
 
 /* =============================================
+   BOTTOM SHEET MODAL
+   ============================================= */
+
+.bottom-sheet-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  animation: fadeIn 0.3s ease;
+}
+
+.bottom-sheet {
+  background: var(--surface-color);
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+  border-top-left-radius: 24px;
+  border-top-right-radius: 24px;
+  padding: 1.5rem;
+  padding-bottom: 2rem;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.15);
+  animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.bottom-sheet-handle {
+  width: 40px;
+  height: 5px;
+  background: var(--surface-muted);
+  border-radius: 10px;
+  margin: 0 auto 1.5rem auto;
+}
+
+/* =============================================
    SOFT CARD — Core Card Component
    ============================================= */
 
