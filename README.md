@@ -111,3 +111,27 @@ Este proyecto está preparado para ser desplegado en dos servicios separados par
    - Nombre: `VITE_API_URL`
    - Valor: La URL pública que te dio Render al desplegar el backend (asegúrate de que termine en `/api`, por ejemplo: `https://tu-app-backend.onrender.com/api`).
 6. Haz clic en **Deploy**. ¡Tu frontend ahora se comunicará exitosamente con tu backend en Render!
+
+---
+
+## 💾 ¿Cómo guardar mis cambios y subirlos a GitHub?
+
+Cuando hagamos cambios en el código (ya sea tú o yo) y quieras guardarlos en tu repositorio de GitHub para no perderlos, sigue estos sencillos pasos:
+
+1. **Abre una terminal nueva** (puedes usar PowerShell o el Símbolo del sistema).
+2. **Asegúrate de estar en la carpeta raíz de tu proyecto** (`gastosapp`), no dentro de `frontend` ni `backend`. Deberías ver algo como: `C:\Users\diegu\Desktop\gastosapp>`.
+3. Ejecuta los siguientes tres comandos, uno por uno:
+
+   ```bash
+   # Paso 1: Prepara todos los archivos que cambiaron
+   git add .
+
+   # Paso 2: Guarda los cambios localmente con un mensaje descriptivo
+   # (Puedes cambiar el texto entre comillas por algo que describa lo que hicimos)
+   git commit -m "Actualización: añadir nuevas funciones y mejoras"
+
+   # Paso 3: Sube los cambios guardados a GitHub
+   git push origin main
+   ```
+
+**¡Y listo!** Con esto, todos tus cambios estarán seguros en la nube.

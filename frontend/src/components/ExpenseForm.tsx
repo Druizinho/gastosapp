@@ -143,7 +143,8 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ initialData, onSubmit, onCanc
               value={description} 
               onChange={(e) => setDescription(e.target.value)} 
               required 
-              placeholder="¿Qué compraste?"
+              maxLength={50}
+              placeholder="¿Qué compraste? (Max. 50 caracteres)"
             />
           </div>
           

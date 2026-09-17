@@ -118,7 +118,10 @@ const ExpenseItem: React.FC<ExpenseItemProps> = ({ expense, onEdit, onDelete, ca
         <div className="bottom-sheet-overlay" onClick={() => setIsExpanded(false)}>
           <div className="bottom-sheet" onClick={(e) => e.stopPropagation()}>
             <div className="bottom-sheet-handle" />
-            <h3 style={{ marginBottom: '1rem', color: 'var(--text-primary)', fontSize: '1.2rem', fontWeight: 600 }}>Detalle del Gasto</h3>
+            <h3 style={{ marginBottom: '0.25rem', color: 'var(--text-primary)', fontSize: '1.2rem', fontWeight: 600 }}>Detalle del Gasto</h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginBottom: '1rem', wordBreak: 'break-word', lineHeight: 1.4 }}>
+              {expense.description}
+            </p>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
