@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, Plus, Trash2, Edit3, ArrowLeft } from 'lucide-react';
+import { Plus, Trash2, Edit3, ArrowLeft } from 'lucide-react';
 import type { Debt, DebtCreate, DebtUpdate, DebtPaymentCreate } from '../types';
 import { getDebts, createDebt, updateDebt, addDebtPayment, deleteDebt } from '../api';
 import DebtForm from './DebtForm';
@@ -38,7 +38,6 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
   const title = isOwed ? 'Lo que Debo' : 'Me Deben';
   
   const themeColor = isOwed ? 'var(--expense-color)' : 'var(--income-color)';
-  const themeBg = isOwed ? 'var(--expense-bg)' : 'var(--income-bg)';
 
   const fetchDebts = async () => {
     try {
