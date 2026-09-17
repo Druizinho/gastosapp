@@ -109,3 +109,105 @@ class RangeSummaryResponse(BaseModel):
     daily_avg_eur: Decimal
     daily_avg_usdt: Decimal
     by_category: List[CategorySummary]
+
+# Fixed Expenses Schemas
+
+class FixedExpenseBase(BaseModel):
+    name: str = Field(..., min_length=1)
+    amount: Decimal = Field(..., gt=0)
+    currency: CurrencyType = Field(default=CurrencyType.BS)
+    category: Optional[str] = None
+    payment_day: Optional[int] = Field(None, ge=1, le=31)
+    is_active: bool = True
+    notes: Optional[str] = None
+
+class FixedExpenseCreate(FixedExpenseBase):
+    manual_rate: Optional[Decimal] = Field(None, gt=0)
+
+class FixedExpenseUpdate(BaseModel):
+    name: Optional[str] = None
+    amount: Optional[Decimal] = Field(None, gt=0)
+    currency: Optional[CurrencyType] = None
+    category: Optional[str] = None
+    payment_day: Optional[int] = Field(None, ge=1, le=31)
+    is_active: Optional[bool] = None
+    notes: Optional[str] = None
+    manual_rate: Optional[Decimal] = Field(None, gt=0)
+
+class FixedExpenseResponse(FixedExpenseBase):
+    id: UUID
+    user_id: UUID
+    created_at: datetime.datetime
+    amount_usd: Optional[Decimal] = None
+    amount_bs: Optional[Decimal] = None
+    amount_eur: Optional[Decimal] = None
+    amount_usdt: Optional[Decimal] = None
+    rate_usd_bs: Optional[Decimal] = None
+    rate_eur_bs: Optional[Decimal] = None
+    rate_usdt_bs: Optional[Decimal] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+class FixedExpenseSummary(BaseModel):
+    total_active: int
+    total_bs: Decimal
+    total_usd: Decimal
+    total_eur: Decimal
+    total_usdt: Decimal
+
+# Debt Schemas
+
+class DebtPaymentBase(BaseModel):
+    amount: Decimal = Field(..., gt=0)
+    currency: CurrencyType = Field(default=CurrencyType.BS)
+    payment_date: Optional[datetime.date] = None
+    note: Optional[str] = None
+
+class DebtPaymentCreate(DebtPaymentBase):
+    manual_rate: Optional[Decimal] = Field(None, gt=0)
+
+class DebtPaymentResponse(DebtPaymentBase):
+    id: UUID
+    debt_id: UUID
+    created_at: datetime.datetime
+    amount_usd: Optional[Decimal] = None
+    amount_bs: Optional[Decimal] = None
+    amount_eur: Optional[Decimal] = None
+    amount_usdt: Optional[Decimal] = None
+    rate_usd_bs: Optional[Decimal] = None
+    rate_eur_bs: Optional[Decimal] = None
+    rate_usdt_bs: Optional[Decimal] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+class DebtBase(BaseModel):
+    type: str = Field(..., pattern="^(owed|receivable)$")
+    counterpart: str = Field(..., min_length=1)
+    concept: str = Field(..., min_length=1)
+    total_amount: Decimal = Field(..., gt=0)
+    currency: CurrencyType = Field(default=CurrencyType.BS)
+    start_date: Optional[datetime.date] = None
+    due_date: Optional[datetime.date] = None
+    is_settled: bool = False
+    notes: Optional[str] = None
+
+class DebtCreate(DebtBase):
+    pass
+
+class DebtUpdate(BaseModel):
+    counterpart: Optional[str] = None
+    concept: Optional[str] = None
+    total_amount: Optional[Decimal] = Field(None, gt=0)
+    currency: Optional[CurrencyType] = None
+    due_date: Optional[datetime.date] = None
+    is_settled: Optional[bool] = None
+    notes: Optional[str] = None
+
+class DebtResponse(DebtBase):
+    id: UUID
+    user_id: UUID
+    created_at: datetime.datetime
+    payments: List[DebtPaymentResponse] = []
+
+    model_config = ConfigDict(from_attributes=True)
+

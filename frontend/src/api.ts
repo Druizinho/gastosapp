@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Expense, ExpenseCreate, ExpenseUpdate, SummaryResponse, ExchangeRates, RangeSummaryResponse } from './types';
+import type { Expense, ExpenseCreate, ExpenseUpdate, SummaryResponse, ExchangeRates, RangeSummaryResponse, FixedExpense, FixedExpenseCreate, FixedExpenseUpdate, FixedExpenseSummary, Debt, DebtCreate, DebtUpdate, DebtPaymentCreate } from './types';
 import { supabase } from './supabaseClient';
 
 const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
@@ -86,3 +86,63 @@ export const updateProfile = async (data: { display_name?: string; avatar_url?: 
   const response = await api.put('/profile/', data);
   return response.data;
 };
+
+// Fixed Expenses
+export const getFixedExpenses = async (activeOnly: boolean = false): Promise<FixedExpense[]> => {
+  const params: any = {};
+  if (activeOnly) params.active_only = true;
+  const response = await api.get('/fixed-expenses/', { params });
+  return response.data;
+};
+
+export const getFixedExpenseSummary = async (): Promise<FixedExpenseSummary> => {
+  const response = await api.get('/fixed-expenses/summary');
+  return response.data;
+};
+
+export const createFixedExpense = async (expense: FixedExpenseCreate): Promise<FixedExpense> => {
+  const response = await api.post('/fixed-expenses/', expense);
+  return response.data;
+};
+
+export const updateFixedExpense = async (id: string, expense: FixedExpenseUpdate): Promise<FixedExpense> => {
+  const response = await api.put(`/fixed-expenses/${id}`, expense);
+  return response.data;
+};
+
+export const deleteFixedExpense = async (id: string): Promise<void> => {
+  await api.delete(`/fixed-expenses/${id}`);
+};
+
+// Debts
+export const getDebts = async (type: 'owed' | 'receivable', isSettled?: boolean): Promise<Debt[]> => {
+  const params: any = { type };
+  if (isSettled !== undefined) params.is_settled = isSettled;
+  const response = await api.get('/debts/', { params });
+  return response.data;
+};
+
+export const getDebt = async (id: string): Promise<Debt> => {
+  const response = await api.get(`/debts/${id}`);
+  return response.data;
+};
+
+export const createDebt = async (debt: DebtCreate): Promise<Debt> => {
+  const response = await api.post('/debts/', debt);
+  return response.data;
+};
+
+export const updateDebt = async (id: string, debt: DebtUpdate): Promise<Debt> => {
+  const response = await api.put(`/debts/${id}`, debt);
+  return response.data;
+};
+
+export const deleteDebt = async (id: string): Promise<void> => {
+  await api.delete(`/debts/${id}`);
+};
+
+export const addDebtPayment = async (debtId: string, payment: DebtPaymentCreate): Promise<Debt> => {
+  const response = await api.post(`/debts/${debtId}/payments`, payment);
+  return response.data;
+};
+

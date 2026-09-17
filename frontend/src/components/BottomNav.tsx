@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { BarChart3, Settings, PieChart, Home, Plus } from 'lucide-react';
+import { Settings, PieChart, Home, Plus, Wrench } from 'lucide-react';
 
 export const BottomNav: React.FC = () => {
   const navigate = useNavigate();
@@ -23,11 +23,11 @@ export const BottomNav: React.FC = () => {
       </NavLink>
       
       <NavLink 
-        to="/comparar" 
+        to="/herramientas" 
         className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-        aria-label="Comparar"
+        aria-label="Herramientas"
       >
-        <BarChart3 size={24} />
+        <Wrench size={24} />
       </NavLink>
 
       <button 

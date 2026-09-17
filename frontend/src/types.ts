@@ -96,3 +96,121 @@ export interface RangeSummaryResponse {
   daily_avg_usdt: number;
   by_category: CategorySummary[];
 }
+
+// Fixed Expenses
+
+export interface FixedExpense {
+  id: string;
+  user_id: string;
+  name: string;
+  amount: number;
+  currency: CurrencyType;
+  category: string | null;
+  payment_day: number | null;
+  is_active: boolean;
+  notes: string | null;
+  created_at: string;
+  amount_usd?: number | null;
+  amount_bs?: number | null;
+  amount_eur?: number | null;
+  amount_usdt?: number | null;
+  rate_usd_bs?: number | null;
+  rate_eur_bs?: number | null;
+  rate_usdt_bs?: number | null;
+}
+
+export interface FixedExpenseCreate {
+  name: string;
+  amount: number;
+  currency?: CurrencyType;
+  category?: string;
+  payment_day?: number | null;
+  is_active?: boolean;
+  notes?: string;
+  manual_rate?: number;
+}
+
+export interface FixedExpenseUpdate {
+  name?: string;
+  amount?: number;
+  currency?: CurrencyType;
+  category?: string;
+  payment_day?: number | null;
+  is_active?: boolean;
+  notes?: string;
+  manual_rate?: number;
+}
+
+export interface FixedExpenseSummary {
+  total_active: number;
+  total_bs: number;
+  total_usd: number;
+  total_eur: number;
+  total_usdt: number;
+}
+
+// Debts
+
+export interface DebtPayment {
+  id: string;
+  debt_id: string;
+  amount: number;
+  currency: CurrencyType;
+  amount_usd?: number | null;
+  amount_bs?: number | null;
+  amount_eur?: number | null;
+  amount_usdt?: number | null;
+  rate_usd_bs?: number | null;
+  rate_eur_bs?: number | null;
+  rate_usdt_bs?: number | null;
+  payment_date: string;
+  note: string | null;
+  created_at: string;
+}
+
+export interface DebtPaymentCreate {
+  amount: number;
+  currency?: CurrencyType;
+  payment_date?: string | null;
+  note?: string;
+  manual_rate?: number;
+}
+
+export interface Debt {
+  id: string;
+  user_id: string;
+  type: 'owed' | 'receivable';
+  counterpart: string;
+  concept: string;
+  total_amount: number;
+  currency: CurrencyType;
+  start_date: string;
+  due_date: string | null;
+  is_settled: boolean;
+  notes: string | null;
+  created_at: string;
+  payments: DebtPayment[];
+}
+
+export interface DebtCreate {
+  type: 'owed' | 'receivable';
+  counterpart: string;
+  concept: string;
+  total_amount: number;
+  currency?: CurrencyType;
+  start_date?: string | null;
+  due_date?: string | null;
+  is_settled?: boolean;
+  notes?: string;
+}
+
+export interface DebtUpdate {
+  counterpart?: string;
+  concept?: string;
+  total_amount?: number;
+  currency?: CurrencyType;
+  due_date?: string | null;
+  is_settled?: boolean;
+  notes?: string;
+}
+

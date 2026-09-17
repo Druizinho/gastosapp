@@ -3,7 +3,9 @@ import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Auth } from './components/Auth';
 import Dashboard from './components/Dashboard';
-import { PeriodComparison } from './components/PeriodComparison';
+import { ToolsHub } from './components/ToolsHub';
+import FixedExpenses from './components/FixedExpenses';
+import DebtList from './components/DebtList';
 import { RatesPage } from './components/RatesPage';
 import { SettingsPage } from './components/SettingsPage';
 import { BottomNav } from './components/BottomNav';
@@ -47,7 +49,10 @@ const AppRoutes = () => {
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/comparar" element={<PeriodComparison />} />
+          <Route path="/herramientas" element={<ToolsHub />} />
+          <Route path="/herramientas/gastos-fijos" element={<FixedExpenses />} />
+          <Route path="/herramientas/deudas-nuestras" element={<DebtList type="owed" onBack={() => window.history.back()} />} />
+          <Route path="/herramientas/deudas-por-cobrar" element={<DebtList type="receivable" onBack={() => window.history.back()} />} />
           <Route path="/tasas" element={<RatesPage />} />
           <Route path="/ajustes" element={<SettingsPage />} />
         </Route>
