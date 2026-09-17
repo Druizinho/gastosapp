@@ -31,8 +31,9 @@ const getCategoryIcon = (category: string) => {
 
 const getCurrencyBadge = (currency: string) => {
   switch (currency) {
-    case 'BS_USD': return <span style={{ backgroundColor: 'var(--accent-light)', color: 'var(--accent-color)', padding: '2px 8px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 600 }}>Bs (Tasa USD)</span>;
-    case 'BS_EUR': return <span style={{ backgroundColor: 'var(--accent-light)', color: 'var(--accent-color)', padding: '2px 8px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 600 }}>Bs (Tasa EUR)</span>;
+    case 'USD_BCV': return <span style={{ backgroundColor: 'var(--accent-light)', color: 'var(--accent-color)', padding: '2px 8px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 600 }}>Dólar BCV</span>;
+    case 'EUR_BCV': return <span style={{ backgroundColor: 'var(--accent-light)', color: 'var(--accent-color)', padding: '2px 8px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 600 }}>Euro BCV</span>;
+    case 'BS': return <span style={{ backgroundColor: 'var(--accent-light)', color: 'var(--accent-color)', padding: '2px 8px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 600 }}>Bolívares</span>;
     case 'USDT': return <span style={{ backgroundColor: 'var(--accent-light)', color: 'var(--accent-color)', padding: '2px 8px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 600 }}>USDT</span>;
     case 'USD_CASH': return <span style={{ backgroundColor: 'rgba(16, 185, 129, 0.1)', color: '#10b981', padding: '2px 8px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 600 }}>USD Cash</span>;
     default: return null;
@@ -63,7 +64,7 @@ const ExpenseItem: React.FC<ExpenseItemProps> = ({ expense, onEdit, onDelete, ca
         overflow: 'hidden'
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', width: '100%', flex: 1 }}>
         <div style={{
           backgroundColor: 'var(--surface-color)',
           color: 'var(--text-secondary)',
@@ -78,8 +79,17 @@ const ExpenseItem: React.FC<ExpenseItemProps> = ({ expense, onEdit, onDelete, ca
           <IconComponent size={22} />
         </div>
 
-        <div style={{ flex: 1 }}>
-          <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <div style={{ flex: 1, minWidth: 0, paddingRight: '0.5rem' }}>
+          <h3 style={{ 
+            fontSize: '1.05rem', 
+            fontWeight: 600, 
+            color: 'var(--text-primary)', 
+            marginBottom: '0.2rem', 
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            display: 'block'
+          }}>
             {expense.description}
           </h3>
           <div style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)' }}>
@@ -87,11 +97,11 @@ const ExpenseItem: React.FC<ExpenseItemProps> = ({ expense, onEdit, onDelete, ca
           </div>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-          <div style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: '90px' }}>
+          <div style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-primary)', textAlign: 'right', width: '100%' }}>
             {formatVal(expense.amount_usd, '$')}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: 'var(--text-tertiary)', marginTop: '0.25rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: 'var(--text-tertiary)', marginTop: '0.25rem', justifyContent: 'flex-end', width: '100%' }}>
             <span style={{ fontSize: '0.75rem' }}>Ver más</span>
             <ChevronDown
               size={14}
@@ -120,19 +130,19 @@ const ExpenseItem: React.FC<ExpenseItemProps> = ({ expense, onEdit, onDelete, ca
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', background: 'var(--surface-muted)', padding: '1rem', borderRadius: '12px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Dólar BCV</span>
-                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', textAlign: 'right' }}>
-                    {formatVal(expense.rate_usd_bs, '$ ')}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
                   <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Equiv. Bs</span>
                   <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', textAlign: 'right' }}>
                     {formatVal(expense.amount_bs, 'Bs ')}
                   </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Equiv. EUR</span>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Equiv. Dólar BCV</span>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', textAlign: 'right' }}>
+                    {formatVal(expense.amount_usd, '$ ')}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Equiv. Euro BCV</span>
                   <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', textAlign: 'right' }}>
                     {formatVal(expense.amount_eur, '€ ')}
                   </span>

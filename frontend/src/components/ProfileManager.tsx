@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { getProfile, updateProfile } from '../api';
-import { Check, Loader2, AlertCircle } from 'lucide-react';
+import { Check, Loader2, AlertCircle, Lock } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { supabase } from '../supabaseClient';
 
 const AVATAR_SEEDS = [
   'felix', 'milo', 'charlie', 'coco', 'leo', 
@@ -14,9 +15,17 @@ const ProfileManager: React.FC = () => {
   const [displayName, setDisplayName] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState('felix');
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Profile update state
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  // Password update state
+  const [newPassword, setNewPassword] = useState('');
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
 
   useEffect(() => {
     loadProfile();
@@ -42,7 +51,7 @@ const ProfileManager: React.FC = () => {
     }
   };
 
-  const handleSave = async (e: React.FormEvent) => {
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       setIsSaving(true);
@@ -68,6 +77,35 @@ const ProfileManager: React.FC = () => {
     }
   };
 
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPassword || newPassword.length < 6) {
+      setPasswordError('La contraseña debe tener al menos 6 caracteres.');
+      return;
+    }
+    
+    try {
+      setIsUpdatingPassword(true);
+      setPasswordError(null);
+      setPasswordSuccess(false);
+
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword
+      });
+
+      if (error) throw error;
+
+      setNewPassword('');
+      setPasswordSuccess(true);
+      setTimeout(() => setPasswordSuccess(false), 3000);
+    } catch (err: any) {
+      console.error('Error updating password:', err);
+      setPasswordError(err.message || 'Error al actualizar la contraseña.');
+    } finally {
+      setIsUpdatingPassword(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
@@ -77,123 +115,217 @@ const ProfileManager: React.FC = () => {
   }
 
   return (
-    <div className="soft-card">
-      <h2 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '1rem', color: 'var(--text-primary)' }}>
-        Editar Perfil
-      </h2>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      
+      {/* Sección de Datos Públicos */}
+      <div className="soft-card">
+        <h2 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '1rem', color: 'var(--text-primary)' }}>
+          Editar Perfil
+        </h2>
 
-      {error && (
-        <div style={{ 
-          display: 'flex', alignItems: 'center', gap: '0.5rem', 
-          padding: '0.75rem', background: 'var(--expense-bg)', 
-          color: 'var(--expense-color)', borderRadius: '8px', 
-          marginBottom: '1rem', fontSize: '0.9rem' 
-        }}>
-          <AlertCircle size={16} />
-          {error}
-        </div>
-      )}
+        {error && (
+          <div style={{ 
+            display: 'flex', alignItems: 'center', gap: '0.5rem', 
+            padding: '0.75rem', background: 'var(--expense-bg)', 
+            color: 'var(--expense-color)', borderRadius: '8px', 
+            marginBottom: '1rem', fontSize: '0.9rem' 
+          }}>
+            <AlertCircle size={16} />
+            {error}
+          </div>
+        )}
 
-      {success && (
-        <div style={{ 
-          display: 'flex', alignItems: 'center', gap: '0.5rem', 
-          padding: '0.75rem', background: 'var(--income-bg)', 
-          color: 'var(--income-color)', borderRadius: '8px', 
-          marginBottom: '1rem', fontSize: '0.9rem' 
-        }}>
-          <Check size={16} />
-          Perfil guardado exitosamente.
-        </div>
-      )}
+        {success && (
+          <div style={{ 
+            display: 'flex', alignItems: 'center', gap: '0.5rem', 
+            padding: '0.75rem', background: 'var(--income-bg)', 
+            color: 'var(--income-color)', borderRadius: '8px', 
+            marginBottom: '1rem', fontSize: '0.9rem' 
+          }}>
+            <Check size={16} />
+            Perfil guardado exitosamente.
+          </div>
+        )}
 
-      <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-        <div>
-          <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
-            Nombre a mostrar
-          </label>
-          <input
-            type="text"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="Ej. Juan Pérez"
+        <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
+              Nombre a mostrar
+            </label>
+            <input
+              type="text"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="Ej. Juan Pérez"
+              style={{
+                width: '100%',
+                padding: '0.75rem 1rem',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--accent-light)',
+                background: 'var(--surface-muted)',
+                color: 'var(--text-primary)',
+                fontFamily: 'inherit',
+                fontSize: '1rem'
+              }}
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+              Selecciona tu Avatar
+            </label>
+            <div style={{ 
+              display: 'flex', flexWrap: 'wrap', gap: '0.75rem', 
+              background: 'var(--surface-muted)', padding: '1rem', borderRadius: 'var(--radius-sm)'
+            }}>
+              {AVATAR_SEEDS.map((seed) => {
+                const isSelected = selectedAvatar === seed;
+                return (
+                  <button
+                    key={seed}
+                    type="button"
+                    onClick={() => setSelectedAvatar(seed)}
+                    style={{
+                      width: '60px',
+                      height: '60px',
+                      borderRadius: 'var(--radius-full)',
+                      border: isSelected ? '3px solid var(--text-primary)' : '2px solid transparent',
+                      background: 'var(--surface-color)',
+                      padding: 0,
+                      cursor: 'pointer',
+                      overflow: 'hidden',
+                      transition: 'all 0.2s ease',
+                      boxShadow: isSelected ? 'var(--shadow-sm)' : 'none',
+                      opacity: isSelected ? 1 : 0.7,
+                    }}
+                  >
+                    <img 
+                      src={`https://api.dicebear.com/7.x/micah/svg?seed=${seed}`} 
+                      alt={`Avatar ${seed}`}
+                      style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                    />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={isSaving}
             style={{
-              width: '100%',
-              padding: '0.75rem 1rem',
+              marginTop: '0.5rem',
+              background: 'var(--text-primary)',
+              color: 'var(--surface-color)',
+              border: 'none',
               borderRadius: 'var(--radius-sm)',
-              border: '1px solid var(--accent-light)',
+              padding: '0.85rem',
+              fontWeight: 600,
+              fontSize: '1rem',
+              cursor: isSaving ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.5rem',
+              opacity: isSaving ? 0.7 : 1,
+              transition: 'opacity 0.2s'
+            }}
+          >
+            {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Check size={18} />}
+            Guardar Cambios
+          </button>
+        </form>
+      </div>
+
+      {/* Sección de Seguridad */}
+      <div className="soft-card">
+        <h2 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '1rem', color: 'var(--text-primary)' }}>
+          Seguridad
+        </h2>
+
+        {passwordError && (
+          <div style={{ 
+            display: 'flex', alignItems: 'center', gap: '0.5rem', 
+            padding: '0.75rem', background: 'var(--expense-bg)', 
+            color: 'var(--expense-color)', borderRadius: '8px', 
+            marginBottom: '1rem', fontSize: '0.9rem' 
+          }}>
+            <AlertCircle size={16} />
+            {passwordError}
+          </div>
+        )}
+
+        {passwordSuccess && (
+          <div style={{ 
+            display: 'flex', alignItems: 'center', gap: '0.5rem', 
+            padding: '0.75rem', background: 'var(--income-bg)', 
+            color: 'var(--income-color)', borderRadius: '8px', 
+            marginBottom: '1rem', fontSize: '0.9rem' 
+          }}>
+            <Check size={16} />
+            Contraseña actualizada exitosamente.
+          </div>
+        )}
+
+        <form onSubmit={handleUpdatePassword} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
+              Nueva Contraseña
+            </label>
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="Mínimo 6 caracteres"
+              style={{
+                width: '100%',
+                padding: '0.75rem 1rem',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--accent-light)',
+                background: 'var(--surface-muted)',
+                color: 'var(--text-primary)',
+                fontFamily: 'inherit',
+                fontSize: '1rem'
+              }}
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={isUpdatingPassword || newPassword.length < 6}
+            style={{
+              marginTop: '0.5rem',
               background: 'var(--surface-muted)',
               color: 'var(--text-primary)',
-              fontFamily: 'inherit',
-              fontSize: '1rem'
+              border: 'none',
+              borderRadius: 'var(--radius-sm)',
+              padding: '0.85rem',
+              fontWeight: 600,
+              fontSize: '1rem',
+              cursor: (isUpdatingPassword || newPassword.length < 6) ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.5rem',
+              opacity: (isUpdatingPassword || newPassword.length < 6) ? 0.7 : 1,
+              transition: 'all 0.2s'
             }}
-          />
-        </div>
-
-        <div>
-          <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
-            Selecciona tu Avatar
-          </label>
-          <div style={{ 
-            display: 'flex', flexWrap: 'wrap', gap: '0.75rem', 
-            background: 'var(--surface-muted)', padding: '1rem', borderRadius: 'var(--radius-sm)'
-          }}>
-            {AVATAR_SEEDS.map((seed) => {
-              const isSelected = selectedAvatar === seed;
-              return (
-                <button
-                  key={seed}
-                  type="button"
-                  onClick={() => setSelectedAvatar(seed)}
-                  style={{
-                    width: '60px',
-                    height: '60px',
-                    borderRadius: 'var(--radius-full)',
-                    border: isSelected ? '3px solid var(--text-primary)' : '2px solid transparent',
-                    background: 'var(--surface-color)',
-                    padding: 0,
-                    cursor: 'pointer',
-                    overflow: 'hidden',
-                    transition: 'all 0.2s ease',
-                    boxShadow: isSelected ? 'var(--shadow-sm)' : 'none',
-                    opacity: isSelected ? 1 : 0.7,
-                  }}
-                >
-                  <img 
-                    src={`https://api.dicebear.com/7.x/micah/svg?seed=${seed}`} 
-                    alt={`Avatar ${seed}`}
-                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                  />
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <button
-          type="submit"
-          disabled={isSaving}
-          style={{
-            marginTop: '0.5rem',
-            background: 'var(--text-primary)',
-            color: 'var(--surface-color)',
-            border: 'none',
-            borderRadius: 'var(--radius-sm)',
-            padding: '0.85rem',
-            fontWeight: 600,
-            fontSize: '1rem',
-            cursor: isSaving ? 'not-allowed' : 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '0.5rem',
-            opacity: isSaving ? 0.7 : 1,
-            transition: 'opacity 0.2s'
-          }}
-        >
-          {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Check size={18} />}
-          Guardar Cambios
-        </button>
-      </form>
+            onMouseEnter={(e) => {
+              if (!(isUpdatingPassword || newPassword.length < 6)) {
+                e.currentTarget.style.background = 'var(--accent-light)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!(isUpdatingPassword || newPassword.length < 6)) {
+                e.currentTarget.style.background = 'var(--surface-muted)';
+              }
+            }}
+          >
+            {isUpdatingPassword ? <Loader2 className="animate-spin" size={18} /> : <Lock size={18} />}
+            Actualizar Contraseña
+          </button>
+        </form>
+      </div>
     </div>
   );
 };

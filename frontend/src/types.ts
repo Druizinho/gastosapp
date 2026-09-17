@@ -1,4 +1,4 @@
-export type CurrencyType = 'BS_USD' | 'BS_EUR' | 'USDT' | 'USD_CASH';
+export type CurrencyType = 'USD_BCV' | 'EUR_BCV' | 'BS' | 'USDT' | 'USD_CASH';
 
 export interface Expense {
   id: string;

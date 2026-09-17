@@ -34,7 +34,7 @@ class Expense(Base):
     date = Column(Date, nullable=False, default=date.today)
     user_id = Column(UUID(as_uuid=True), nullable=False) # Enlaza cada gasto a un usuario en Supabase
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    currency = Column(String(10), nullable=False, default='BS_USD')
+    currency = Column(String(10), nullable=False, default='BS')
     amount_usd = Column(Numeric(12, 4), nullable=True)
     amount_bs = Column(Numeric(12, 4), nullable=True)
     amount_eur = Column(Numeric(12, 4), nullable=True)

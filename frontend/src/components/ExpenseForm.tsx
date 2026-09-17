@@ -14,7 +14,7 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ initialData, onSubmit, onCanc
   const [description, setDescription] = useState<string>(initialData?.description || '');
   const [category, setCategory] = useState<string>(initialData?.category || 'Sin Categoría');
   const [date, setDate] = useState<string>(initialData?.date || new Date().toISOString().split('T')[0]);
-  const [currency, setCurrency] = useState<CurrencyType>(initialData?.currency || 'BS_USD');
+  const [currency, setCurrency] = useState<CurrencyType>(initialData?.currency || 'BS');
   const [manualRate, setManualRate] = useState<string>('');
   
   const [rates, setRates] = useState<ExchangeRates | null>(null);
@@ -31,7 +31,7 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ initialData, onSubmit, onCanc
       setCurrency(initialData.currency);
       
       // Cargar la tasa histórica
-      if (initialData.currency === 'BS_EUR' && initialData.rate_eur_bs) {
+      if (initialData.currency === 'EUR_BCV' && initialData.rate_eur_bs) {
         setManualRate(initialData.rate_eur_bs.toString());
       } else if (initialData.currency === 'USDT' && initialData.rate_usdt_bs) {
         setManualRate(initialData.rate_usdt_bs.toString());
@@ -106,8 +106,9 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ initialData, onSubmit, onCanc
             <div className="form-group half">
               <label>Moneda</label>
               <select value={currency} onChange={(e) => setCurrency(e.target.value as CurrencyType)} required>
-                <option value="BS_USD">Bs (Tasa Dólar BCV)</option>
-                <option value="BS_EUR">Bs (Tasa Euro BCV)</option>
+                <option value="USD_BCV">Dólar BCV</option>
+                <option value="EUR_BCV">Euro BCV</option>
+                <option value="BS">Bolívares</option>
                 <option value="USDT">USDT (Binance)</option>
                 <option value="USD_CASH">Dólares en Efectivo</option>
               </select>

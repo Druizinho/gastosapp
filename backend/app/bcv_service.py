@@ -78,23 +78,31 @@ def convert_amount(amount: Decimal, currency: str, rates: dict, manual_rate: Dec
     eur_bs = rates.get("eur_bs")
     usdt_bs = rates.get("usdt_bs")
     
+    # If a manual rate is provided, it applies to the primary exchange rate of the given currency
     if manual_rate:
-        if currency == 'BS_USD' or currency == 'USD_CASH':
+        if currency == 'USD_BCV' or currency == 'BS' or currency == 'USD_CASH':
             usd_bs = manual_rate
-        elif currency == 'BS_EUR':
+        elif currency == 'EUR_BCV':
             eur_bs = manual_rate
         elif currency == 'USDT':
             usdt_bs = manual_rate
             
-    if currency == 'BS_USD':
+    if currency == 'USD_BCV':
+        amount_usd = amount
+        if usd_bs:
+            amount_bs = amount * usd_bs
+            if eur_bs: amount_eur = amount_bs / eur_bs
+            if usdt_bs: amount_usdt = amount_bs / usdt_bs
+    elif currency == 'EUR_BCV':
+        amount_eur = amount
+        if eur_bs:
+            amount_bs = amount * eur_bs
+            if usd_bs: amount_usd = amount_bs / usd_bs
+            if usdt_bs: amount_usdt = amount_bs / usdt_bs
+    elif currency == 'BS':
         amount_bs = amount
         if usd_bs: amount_usd = amount / usd_bs
         if eur_bs: amount_eur = amount / eur_bs
-        if usdt_bs: amount_usdt = amount / usdt_bs
-    elif currency == 'BS_EUR':
-        amount_bs = amount
-        if eur_bs: amount_eur = amount / eur_bs
-        if usd_bs: amount_usd = amount / usd_bs
         if usdt_bs: amount_usdt = amount / usdt_bs
     elif currency == 'USDT':
         amount_usdt = amount

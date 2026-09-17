@@ -7,8 +7,9 @@ from decimal import Decimal
 from enum import Enum
 
 class CurrencyType(str, Enum):
-    BS_USD = "BS_USD"
-    BS_EUR = "BS_EUR"
+    USD_BCV = "USD_BCV"
+    EUR_BCV = "EUR_BCV"
+    BS = "BS"
     USDT = "USDT"
     USD_CASH = "USD_CASH"
 
@@ -43,7 +44,7 @@ class ExpenseBase(BaseModel):
     description: str = Field(..., min_length=1)
     category: str = Field(..., min_length=1)
     date: Optional[datetime.date] = None
-    currency: CurrencyType = Field(default=CurrencyType.BS_USD)
+    currency: CurrencyType = Field(default=CurrencyType.BS)
 
 class ExpenseCreate(ExpenseBase):
     manual_rate: Optional[Decimal] = Field(None, gt=0, description="Optional manual exchange rate if API fails")

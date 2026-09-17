@@ -41,7 +41,7 @@ async def create_expense(expense: schemas.ExpenseCreate, db: AsyncSession = Depe
     rates = await bcv_service.get_all_rates()
     equivalents = bcv_service.convert_amount(
         amount=expense.amount,
-        currency=expense.currency.value if expense.currency else "BS_USD",
+        currency=expense.currency.value if expense.currency else "BS",
         rates=rates,
         manual_rate=expense.manual_rate
     )
