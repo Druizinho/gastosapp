@@ -34,16 +34,11 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
   }, [initialData]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    const { name, value, type } = e.target;
-    let parsedValue: any = value;
-    
-    if (type === 'number') {
-      parsedValue = value === '' ? '' : parseFloat(value);
-    }
+    const { name, value } = e.target;
 
     setFormData(prev => ({
       ...prev,
-      [name]: parsedValue
+      [name]: value
     }));
   };
 
@@ -106,7 +101,7 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
             required
             min="0.01"
             step="0.01"
-            value={formData.total_amount}
+            value={formData.total_amount || ''}
             onChange={handleChange}
             style={inputStyle}
           />

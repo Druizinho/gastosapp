@@ -33,16 +33,11 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({ debtCurrency, debtTot
   const isOverpaying = isSameCurrency && currentAmount > remaining && remaining > 0;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    const { name, value, type } = e.target;
-    let parsedValue: any = value;
-    
-    if (type === 'number') {
-      parsedValue = value === '' ? '' : parseFloat(value);
-    }
+    const { name, value } = e.target;
 
     setFormData(prev => ({
       ...prev,
-      [name]: parsedValue
+      [name]: value
     }));
   };
 
@@ -114,7 +109,7 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({ debtCurrency, debtTot
             required
             min="0.01"
             step="0.01"
-            value={formData.amount}
+            value={formData.amount || ''}
             onChange={handleChange}
             style={{
               ...inputStyle,
