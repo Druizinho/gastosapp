@@ -1591,3 +1591,8 @@ body {
   border-radius: 10px;
   margin: 0 auto 1.5rem auto;
 }
+
+@keyframes toastSlideUp {
+  from { opacity: 0; transform: translate(-50%, 20px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}

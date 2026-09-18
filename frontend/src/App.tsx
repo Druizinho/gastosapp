@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Auth } from './components/Auth';
 import Dashboard from './components/Dashboard';
@@ -38,6 +38,7 @@ const AppLayout = () => {
 
 const AppRoutes = () => {
   const { session } = useAuth();
+  const navigate = useNavigate();
 
   return (
     <Routes>
@@ -51,8 +52,8 @@ const AppRoutes = () => {
           <Route path="/" element={<Dashboard />} />
           <Route path="/herramientas" element={<ToolsHub />} />
           <Route path="/herramientas/gastos-fijos" element={<FixedExpenses />} />
-          <Route path="/herramientas/deudas-nuestras" element={<DebtList type="owed" onBack={() => window.history.back()} />} />
-          <Route path="/herramientas/deudas-por-cobrar" element={<DebtList type="receivable" onBack={() => window.history.back()} />} />
+          <Route path="/herramientas/deudas-nuestras" element={<DebtList type="owed" onBack={() => navigate(-1)} />} />
+          <Route path="/herramientas/deudas-por-cobrar" element={<DebtList type="receivable" onBack={() => navigate(-1)} />} />
           <Route path="/tasas" element={<RatesPage />} />
           <Route path="/ajustes" element={<SettingsPage />} />
         </Route>

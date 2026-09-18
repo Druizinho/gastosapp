@@ -48,8 +48,7 @@ async def update_debt(db: AsyncSession, debt_id: UUID, debt: schemas.DebtUpdate,
         setattr(db_debt, key, value)
         
     await db.commit()
-    await db.refresh(db_debt)
-    return db_debt
+    return await get_debt(db, debt_id, user_id)
 
 
 async def delete_debt(db: AsyncSession, debt_id: UUID, user_id: UUID):
@@ -75,10 +74,26 @@ async def add_debt_payment(db: AsyncSession, debt_id: UUID, user_id: UUID, payme
         
     db_payment = models.DebtPayment(**data, debt_id=debt_id)
     db.add(db_payment)
+    db_debt.payments.append(db_payment)
     await db.commit()
     
-    # Check if settled after payment
-    # This requires converting the payment amounts to the original debt currency to compare.
-    # We will do a simple check on the frontend/controller level to update `is_settled`
-    # or the user can manually set it, but let's refresh and return the updated debt.
+    # Reload debt with all payments to check settlement
+    db.expire(db_debt)
+    db_debt = await get_debt(db, debt_id, user_id)
+    
+    # Auto-detect if debt is fully paid
+    currency_key = "amount_" + db_debt.currency.lower().replace("_bcv", "").replace("_cash", "")
+    total_paid = Decimal("0")
+    for p in db_debt.payments:
+        if p.currency == db_debt.currency:
+            total_paid += p.amount
+        else:
+            equivalent = getattr(p, currency_key, None)
+            if equivalent is not None:
+                total_paid += equivalent
+    
+    if total_paid >= db_debt.total_amount and not db_debt.is_settled:
+        db_debt.is_settled = True
+        await db.commit()
+    
     return await get_debt(db, debt_id, user_id)

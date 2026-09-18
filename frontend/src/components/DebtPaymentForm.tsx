@@ -3,18 +3,34 @@ import type { DebtPaymentCreate } from '../types';
 
 interface DebtPaymentFormProps {
   debtCurrency: string;
+  debtTotalAmount: number;
+  debtPaidAmount: number;
   onSubmit: (data: DebtPaymentCreate) => void;
   onCancel: () => void;
   loading: boolean;
 }
 
-const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({ debtCurrency, onSubmit, onCancel, loading }) => {
+const currencyLabels: Record<string, string> = {
+  'USD_BCV': '$', 'EUR_BCV': '€', 'BS': 'Bs.', 'USDT': 'USDT', 'USD_CASH': '$ Cash',
+};
+const formatCurrency = (amount: number, currency: string) => {
+  if (amount == null) return '';
+  return `${currencyLabels[currency] || currency} ${Math.max(0, amount).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
+
+const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({ debtCurrency, debtTotalAmount, debtPaidAmount, onSubmit, onCancel, loading }) => {
+  const remaining = Math.max(debtTotalAmount - debtPaidAmount, 0);
   const [formData, setFormData] = useState<DebtPaymentCreate>({
-    amount: 0,
+    amount: '' as any,
     currency: debtCurrency as any,
     payment_date: new Date().toISOString().split('T')[0],
     note: ''
   });
+
+  // Check if user is paying in the same currency as the debt
+  const isSameCurrency = formData.currency === debtCurrency;
+  const currentAmount = Number(formData.amount) || 0;
+  const isOverpaying = isSameCurrency && currentAmount > remaining && remaining > 0;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -32,10 +48,20 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({ debtCurrency, onSubmi
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(formData);
+    const submitData = { ...formData };
+    submitData.amount = Number(submitData.amount);
+    
+    if (isSameCurrency && submitData.amount > remaining) {
+      const confirmOverpay = window.confirm(
+        `El abono (${formatCurrency(submitData.amount, debtCurrency)}) es mayor al monto pendiente (${formatCurrency(remaining, debtCurrency)}).\n\n¿Deseas registrarlo de todas formas?`
+      );
+      if (!confirmOverpay) return;
+    }
+    
+    onSubmit(submitData);
   };
 
-  const inputStyle = {
+  const inputStyle: React.CSSProperties = {
     width: '100%', padding: '0.75rem',
     background: 'var(--surface-color)', border: '1px solid var(--accent-light)',
     borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)',
@@ -43,7 +69,7 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({ debtCurrency, onSubmi
     marginTop: '0.25rem'
   };
 
-  const labelStyle = {
+  const labelStyle: React.CSSProperties = {
     display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)'
   };
 
@@ -58,6 +84,27 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({ debtCurrency, onSubmi
         El sistema guardará automáticamente la tasa de cambio del día.
       </div>
 
+      <div style={{
+        background: 'var(--surface-muted)', padding: '0.75rem 1rem',
+        borderRadius: 'var(--radius-md)', fontSize: '0.9rem',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+      }}>
+        <span style={{ color: 'var(--text-secondary)' }}>Monto pendiente:</span>
+        <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+          {formatCurrency(remaining, debtCurrency)}
+        </span>
+      </div>
+
+      {isOverpaying && (
+        <div style={{
+          background: 'var(--warning-bg)', color: 'var(--warning-color)',
+          padding: '0.75rem 1rem', borderRadius: 'var(--radius-md)', fontSize: '0.85rem',
+          lineHeight: 1.4, fontWeight: 500
+        }}>
+          ⚠️ El monto ingresado supera el saldo pendiente. Se te pedirá confirmación al enviar.
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: '1rem' }}>
         <div style={{ flex: 1 }}>
           <label style={labelStyle}>Monto a Abonar</label>
@@ -69,7 +116,10 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({ debtCurrency, onSubmi
             step="0.01"
             value={formData.amount}
             onChange={handleChange}
-            style={inputStyle}
+            style={{
+              ...inputStyle,
+              ...(isOverpaying ? { borderColor: 'var(--warning-color)', boxShadow: '0 0 0 2px var(--warning-bg)' } : {})
+            }}
           />
         </div>
 

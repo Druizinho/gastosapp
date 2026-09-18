@@ -15,7 +15,7 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
     type,
     counterpart: '',
     concept: '',
-    total_amount: 0,
+    total_amount: '' as any,
     currency: 'USD_BCV',
     start_date: new Date().toISOString().split('T')[0],
     due_date: '',
@@ -50,6 +50,7 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const submitData = { ...formData };
+    submitData.total_amount = Number(submitData.total_amount);
     if (!submitData.due_date) submitData.due_date = null;
     onSubmit(submitData);
   };
