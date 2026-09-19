@@ -188,3 +188,18 @@ export const checkIncome = async (incomeId: string, check: IncomeCheckCreate): P
 export const uncheckIncome = async (incomeId: string, month_year: string): Promise<void> => {
   await api.delete(`/incomes/${incomeId}/checks/${month_year}`);
 };
+
+// Push Notifications
+export const getVapidPublicKey = async (): Promise<string> => {
+  const response = await api.get('/push/public-key');
+  return response.data.public_key;
+};
+
+export const subscribeToPush = async (subscription: any): Promise<any> => {
+  const response = await api.post('/push/subscribe', subscription);
+  return response.data;
+};
+
+export const unsubscribeFromPush = async (endpoint: string): Promise<void> => {
+  await api.post('/push/unsubscribe', null, { params: { endpoint } });
+};

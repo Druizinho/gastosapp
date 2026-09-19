@@ -265,3 +265,15 @@ class EstimatedIncomeResponse(EstimatedIncomeBase):
     checks: List[IncomeCheckResponse] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+class PushSubscriptionCreate(BaseModel):
+    endpoint: str
+    p256dh: str
+    auth: str
+
+class PushSubscriptionResponse(PushSubscriptionCreate):
+    id: UUID
+    user_id: UUID
+    created_at: datetime.datetime
+
+    model_config = ConfigDict(from_attributes=True)

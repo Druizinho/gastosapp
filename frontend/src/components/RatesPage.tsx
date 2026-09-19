@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { RefreshCw, ArrowRightLeft, Calculator, ChevronDown } from 'lucide-react';
+import { RefreshCw, Calculator, ChevronDown } from 'lucide-react';
 import { getRates } from '../api';
 import type { ExchangeRates } from '../types';
 
@@ -13,25 +13,20 @@ const formatCalc = (val: number | null | undefined, prefix: string) => {
   return `${prefix}${Number(val).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
-type RateKey = 'USD' | 'EUR' | 'USDT';
-
 export const RatesPage: React.FC = () => {
   const [rates, setRates] = useState<ExchangeRates | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Protagonist state
-  const [primaryRate, setPrimaryRate] = useState<RateKey>(() => {
-    return (localStorage.getItem('gastosapp_primary_rate') as RateKey) || 'USD';
-  });
-
-  useEffect(() => {
-    localStorage.setItem('gastosapp_primary_rate', primaryRate);
-  }, [primaryRate]);
-
   // Calculator state
   const [calcAmount, setCalcAmount] = useState<string>('1');
-  const [calcBase, setCalcBase] = useState<'USD' | 'EUR' | 'USDT' | 'BS'>('USD');
+  const [calcBase, setCalcBase] = useState<'USD' | 'EUR' | 'USDT' | 'BS'>(() => {
+    return (localStorage.getItem('gastosapp_calc_base') as 'USD' | 'EUR' | 'USDT' | 'BS') || 'USD';
+  });
   const [isFocused, setIsFocused] = useState<boolean>(false);
+
+  useEffect(() => {
+    localStorage.setItem('gastosapp_calc_base', calcBase);
+  }, [calcBase]);
 
   const fetchRates = async () => {
     setLoading(true);
@@ -49,33 +44,33 @@ export const RatesPage: React.FC = () => {
     fetchRates();
   }, []);
 
-  // Configuration for rates (subtle gradients)
   const currencyConfigs = {
     USD: {
+      key: 'USD',
       label: 'Dólar BCV Oficial',
       short: 'Dólar BCV',
-      color: '#10B981', // Green
-      gradient: 'linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, var(--surface-color) 100%)',
+      symbol: '$',
+      color: '#10B981',
       getValue: (r: ExchangeRates | null) => r?.usd_bs,
     },
-    USDT: {
-      label: 'Binance USDT',
-      short: 'USDT',
-      color: '#FACC15', // Pure Yellow
-      gradient: 'linear-gradient(135deg, rgba(250, 204, 21, 0.12) 0%, var(--surface-color) 100%)',
-      getValue: (r: ExchangeRates | null) => r?.usdt_bs,
-    },
     EUR: {
+      key: 'EUR',
       label: 'Euro Oficial',
       short: 'Euro BCV',
-      color: '#3B82F6', // Blue
-      gradient: 'linear-gradient(135deg, rgba(59, 130, 246, 0.12) 0%, var(--surface-color) 100%)',
+      symbol: '€',
+      color: '#3B82F6',
       getValue: (r: ExchangeRates | null) => r?.eur_bs,
+    },
+    USDT: {
+      key: 'USDT',
+      label: 'Binance USDT',
+      short: 'USDT',
+      symbol: '₮',
+      color: '#FACC15',
+      symbolColor: 'black',
+      getValue: (r: ExchangeRates | null) => r?.usdt_bs,
     }
   };
-
-  const primaryConfig = currencyConfigs[primaryRate];
-  const secondaryRates = (['USD', 'EUR', 'USDT'] as const).filter(r => r !== primaryRate);
 
   // Calculator Logic
   const calcResults = useMemo(() => {
@@ -98,7 +93,7 @@ export const RatesPage: React.FC = () => {
 
   return (
     <div style={{ padding: '1rem', paddingBottom: '6rem', maxWidth: '600px', margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', padding: '0 0.5rem', paddingTop: '1rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', padding: '0 0.5rem', paddingTop: '1rem' }}>
         <h1 style={{
           fontSize: '1.75rem',
           fontWeight: 800,
@@ -128,66 +123,45 @@ export const RatesPage: React.FC = () => {
         </button>
       </div>
 
+      <div style={{ padding: '0 0.5rem', marginBottom: '2rem', fontSize: '0.85rem', color: 'var(--text-tertiary)' }}>
+        Actualizado: {rates?.last_updated ? new Date(rates.last_updated).toLocaleString() : '—'}
+      </div>
+
       {loading && !rates ? (
         <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-tertiary)' }}>
           Cargando tasas...
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
 
-          {/* Main Hero Rate */}
-          <div className="soft-card" style={{
-            textAlign: 'center',
-            padding: '2.5rem 1rem',
-            background: 'var(--surface-color)',
-            position: 'relative',
-            overflow: 'hidden',
-            transition: 'background 0.3s ease'
-          }}>
-            <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
-              {primaryConfig.label}
-            </div>
-            <div style={{ fontSize: '3.5rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', lineHeight: 1 }}>
-              {formatRate(primaryConfig.getValue(rates))}
-            </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '1rem' }}>
-              Actualizado: {rates?.last_updated ? new Date(rates.last_updated).toLocaleString() : '—'}
-            </div>
-          </div>
-
-          {/* Secondary Rates (Clickable) */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            {secondaryRates.map(rateKey => {
+          {/* Unified Rates List */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {(['USD', 'EUR', 'USDT'] as const).map(rateKey => {
               const config = currencyConfigs[rateKey];
               return (
-                <div
-                  key={rateKey}
-                  className="soft-card"
-                  onClick={() => setPrimaryRate(rateKey)}
-                  style={{
-                    padding: '1.25rem',
-                    textAlign: 'center',
-                    cursor: 'pointer',
-                    transition: 'transform 0.2s, box-shadow 0.2s',
-                    position: 'relative',
-                    border: '1px solid transparent'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                    e.currentTarget.style.borderColor = 'var(--border-color)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'none';
-                    e.currentTarget.style.borderColor = 'transparent';
-                  }}
-                >
-                  <div style={{ position: 'absolute', top: '10px', right: '10px', color: 'var(--text-tertiary)' }}>
-                    <ArrowRightLeft size={14} />
+                <div key={rateKey} className="soft-card" style={{ padding: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <div style={{
+                      width: '44px',
+                      height: '44px',
+                      borderRadius: '50%',
+                      background: config.color,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'white',
+                      fontWeight: 800,
+                      fontSize: '1.1rem',
+                      boxShadow: 'var(--shadow-sm)'
+                    }}>
+                      {config.symbol}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.95rem' }}>{config.label}</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>1 {rateKey}</div>
+                    </div>
                   </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: '0.25rem' }}>
-                    {config.short}
-                  </div>
-                  <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  <div style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                     {formatRate(config.getValue(rates))}
                   </div>
                 </div>
@@ -195,11 +169,11 @@ export const RatesPage: React.FC = () => {
             })}
           </div>
 
-          {/* Redesigned Calculator */}
+          {/* Compact Calculator */}
           <div style={{ marginTop: '0.5rem' }}>
             <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '1rem', padding: '0 0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Calculator size={22} color="var(--text-secondary)" />
-              Calculadora de tasas
+              Calculadora
             </h2>
 
             <div style={{ padding: '0 0.5rem' }}>
@@ -210,17 +184,17 @@ export const RatesPage: React.FC = () => {
                   display: 'flex',
                   flexDirection: 'column',
                   padding: '0.5rem 0.5rem 0.5rem',
-                  marginBottom: '1rem',
+                  marginBottom: '0.5rem',
                   borderBottom: `2px solid ${isFocused ? 'var(--primary-color)' : 'var(--border-color)'}`,
                   transition: 'border-color 0.2s ease-in-out'
                 }}>
                   <div style={{ 
-                    fontSize: '1rem', 
-                    color: 'var(--text-primary)', 
+                    fontSize: '0.9rem', 
+                    color: 'var(--text-secondary)', 
                     fontWeight: 600,
                     marginBottom: '0.5rem'
                   }}>
-                    Monto en {calcBase === 'BS' ? 'VES' : calcBase}
+                    Monto a convertir
                   </div>
                   <div style={{ 
                     display: 'flex', 
@@ -239,7 +213,7 @@ export const RatesPage: React.FC = () => {
                       style={{
                         flex: 1,
                         fontSize: '2rem',
-                        fontWeight: 600,
+                        fontWeight: 700,
                         color: 'var(--text-primary)',
                         background: 'transparent',
                         border: 'none',
@@ -265,7 +239,7 @@ export const RatesPage: React.FC = () => {
                           border: 'none',
                           color: 'var(--text-primary)',
                           fontSize: '1.1rem',
-                          fontWeight: 600,
+                          fontWeight: 700,
                           outline: 'none',
                           cursor: 'pointer',
                           paddingRight: '1.5rem',
@@ -282,60 +256,33 @@ export const RatesPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Results List */}
+                {/* Vertical Results List */}
                 {calcResults && (
-                  <div className="metrics-scroll" style={{ padding: '0.5rem 0' }}>
-                    {calcBase !== 'BS' && (
-                      <div className="soft-card" style={{
-                        padding: '1.5rem 1rem', minHeight: '120px', minWidth: '140px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', scrollSnapAlign: 'start'
+                  <div className="soft-card" style={{ padding: 0, overflow: 'hidden' }}>
+                    {[
+                      { key: 'BS', label: 'Bolívares (VES)', symbol: 'Bs', val: calcResults.bs, color: '#EF4444' },
+                      { key: 'USD', label: 'Dólares (USD)', symbol: '$', val: calcResults.usd, color: '#10B981' },
+                      { key: 'EUR', label: 'Euros (EUR)', symbol: '€', val: calcResults.eur, color: '#3B82F6' },
+                      { key: 'USDT', label: 'Tether (USDT)', symbol: '₮', val: calcResults.usdt, color: '#FACC15', symbolColor: 'black' },
+                    ].filter(item => item.key !== calcBase).map((item, index, arr) => (
+                      <div key={item.key} style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center', 
+                        padding: '1.25rem',
+                        borderBottom: index < arr.length - 1 ? '1px solid var(--border-color)' : 'none'
                       }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.75rem' }}>
-                          <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: '#EF4444', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 'bold', color: 'white' }}>Bs</div>
-                          <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>VES</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                          <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: item.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 'bold', color: item.symbolColor || 'white' }}>
+                            {item.symbol}
+                          </div>
+                          <span style={{ fontWeight: 600, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{item.label}</span>
                         </div>
-                        <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.25rem', wordBreak: 'break-word', lineHeight: 1.2 }}>{formatCalc(calcResults.bs, '')}</div>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Bolívares</div>
-                      </div>
-                    )}
-
-                    {calcBase !== 'USD' && (
-                      <div className="soft-card" style={{
-                        padding: '1.5rem 1rem', minHeight: '120px', minWidth: '140px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', scrollSnapAlign: 'start'
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.75rem' }}>
-                          <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 'bold', color: 'white' }}>$</div>
-                          <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>USD</span>
+                        <div style={{ fontWeight: 700, fontSize: '1.1rem', color: 'var(--text-primary)' }}>
+                          {formatCalc(item.val, '')}
                         </div>
-                        <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.25rem', wordBreak: 'break-word', lineHeight: 1.2 }}>{formatCalc(calcResults.usd, '')}</div>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Dólares</div>
                       </div>
-                    )}
-
-                    {calcBase !== 'EUR' && (
-                      <div className="soft-card" style={{
-                        padding: '1.5rem 1rem', minHeight: '120px', minWidth: '140px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', scrollSnapAlign: 'start'
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.75rem' }}>
-                          <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: '#3B82F6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 'bold', color: 'white' }}>€</div>
-                          <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>EUR</span>
-                        </div>
-                        <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.25rem', wordBreak: 'break-word', lineHeight: 1.2 }}>{formatCalc(calcResults.eur, '')}</div>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Euros</div>
-                      </div>
-                    )}
-
-                    {calcBase !== 'USDT' && (
-                      <div className="soft-card" style={{
-                        padding: '1.5rem 1rem', minHeight: '120px', minWidth: '140px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', scrollSnapAlign: 'start'
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.75rem' }}>
-                          <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: '#FACC15', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', fontWeight: 'bold', color: 'black' }}>₮</div>
-                          <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>USDT</span>
-                        </div>
-                        <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.25rem', wordBreak: 'break-word', lineHeight: 1.2 }}>{formatCalc(calcResults.usdt, '')}</div>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Tether</div>
-                      </div>
-                    )}
+                    ))}
                   </div>
                 )}
 

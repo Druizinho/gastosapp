@@ -9,3 +9,5 @@ python-jose[cryptography]
 supabase
 httpx
 pyDolarVenezuela
+pywebpush  
+ 

@@ -167,9 +167,9 @@ const Dashboard: React.FC = () => {
   };
 
   return (
-    <div className="dashboard-container" style={{ padding: '1rem', paddingBottom: '6rem' }}>
+    <div className="dashboard-container" style={{ padding: '1rem', paddingBottom: '6rem', maxWidth: '600px', margin: '0 auto' }}>
       {/* Top Header */}
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', paddingTop: '0.5rem' }}>
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', paddingTop: '1rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'var(--accent-light)', border: '2px solid white', boxShadow: 'var(--shadow-sm)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-primary)', fontWeight: 700, fontSize: '0.95rem', overflow: 'hidden' }}>
             {avatarUrl ? (

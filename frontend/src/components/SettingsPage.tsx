@@ -188,6 +188,43 @@ export const SettingsPage: React.FC = () => {
               <ChevronRight size={20} color="var(--text-tertiary)" />
             </div>
           </button>
+
+          <button 
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '1.25rem 1.25rem', background: 'transparent', border: 'none', 
+              cursor: 'pointer', textAlign: 'left', transition: 'background 0.2s'
+            }}
+            onClick={async () => {
+              const { checkPushSubscriptionStatus, enablePushNotifications, disablePushNotifications } = await import('../pushManager');
+              const isEnabled = await checkPushSubscriptionStatus();
+              if (isEnabled) {
+                const success = await disablePushNotifications();
+                if (success) alert('Notificaciones desactivadas');
+              } else {
+                const success = await enablePushNotifications();
+                if (success) alert('Notificaciones activadas');
+                else alert('No se pudo activar las notificaciones. Revisa los permisos.');
+              }
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-hover)'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', color: 'var(--text-primary)', fontWeight: 600 }}>
+              <div style={{ 
+                width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'linear-gradient(135deg, rgba(236, 72, 153, 0.15) 0%, rgba(236, 72, 153, 0.05) 100%)', 
+                color: '#EC4899', borderRadius: '12px'
+              }}>
+                <Globe size={18} />
+              </div>
+              Notificaciones Push
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', fontWeight: 500 }}>Configurar</span>
+              <ChevronRight size={20} color="var(--text-tertiary)" />
+            </div>
+          </button>
         </div>
       </div>
 

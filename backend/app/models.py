@@ -144,3 +144,13 @@ class IncomeCheck(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     income = relationship("EstimatedIncome", back_populates="checks")
+
+class PushSubscription(Base):
+    __tablename__ = "push_subscriptions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    endpoint = Column(String, nullable=False, unique=True)
+    p256dh = Column(String, nullable=False)
+    auth = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
