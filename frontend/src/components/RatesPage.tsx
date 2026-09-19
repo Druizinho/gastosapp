@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { RefreshCw, ArrowRightLeft, Calculator } from 'lucide-react';
+import { RefreshCw, ArrowRightLeft, Calculator, ChevronDown } from 'lucide-react';
 import { getRates } from '../api';
 import type { ExchangeRates } from '../types';
 
@@ -139,7 +139,7 @@ export const RatesPage: React.FC = () => {
           <div className="soft-card" style={{
             textAlign: 'center',
             padding: '2.5rem 1rem',
-            background: primaryConfig.gradient,
+            background: 'var(--surface-color)',
             position: 'relative',
             overflow: 'hidden',
             transition: 'background 0.3s ease'
@@ -199,7 +199,7 @@ export const RatesPage: React.FC = () => {
           <div style={{ marginTop: '0.5rem' }}>
             <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '1rem', padding: '0 0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Calculator size={22} color="var(--text-secondary)" />
-              Calculadora
+              Calculadora de tasas
             </h2>
 
             <div style={{ padding: '0 0.5rem' }}>
@@ -209,11 +209,25 @@ export const RatesPage: React.FC = () => {
                 <div style={{
                   display: 'flex',
                   flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '1rem 0 1.5rem 0',
+                  padding: '0.5rem 0.5rem 0.5rem',
+                  marginBottom: '1rem',
+                  borderBottom: `2px solid ${isFocused ? 'var(--primary-color)' : 'var(--border-color)'}`,
+                  transition: 'border-color 0.2s ease-in-out'
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center', width: '100%', maxWidth: '300px' }}>
+                  <div style={{ 
+                    fontSize: '1rem', 
+                    color: 'var(--text-primary)', 
+                    fontWeight: 600,
+                    marginBottom: '0.5rem'
+                  }}>
+                    Monto en {calcBase === 'BS' ? 'VES' : calcBase}
+                  </div>
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'baseline', 
+                    justifyContent: 'flex-end', 
+                    width: '100%',
+                  }}>
                     <input
                       type="text"
                       inputMode="decimal"
@@ -224,58 +238,59 @@ export const RatesPage: React.FC = () => {
                       }}
                       style={{
                         flex: 1,
-                        fontSize: '2.2rem',
-                        fontWeight: 700,
+                        fontSize: '2rem',
+                        fontWeight: 600,
                         color: 'var(--text-primary)',
                         background: 'transparent',
                         border: 'none',
-                        borderBottom: isFocused ? '2px solid var(--primary-color)' : '2px solid var(--border-color)',
                         outline: 'none',
-                        textAlign: 'center',
-                        padding: '0.2rem 0',
+                        textAlign: 'right',
+                        padding: '0',
                         minWidth: 0,
-                        transition: 'border-color 0.2s ease-in-out'
+                        marginRight: '0.75rem',
                       }}
                       placeholder="0"
                       onFocus={() => setIsFocused(true)}
                       onBlur={() => setIsFocused(false)}
                     />
-                    <select
-                      value={calcBase}
-                      onChange={(e) => setCalcBase(e.target.value as any)}
-                      style={{
-                        padding: '0.5rem 0.8rem',
-                        borderRadius: '20px',
-                        border: '1px solid var(--border-color)',
-                        background: 'var(--surface-color)',
-                        color: 'var(--text-secondary)',
-                        fontSize: '1rem',
-                        fontWeight: 600,
-                        outline: 'none',
-                        cursor: 'pointer',
-                        boxShadow: 'var(--shadow-sm)',
-                        textAlign: 'center',
-                        flexShrink: 0
-                      }}
-                    >
-                      <option value="USD">USD</option>
-                      <option value="BS">VES</option>
-                      <option value="EUR">EUR</option>
-                      <option value="USDT">USDT</option>
-                    </select>
+                    
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      <select
+                        value={calcBase}
+                        onChange={(e) => setCalcBase(e.target.value as any)}
+                        style={{
+                          appearance: 'none',
+                          WebkitAppearance: 'none',
+                          background: 'transparent',
+                          border: 'none',
+                          color: 'var(--text-primary)',
+                          fontSize: '1.1rem',
+                          fontWeight: 600,
+                          outline: 'none',
+                          cursor: 'pointer',
+                          paddingRight: '1.5rem',
+                          zIndex: 1,
+                        }}
+                      >
+                        <option value="USD">USD</option>
+                        <option value="BS">VES</option>
+                        <option value="EUR">EUR</option>
+                        <option value="USDT">USDT</option>
+                      </select>
+                      <ChevronDown size={20} color="var(--text-primary)" style={{ position: 'absolute', right: 0, pointerEvents: 'none' }} />
+                    </div>
                   </div>
                 </div>
 
                 {/* Results List */}
                 {calcResults && (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
+                  <div className="metrics-scroll" style={{ padding: '0.5rem 0' }}>
                     {calcBase !== 'BS' && (
                       <div className="soft-card" style={{
-                        padding: '1.5rem 0.25rem', minHeight: '120px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center',
-                        background: 'linear-gradient(135deg, rgba(250, 204, 21, 0.15) 0%, rgba(37, 99, 235, 0.1) 50%, rgba(220, 38, 38, 0.15) 100%)'
+                        padding: '1.5rem 1rem', minHeight: '120px', minWidth: '140px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', scrollSnapAlign: 'start'
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.75rem' }}>
-                          <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: '#FCD34D', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 'bold', color: 'black' }}>Bs</div>
+                          <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: '#EF4444', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 'bold', color: 'white' }}>Bs</div>
                           <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>VES</span>
                         </div>
                         <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.25rem', wordBreak: 'break-word', lineHeight: 1.2 }}>{formatCalc(calcResults.bs, '')}</div>
@@ -285,8 +300,7 @@ export const RatesPage: React.FC = () => {
 
                     {calcBase !== 'USD' && (
                       <div className="soft-card" style={{
-                        padding: '1.5rem 0.25rem', minHeight: '120px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center',
-                        background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, var(--surface-color) 100%)'
+                        padding: '1.5rem 1rem', minHeight: '120px', minWidth: '140px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', scrollSnapAlign: 'start'
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.75rem' }}>
                           <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 'bold', color: 'white' }}>$</div>
@@ -299,8 +313,7 @@ export const RatesPage: React.FC = () => {
 
                     {calcBase !== 'EUR' && (
                       <div className="soft-card" style={{
-                        padding: '1.5rem 0.25rem', minHeight: '120px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center',
-                        background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.12) 0%, var(--surface-color) 100%)'
+                        padding: '1.5rem 1rem', minHeight: '120px', minWidth: '140px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', scrollSnapAlign: 'start'
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.75rem' }}>
                           <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: '#3B82F6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 'bold', color: 'white' }}>€</div>
@@ -313,8 +326,7 @@ export const RatesPage: React.FC = () => {
 
                     {calcBase !== 'USDT' && (
                       <div className="soft-card" style={{
-                        padding: '1.5rem 0.25rem', minHeight: '120px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center',
-                        background: 'linear-gradient(135deg, rgba(250, 204, 21, 0.12) 0%, var(--surface-color) 100%)'
+                        padding: '1.5rem 1rem', minHeight: '120px', minWidth: '140px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', scrollSnapAlign: 'start'
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.75rem' }}>
                           <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: '#FACC15', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', fontWeight: 'bold', color: 'black' }}>₮</div>
