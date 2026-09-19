@@ -5,6 +5,7 @@ from sqlalchemy import delete
 from typing import List, Dict, Any
 import os
 import datetime
+from uuid import UUID
 
 from .. import schemas, models, auth
 from ..database import get_db
@@ -27,7 +28,7 @@ async def get_public_key():
 async def subscribe_push(
     subscription: schemas.PushSubscriptionCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: models.Profile = Depends(auth.get_current_user)
+    user_id: UUID = Depends(auth.get_current_user)
 ):
     """Saves a push subscription for the current user."""
     # Check if subscription already exists for this endpoint
@@ -37,15 +38,15 @@ async def subscribe_push(
     
     if existing_sub:
         # Update user id if it changed (same device, different user)
-        if existing_sub.user_id != current_user.id:
-            existing_sub.user_id = current_user.id
+        if existing_sub.user_id != user_id:
+            existing_sub.user_id = user_id
             await db.commit()
             await db.refresh(existing_sub)
         return existing_sub
     
     # Create new subscription
     new_sub = models.PushSubscription(
-        user_id=current_user.id,
+        user_id=user_id,
         endpoint=subscription.endpoint,
         p256dh=subscription.p256dh,
         auth=subscription.auth
@@ -59,12 +60,12 @@ async def subscribe_push(
 async def unsubscribe_push(
     endpoint: str,
     db: AsyncSession = Depends(get_db),
-    current_user: models.Profile = Depends(auth.get_current_user)
+    user_id: UUID = Depends(auth.get_current_user)
 ):
     """Removes a push subscription."""
     stmt = delete(models.PushSubscription).where(
         models.PushSubscription.endpoint == endpoint,
-        models.PushSubscription.user_id == current_user.id
+        models.PushSubscription.user_id == user_id
     )
     await db.execute(stmt)
     await db.commit()

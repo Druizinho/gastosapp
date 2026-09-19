@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import CategoryManager from './CategoryManager';
 import ProfileManager from './ProfileManager';
+import { NotificationSettings } from './NotificationSettings';
 
-import { LogOut, User, Folder, ChevronRight, ArrowLeft, Globe, Palette } from 'lucide-react';
+import { LogOut, User, Folder, ChevronRight, ArrowLeft, Globe, Palette, Bell } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-type SettingsView = 'menu' | 'profile' | 'categories';
+type SettingsView = 'menu' | 'profile' | 'categories' | 'notifications';
 
 export const SettingsPage: React.FC = () => {
   const [currentView, setCurrentView] = useState<SettingsView>('menu');
@@ -195,18 +196,7 @@ export const SettingsPage: React.FC = () => {
               padding: '1.25rem 1.25rem', background: 'transparent', border: 'none', 
               cursor: 'pointer', textAlign: 'left', transition: 'background 0.2s'
             }}
-            onClick={async () => {
-              const { checkPushSubscriptionStatus, enablePushNotifications, disablePushNotifications } = await import('../pushManager');
-              const isEnabled = await checkPushSubscriptionStatus();
-              if (isEnabled) {
-                const success = await disablePushNotifications();
-                if (success) alert('Notificaciones desactivadas');
-              } else {
-                const success = await enablePushNotifications();
-                if (success) alert('Notificaciones activadas');
-                else alert('No se pudo activar las notificaciones. Revisa los permisos.');
-              }
-            }}
+            onClick={() => setCurrentView('notifications')}
             onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-hover)'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
@@ -216,7 +206,7 @@ export const SettingsPage: React.FC = () => {
                 background: 'linear-gradient(135deg, rgba(236, 72, 153, 0.15) 0%, rgba(236, 72, 153, 0.05) 100%)', 
                 color: '#EC4899', borderRadius: '12px'
               }}>
-                <Globe size={18} />
+                <Bell size={18} />
               </div>
               Notificaciones Push
             </div>
@@ -283,6 +273,7 @@ export const SettingsPage: React.FC = () => {
           {currentView === 'menu' && 'Ajustes'}
           {currentView === 'profile' && 'Perfil'}
           {currentView === 'categories' && 'Categorías'}
+          {currentView === 'notifications' && 'Notificaciones'}
         </h1>
       </header>
 
@@ -290,6 +281,7 @@ export const SettingsPage: React.FC = () => {
         {currentView === 'menu' && renderMenu()}
         {currentView === 'profile' && <ProfileManager />}
         {currentView === 'categories' && <CategoryManager onCategoriesChanged={() => {}} />}
+        {currentView === 'notifications' && <NotificationSettings />}
       </div>
     </div>
   );
