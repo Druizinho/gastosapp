@@ -52,7 +52,7 @@ const tools: ToolCard[] = [
     color: '#3B82F6',
     bgColor: 'rgba(59, 130, 246, 0.1)',
     path: '/herramientas/ingresos-estimados',
-    enabled: false,
+    enabled: true,
   },
 ];
 

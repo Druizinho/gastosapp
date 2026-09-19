@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Edit3, ArrowLeft } from 'lucide-react';
-import type { Debt, DebtCreate, DebtUpdate, DebtPaymentCreate } from '../types';
-import { getDebts, createDebt, updateDebt, addDebtPayment, deleteDebt } from '../api';
+import { Plus, Trash2, Edit3, ArrowLeft, Wallet } from 'lucide-react';
+import type { Debt, DebtCreate, DebtUpdate, DebtPaymentCreate, ExchangeRates } from '../types';
+import { getDebts, createDebt, updateDebt, addDebtPayment, deleteDebt, getRates } from '../api';
 import DebtForm from './DebtForm';
 import DebtPaymentForm from './DebtPaymentForm';
 
@@ -34,6 +34,8 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
   const [submitting, setSubmitting] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [filterSettled, setFilterSettled] = useState(false);
+  const [rates, setRates] = useState<ExchangeRates | null>(null);
+  const [displayCurrency, setDisplayCurrency] = useState<'usd' | 'bs' | 'eur' | 'usdt'>('usd');
   
   const [showForm, setShowForm] = useState(false);
   const [editingDebt, setEditingDebt] = useState<Debt | undefined>(undefined);
@@ -54,8 +56,12 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
   const fetchDebts = async () => {
     try {
       setLoading(true);
-      const data = await getDebts(type, filterSettled);
-      setDebts(data);
+      const [debtsData, ratesData] = await Promise.all([
+        getDebts(type, filterSettled),
+        getRates()
+      ]);
+      setDebts(debtsData);
+      setRates(ratesData);
     } catch (error) {
       console.error('Error fetching debts:', error);
     } finally {
@@ -129,14 +135,88 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
   };
 
   const calculatePaid = (debt: Debt) => {
-    const currencyKey = `amount_${debt.currency.toLowerCase().replace('_bcv', '').replace('_cash', '')}` as keyof DebtPaymentCreate;
-    
     return debt.payments.reduce((acc, pay) => {
       if (pay.currency === debt.currency) return acc + Number(pay.amount);
-      const converted = (pay as any)[currencyKey];
-      if (converted) return acc + Number(converted);
-      return acc;
+      const payInBs = convertCurrencyAmount(Number(pay.amount), pay.currency, rates).bs;
+      const debtOneUnitInBs = convertCurrencyAmount(1, debt.currency, rates).bs;
+      const converted = debtOneUnitInBs > 0 ? payInBs / debtOneUnitInBs : 0;
+      return acc + converted;
     }, 0);
+  };
+
+  const convertCurrencyAmount = (amount: number, currency: string, rates: ExchangeRates) => {
+    let amount_usd = 0;
+    let amount_bs = 0;
+    let amount_eur = 0;
+    let amount_usdt = 0;
+
+    const usd_bs = rates.usd_bs || 1;
+    const eur_bs = rates.eur_bs || 1;
+    const usdt_bs = rates.usdt_bs || 1;
+
+    if (currency === 'USD_BCV') {
+      amount_usd = amount;
+      amount_bs = amount * usd_bs;
+      amount_eur = amount_bs / eur_bs;
+      amount_usdt = amount_bs / usdt_bs;
+    } else if (currency === 'USD_CASH') {
+      const available_rates = [usd_bs, eur_bs, usdt_bs].filter(r => r > 1);
+      const highest_rate = available_rates.length > 0 ? Math.max(...available_rates) : 1;
+      amount_bs = amount * highest_rate;
+      amount_usd = amount_bs / usd_bs;
+      amount_eur = amount_bs / eur_bs;
+      amount_usdt = amount_bs / usdt_bs;
+    } else if (currency === 'EUR_BCV') {
+      amount_eur = amount;
+      amount_bs = amount * eur_bs;
+      amount_usd = amount_bs / usd_bs;
+      amount_usdt = amount_bs / usdt_bs;
+    } else if (currency === 'BS') {
+        amount_bs = amount;
+        amount_usd = amount / usd_bs;
+        amount_eur = amount / eur_bs;
+        amount_usdt = amount / usdt_bs;
+    } else if (currency === 'USDT') {
+        amount_usdt = amount;
+        amount_bs = amount * usdt_bs;
+        amount_usd = amount_bs / usd_bs;
+        amount_eur = amount_bs / eur_bs;
+    }
+    
+    return { usd: amount_usd, bs: amount_bs, eur: amount_eur, usdt: amount_usdt };
+  };
+
+  const getSummaryAmount = () => {
+    if (!rates) return '0.00';
+    let totalBs = 0, totalUsd = 0, totalEur = 0, totalUsdt = 0;
+    
+    debts.forEach(debt => {
+      let amountToSum = 0;
+      if (filterSettled) {
+        amountToSum = Number(debt.total_amount);
+      } else {
+        const remaining = Math.max(Number(debt.total_amount) - calculatePaid(debt), 0);
+        if (remaining <= 0) return;
+        amountToSum = remaining;
+      }
+
+      const converted = convertCurrencyAmount(amountToSum, debt.currency, rates);
+      totalUsd += converted.usd;
+      totalBs += converted.bs;
+      totalEur += converted.eur;
+      totalUsdt += converted.usdt;
+    });
+
+    const map = { bs: totalBs, usd: totalUsd, eur: totalEur, usdt: totalUsdt };
+    const prefixMap = { bs: 'Bs. ', usd: '$ ', eur: '€ ', usdt: '' };
+    const suffixMap = { bs: '', usd: '', eur: '', usdt: ' USDT' };
+    return `${prefixMap[displayCurrency]}${Number(map[displayCurrency]).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${suffixMap[displayCurrency]}`;
+  };
+
+  const cycleDisplayCurrency = () => {
+    const order: Array<'bs' | 'usd' | 'eur' | 'usdt'> = ['usd', 'bs', 'eur', 'usdt'];
+    const idx = order.indexOf(displayCurrency);
+    setDisplayCurrency(order[(idx + 1) % order.length]);
   };
 
   // VISTA: Detalle de Deuda
@@ -147,20 +227,30 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
 
     return (
       <div style={{ padding: '1rem', paddingBottom: '6rem', maxWidth: '600px', margin: '0 auto' }}>
-        <button 
-          onClick={() => {
-            if (showPaymentForm) setShowPaymentForm(false);
-            else setSelectedDebt(null);
-          }}
-          style={{
-            display: 'flex', alignItems: 'center', gap: '0.25rem',
-            background: 'none', border: 'none', color: 'var(--text-secondary)',
-            fontSize: '0.9rem', cursor: 'pointer', marginBottom: '1.5rem',
-            padding: 0
-          }}
-        >
-          <ArrowLeft size={16} /> {showPaymentForm ? 'Volver al detalle' : 'Volver a la lista'}
-        </button>
+        <header style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', paddingTop: '0.5rem' }}>
+          <button 
+            onClick={() => {
+              if (showPaymentForm) setShowPaymentForm(false);
+              else setSelectedDebt(null);
+            }}
+            style={{
+              width: '40px', height: '40px', borderRadius: 'var(--radius-full)',
+              background: 'var(--surface-color)', border: 'none', display: 'flex',
+              alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+              boxShadow: 'var(--shadow-sm)', color: 'var(--text-primary)', flexShrink: 0
+            }}
+          >
+            <ArrowLeft size={20} />
+          </button>
+          <div>
+            <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+              {showPaymentForm ? 'Registrar Abono' : 'Detalle de Deuda'}
+            </h1>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0 }}>
+              {selectedDebt.concept}
+            </p>
+          </div>
+        </header>
 
         {showPaymentForm ? (
           <div className="soft-card" style={{ padding: '1.5rem' }}>
@@ -177,12 +267,9 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
             />
           </div>
         ) : (
-          <div className="soft-card" style={{ padding: '1.5rem' }}>
+          <div className="soft-card" style={{ padding: '1rem 1.25rem' }}>
             {/* Header */}
             <div style={{ marginBottom: '1.25rem' }}>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>
-                {selectedDebt.concept}
-              </h2>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                 {isOwed ? 'A:' : 'De:'} <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{selectedDebt.counterpart}</span>
                 {selectedDebt.start_date && (
@@ -195,24 +282,24 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
 
             {/* Resumen numérico */}
             <div style={{ 
-              display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', 
-              marginBottom: '1.25rem' 
+              display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', 
+              marginBottom: '1rem' 
             }}>
               <div style={{ textAlign: 'center', padding: '0.75rem', background: 'var(--surface-muted)', borderRadius: 'var(--radius-md)' }}>
                 <p style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Total</p>
-                <p style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                <p style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                   {formatCurrency(selectedDebt.total_amount, selectedDebt.currency)}
                 </p>
               </div>
               <div style={{ textAlign: 'center', padding: '0.75rem', background: 'var(--income-bg)', borderRadius: 'var(--radius-md)' }}>
                 <p style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Abonado</p>
-                <p style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--income-color)' }}>
+                <p style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--income-color)' }}>
                   {formatCurrency(paid, selectedDebt.currency)}
                 </p>
               </div>
               <div style={{ textAlign: 'center', padding: '0.75rem', background: remaining > 0 ? 'var(--expense-bg)' : 'var(--income-bg)', borderRadius: 'var(--radius-md)' }}>
                 <p style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Restante</p>
-                <p style={{ fontSize: '1rem', fontWeight: 700, color: remaining > 0 ? themeColor : 'var(--income-color)' }}>
+                <p style={{ fontSize: '0.9rem', fontWeight: 700, color: remaining > 0 ? themeColor : 'var(--income-color)' }}>
                   {formatCurrency(remaining, selectedDebt.currency)}
                 </p>
               </div>
@@ -224,7 +311,7 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Progreso</span>
                 <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{Math.round(progress)}%</span>
               </div>
-              <div style={{ width: '100%', background: 'var(--surface-muted)', borderRadius: 'var(--radius-full)', height: '8px', overflow: 'hidden' }}>
+              <div style={{ width: '100%', background: 'var(--surface-muted)', borderRadius: 'var(--radius-full)', height: '4px', overflow: 'hidden' }}>
                 <div style={{ 
                   height: '100%', 
                   background: (remaining <= 0 || selectedDebt.is_settled) ? 'var(--income-color)' : themeColor, 
@@ -240,7 +327,7 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
                 background: 'rgba(16, 185, 129, 0.1)', color: '#10B981',
                 padding: '0.75rem 1rem', borderRadius: 'var(--radius-md)',
                 fontSize: '0.9rem', fontWeight: 600, textAlign: 'center',
-                marginBottom: '1.25rem', display: 'flex', alignItems: 'center',
+                marginBottom: '1rem', display: 'flex', alignItems: 'center',
                 justifyContent: 'center', gap: '0.5rem'
               }}>
                 ✅ ¡Deuda completamente liquidada!
@@ -248,15 +335,15 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
             )}
 
             {/* Botones de acción rápida */}
-            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
               <button
                 onClick={() => setShowPaymentForm(true)}
                 disabled={remaining <= 0 || selectedDebt.is_settled}
                 style={{
-                  flex: 2, padding: '0.75rem', borderRadius: 'var(--radius-md)',
+                  flex: 1, padding: '0.6rem', borderRadius: 'var(--radius-md)',
                   background: (remaining <= 0 || selectedDebt.is_settled) ? 'var(--surface-muted)' : themeColor, 
                   color: (remaining <= 0 || selectedDebt.is_settled) ? 'var(--text-tertiary)' : 'white',
-                  border: 'none', fontWeight: 600, fontSize: '0.9rem', 
+                  border: 'none', fontWeight: 600, fontSize: '0.85rem', 
                   cursor: (remaining <= 0 || selectedDebt.is_settled) ? 'not-allowed' : 'pointer'
                 }}
               >
@@ -265,22 +352,22 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
               <button
                 onClick={() => { setEditingDebt(selectedDebt); setShowForm(true); }}
                 style={{
-                  flex: 1, padding: '0.75rem', borderRadius: 'var(--radius-md)',
-                  background: 'var(--surface-muted)', color: 'var(--text-secondary)',
-                  border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
+                  width: '40px', padding: '0', borderRadius: 'var(--radius-md)',
+                  background: 'none', color: 'var(--text-secondary)',
+                  border: '1px solid var(--accent-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
                 }}
               >
-                <Edit3 size={18} />
+                <Edit3 size={16} />
               </button>
               <button
                 onClick={() => handleDelete(selectedDebt.id)}
                 style={{
-                  flex: 1, padding: '0.75rem', borderRadius: 'var(--radius-md)',
-                  background: 'var(--expense-bg)', color: 'var(--expense-color)',
-                  border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
+                  width: '40px', padding: '0', borderRadius: 'var(--radius-md)',
+                  background: 'none', color: 'var(--expense-color)',
+                  border: '1px solid var(--expense-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
                 }}
               >
-                <Trash2 size={18} />
+                <Trash2 size={16} />
               </button>
             </div>
 
@@ -326,7 +413,11 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
                       </p>
                       {payment.currency !== selectedDebt.currency && (
                         <p style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
-                          ≈ {formatCurrency((payment as any)[`amount_${selectedDebt.currency.toLowerCase().replace('_bcv', '').replace('_cash', '')}`] || 0, selectedDebt.currency)}
+                          ≈ {formatCurrency((() => {
+                            const payInBs = convertCurrencyAmount(Number(payment.amount), payment.currency, rates).bs;
+                            const debtOneUnitInBs = convertCurrencyAmount(1, selectedDebt.currency, rates).bs;
+                            return debtOneUnitInBs > 0 ? payInBs / debtOneUnitInBs : 0;
+                          })(), selectedDebt.currency)}
                         </p>
                       )}
                     </div>
@@ -343,43 +434,59 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
   // VISTA: Lista de Deudas (Main)
   return (
     <div style={{ padding: '1rem', paddingBottom: '6rem', maxWidth: '600px', margin: '0 auto' }}>
-      <header style={{ marginBottom: '1.5rem', paddingTop: '0.5rem' }}>
+      <header style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', paddingTop: '0.5rem' }}>
         <button 
           onClick={onBack}
           style={{
-            display: 'flex', alignItems: 'center', gap: '0.25rem',
-            background: 'none', border: 'none', color: 'var(--text-secondary)',
-            fontSize: '0.9rem', cursor: 'pointer', marginBottom: '1rem',
-            padding: 0
+            width: '40px', height: '40px', borderRadius: 'var(--radius-full)',
+            background: 'var(--surface-color)', border: 'none', display: 'flex',
+            alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+            boxShadow: 'var(--shadow-sm)', color: 'var(--text-primary)', flexShrink: 0
           }}
         >
-          <ArrowLeft size={16} /> Herramientas
+          <ArrowLeft size={20} />
         </button>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <h1 style={{ fontSize: '1.75rem', fontWeight: 800, color: themeColor, marginBottom: '0.25rem', letterSpacing: '-0.02em' }}>
-              {title}
-            </h1>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-              {isOwed ? 'Personas a las que les debes dinero' : 'Personas que te deben dinero'}
-            </p>
-          </div>
-          {!showForm && (
-            <button
-              onClick={() => { setEditingDebt(undefined); setShowForm(true); }}
-              style={{
-                width: '40px', height: '40px', borderRadius: 'var(--radius-full)',
-                background: themeColor, color: 'white', border: 'none',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer', boxShadow: 'var(--shadow-md)'
-              }}
-            >
-              <Plus size={20} />
-            </button>
-          )}
+        <div>
+          <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: themeColor, margin: 0 }}>
+            {title}
+          </h1>
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0 }}>
+            {isOwed ? 'A quién le debes' : 'Quién te debe'}
+          </p>
         </div>
       </header>
+
+      {/* Summary card */}
+      <div
+        className="soft-card"
+        onClick={cycleDisplayCurrency}
+        style={{ 
+          marginBottom: '1.5rem', padding: '1.5rem', cursor: 'pointer',
+          background: isOwed ? 'linear-gradient(135deg, rgba(239, 68, 68, 0.06) 0%, var(--surface-color) 100%)' : 'linear-gradient(135deg, rgba(16, 185, 129, 0.06) 0%, var(--surface-color) 100%)',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            {filterSettled ? 'Deuda Total Liquidada' : 'Deuda Total Activa'}
+          </span>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '0.5rem',
+            padding: '0.25rem 0.6rem', borderRadius: 'var(--radius-full)',
+            background: isOwed ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)', color: isOwed ? '#EF4444' : '#10B981',
+            fontSize: '0.75rem', fontWeight: 600,
+          }}>
+            <Wallet size={14} />
+            {debts.length} {filterSettled ? 'liquidadas' : 'activas'}
+          </div>
+        </div>
+        <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+          {loading ? '...' : getSummaryAmount()}
+        </div>
+        <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginTop: '0.25rem' }}>
+          Toca para cambiar moneda
+        </div>
+      </div>
 
       {showForm ? (
         <div className="soft-card" style={{ padding: '1.5rem' }}>
@@ -397,14 +504,15 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
       ) : (
         <>
           {/* Tabs */}
-          <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', borderBottom: '1px solid var(--accent-light)' }}>
+          <div style={{ display: 'flex', background: 'var(--surface-muted)', borderRadius: 'var(--radius-full)', padding: '0.25rem', marginBottom: '1.5rem' }}>
             <button
               onClick={() => setFilterSettled(false)}
               style={{
-                background: 'none', border: 'none', padding: '0.75rem 0', cursor: 'pointer',
-                fontSize: '0.95rem', fontWeight: !filterSettled ? 700 : 500,
+                flex: 1, padding: '0.6rem', border: 'none', borderRadius: 'var(--radius-full)',
+                fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
+                background: !filterSettled ? 'var(--surface-color)' : 'transparent',
                 color: !filterSettled ? themeColor : 'var(--text-secondary)',
-                borderBottom: !filterSettled ? `2px solid ${themeColor}` : '2px solid transparent',
+                boxShadow: !filterSettled ? 'var(--shadow-sm)' : 'none'
               }}
             >
               Activas
@@ -412,15 +520,32 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
             <button
               onClick={() => setFilterSettled(true)}
               style={{
-                background: 'none', border: 'none', padding: '0.75rem 0', cursor: 'pointer',
-                fontSize: '0.95rem', fontWeight: filterSettled ? 700 : 500,
+                flex: 1, padding: '0.6rem', border: 'none', borderRadius: 'var(--radius-full)',
+                fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
+                background: filterSettled ? 'var(--surface-color)' : 'transparent',
                 color: filterSettled ? themeColor : 'var(--text-secondary)',
-                borderBottom: filterSettled ? `2px solid ${themeColor}` : '2px solid transparent',
+                boxShadow: filterSettled ? 'var(--shadow-sm)' : 'none'
               }}
             >
               Liquidadas
             </button>
           </div>
+
+          {!showForm && (
+            <button
+              onClick={() => { setEditingDebt(undefined); setShowForm(true); }}
+              style={{
+                width: '100%', padding: '0.875rem', marginBottom: '1.25rem',
+                background: 'var(--surface-color)', border: '2px dashed var(--accent-light)',
+                borderRadius: 'var(--radius-md)', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
+                color: 'var(--text-secondary)', fontFamily: 'inherit', fontSize: '0.9rem', fontWeight: 600,
+                transition: 'all 0.2s ease',
+              }}
+            >
+              <Plus size={18} /> Añadir deuda
+            </button>
+          )}
 
           {loading ? (
             <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-tertiary)' }}>Cargando...</div>
@@ -441,7 +566,7 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
                   <div 
                     key={debt.id} 
                     className="soft-card"
-                    style={{ padding: '1.25rem', cursor: 'pointer', opacity: debt.is_settled ? 0.7 : 1 }}
+                    style={{ padding: '1rem 1.25rem', cursor: 'pointer', opacity: debt.is_settled ? 0.7 : 1 }}
                     onClick={() => {
                       const freshDebt = debts.find(d => d.id === debt.id) || debt;
                       setSelectedDebt(freshDebt);
@@ -451,18 +576,34 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
                       <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                         {debt.concept}
                       </h3>
-                      <span style={{ fontSize: '1.1rem', fontWeight: 800, color: themeColor }}>
-                        {formatCurrency(remaining, debt.currency)}
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <span style={{ fontSize: '1rem', fontWeight: 800, color: themeColor }}>
+                          {formatCurrency(remaining, debt.currency)}
+                        </span>
+                        {filterSettled && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(debt.id);
+                            }}
+                            style={{
+                              background: 'transparent', border: 'none', color: 'var(--text-tertiary)',
+                              cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0.25rem'
+                            }}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
                     </div>
                     
-                    <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
                       {isOwed ? 'A: ' : 'De: '}<span style={{ fontWeight: 600 }}>{debt.counterpart}</span>
                     </p>
 
-                    <div style={{ width: '100%', background: 'var(--surface-muted)', borderRadius: 'var(--radius-full)', height: '6px', marginBottom: '0.5rem' }}>
+                    <div style={{ width: '100%', background: 'var(--surface-muted)', borderRadius: 'var(--radius-full)', height: '4px', marginBottom: '0.75rem' }}>
                       <div style={{ 
-                        height: '6px', 
+                        height: '4px', 
                         background: themeColor, 
                         width: `${progress}%`,
                         borderRadius: 'var(--radius-full)'

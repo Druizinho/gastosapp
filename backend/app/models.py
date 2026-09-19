@@ -103,3 +103,44 @@ class DebtPayment(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     debt = relationship("Debt", back_populates="payments")
+
+
+class EstimatedIncome(Base):
+    __tablename__ = "estimated_incomes"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    expected_amount = Column(Numeric(12, 4), nullable=False)
+    currency = Column(String(10), nullable=False, default='BS')
+    payment_day = Column(Numeric(2, 0), nullable=True)
+    is_active = Column(Boolean, nullable=False, server_default='true')
+    notes = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    deactivated_at = Column(DateTime(timezone=True), nullable=True)
+    
+    checks = relationship("IncomeCheck", back_populates="income", cascade="all, delete-orphan")
+
+
+class IncomeCheck(Base):
+    __tablename__ = "income_checks"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    income_id = Column(UUID(as_uuid=True), ForeignKey("estimated_incomes.id", ondelete="CASCADE"), nullable=False, index=True)
+    month_year = Column(String(7), nullable=False, index=True)  # YYYY-MM
+    real_amount = Column(Numeric(12, 4), nullable=False)
+    currency = Column(String(10), nullable=False, default='BS')
+    amount_usd = Column(Numeric(12, 4), nullable=True)
+    amount_bs = Column(Numeric(12, 4), nullable=True)
+    amount_eur = Column(Numeric(12, 4), nullable=True)
+    amount_usdt = Column(Numeric(12, 4), nullable=True)
+    rate_usd_bs = Column(Numeric(12, 4), nullable=True)
+    rate_eur_bs = Column(Numeric(12, 4), nullable=True)
+    rate_usdt_bs = Column(Numeric(12, 4), nullable=True)
+    payment_date = Column(Date, nullable=False, server_default=func.current_date())
+    is_partial = Column(Boolean, nullable=False, server_default='false')
+    pending_date = Column(Date, nullable=True)
+    notes = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    income = relationship("EstimatedIncome", back_populates="checks")

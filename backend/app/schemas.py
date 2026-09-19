@@ -211,3 +211,57 @@ class DebtResponse(DebtBase):
 
     model_config = ConfigDict(from_attributes=True)
 
+# Estimated Income Schemas
+
+class EstimatedIncomeBase(BaseModel):
+    name: str = Field(..., min_length=1)
+    expected_amount: Decimal = Field(..., gt=0)
+    currency: CurrencyType = Field(default=CurrencyType.BS)
+    payment_day: Optional[int] = Field(None, ge=1, le=31)
+    is_active: bool = True
+    notes: Optional[str] = None
+
+class EstimatedIncomeCreate(EstimatedIncomeBase):
+    pass
+
+class EstimatedIncomeUpdate(BaseModel):
+    name: Optional[str] = None
+    expected_amount: Optional[Decimal] = Field(None, gt=0)
+    currency: Optional[CurrencyType] = None
+    payment_day: Optional[int] = Field(None, ge=1, le=31)
+    is_active: Optional[bool] = None
+    notes: Optional[str] = None
+
+class IncomeCheckBase(BaseModel):
+    month_year: str = Field(..., pattern=r"^\d{4}-\d{2}$")
+    real_amount: Decimal = Field(..., gt=0)
+    currency: CurrencyType = Field(default=CurrencyType.BS)
+    payment_date: Optional[datetime.date] = None
+    is_partial: bool = False
+    pending_date: Optional[datetime.date] = None
+    notes: Optional[str] = None
+
+class IncomeCheckCreate(IncomeCheckBase):
+    manual_rate: Optional[Decimal] = Field(None, gt=0)
+
+class IncomeCheckResponse(IncomeCheckBase):
+    id: UUID
+    income_id: UUID
+    created_at: datetime.datetime
+    amount_usd: Optional[Decimal] = None
+    amount_bs: Optional[Decimal] = None
+    amount_eur: Optional[Decimal] = None
+    amount_usdt: Optional[Decimal] = None
+    rate_usd_bs: Optional[Decimal] = None
+    rate_eur_bs: Optional[Decimal] = None
+    rate_usdt_bs: Optional[Decimal] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+class EstimatedIncomeResponse(EstimatedIncomeBase):
+    id: UUID
+    user_id: UUID
+    created_at: datetime.datetime
+    checks: List[IncomeCheckResponse] = []
+
+    model_config = ConfigDict(from_attributes=True)

@@ -214,3 +214,66 @@ export interface DebtUpdate {
   notes?: string;
 }
 
+// Estimated Income Types
+
+export interface IncomeCheck {
+  id: string;
+  income_id: string;
+  month_year: string;
+  real_amount: number;
+  currency: CurrencyType;
+  payment_date: string;
+  is_partial: boolean;
+  pending_date: string | null;
+  notes: string | null;
+  created_at: string;
+  amount_usd?: number | null;
+  amount_bs?: number | null;
+  amount_eur?: number | null;
+  amount_usdt?: number | null;
+  rate_usd_bs?: number | null;
+  rate_eur_bs?: number | null;
+  rate_usdt_bs?: number | null;
+}
+
+export interface EstimatedIncome {
+  id: string;
+  user_id: string;
+  name: string;
+  expected_amount: number;
+  currency: CurrencyType;
+  payment_day: number | null;
+  is_active: boolean;
+  notes: string | null;
+  created_at: string;
+  checks: IncomeCheck[];
+}
+
+export interface EstimatedIncomeCreate {
+  name: string;
+  expected_amount: number;
+  currency?: CurrencyType;
+  payment_day?: number | null;
+  is_active?: boolean;
+  notes?: string;
+}
+
+export interface EstimatedIncomeUpdate {
+  name?: string;
+  expected_amount?: number;
+  currency?: CurrencyType;
+  payment_day?: number | null;
+  is_active?: boolean;
+  notes?: string;
+}
+
+export interface IncomeCheckCreate {
+  month_year: string;
+  real_amount: number;
+  currency?: CurrencyType;
+  payment_date?: string;
+  is_partial?: boolean;
+  pending_date?: string | null;
+  notes?: string;
+  manual_rate?: number;
+}

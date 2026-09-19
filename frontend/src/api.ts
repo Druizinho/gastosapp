@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Expense, ExpenseCreate, ExpenseUpdate, SummaryResponse, ExchangeRates, RangeSummaryResponse, FixedExpense, FixedExpenseCreate, FixedExpenseUpdate, FixedExpenseSummary, Debt, DebtCreate, DebtUpdate, DebtPaymentCreate } from './types';
+import type { Expense, ExpenseCreate, ExpenseUpdate, SummaryResponse, ExchangeRates, RangeSummaryResponse, FixedExpense, FixedExpenseCreate, FixedExpenseUpdate, FixedExpenseSummary, Debt, DebtCreate, DebtUpdate, DebtPaymentCreate, EstimatedIncome, EstimatedIncomeCreate, EstimatedIncomeUpdate, IncomeCheckCreate, IncomeCheck } from './types';
 import { supabase } from './supabaseClient';
 
 const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
@@ -154,3 +154,37 @@ export const addDebtPayment = async (debtId: string, payment: DebtPaymentCreate)
   return response.data;
 };
 
+// Estimated Incomes
+
+export const getEstimatedIncomes = async (active_only: boolean = false): Promise<EstimatedIncome[]> => {
+  const response = await api.get('/incomes/', { params: { active_only } });
+  return response.data;
+};
+
+export const getMonthlyIncomes = async (month_year: string): Promise<EstimatedIncome[]> => {
+  const response = await api.get(`/incomes/monthly/${month_year}`);
+  return response.data;
+};
+
+export const createEstimatedIncome = async (income: EstimatedIncomeCreate): Promise<EstimatedIncome> => {
+  const response = await api.post('/incomes/', income);
+  return response.data;
+};
+
+export const updateEstimatedIncome = async (incomeId: string, income: EstimatedIncomeUpdate): Promise<EstimatedIncome> => {
+  const response = await api.put(`/incomes/${incomeId}`, income);
+  return response.data;
+};
+
+export const deleteEstimatedIncome = async (incomeId: string): Promise<void> => {
+  await api.delete(`/incomes/${incomeId}`);
+};
+
+export const checkIncome = async (incomeId: string, check: IncomeCheckCreate): Promise<IncomeCheck> => {
+  const response = await api.post(`/incomes/${incomeId}/checks`, check);
+  return response.data;
+};
+
+export const uncheckIncome = async (incomeId: string, month_year: string): Promise<void> => {
+  await api.delete(`/incomes/${incomeId}/checks/${month_year}`);
+};

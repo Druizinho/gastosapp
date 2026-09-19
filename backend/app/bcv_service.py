@@ -111,7 +111,6 @@ def convert_amount(amount: Decimal, currency: str, rates: dict, manual_rate: Dec
             if usd_bs: amount_usd = amount_bs / usd_bs
             if eur_bs: amount_eur = amount_bs / eur_bs
     elif currency == 'USD_CASH':
-        amount_usd = amount
         if manual_rate:
             amount_bs = amount * manual_rate
         else:
@@ -121,8 +120,11 @@ def convert_amount(amount: Decimal, currency: str, rates: dict, manual_rate: Dec
                 amount_bs = amount * highest_rate
                 
         if amount_bs:
+            if usd_bs: amount_usd = amount_bs / usd_bs
             if eur_bs: amount_eur = amount_bs / eur_bs
             if usdt_bs: amount_usdt = amount_bs / usdt_bs
+        else:
+            amount_usd = amount
 
     return {
         "amount_usd": amount_usd,

@@ -6,6 +6,7 @@ import Dashboard from './components/Dashboard';
 import { ToolsHub } from './components/ToolsHub';
 import FixedExpenses from './components/FixedExpenses';
 import DebtList from './components/DebtList';
+import EstimatedIncomeList from './components/EstimatedIncomeList.tsx';
 import { RatesPage } from './components/RatesPage';
 import { SettingsPage } from './components/SettingsPage';
 import { BottomNav } from './components/BottomNav';
@@ -54,6 +55,7 @@ const AppRoutes = () => {
           <Route path="/herramientas/gastos-fijos" element={<FixedExpenses />} />
           <Route path="/herramientas/deudas-nuestras" element={<DebtList type="owed" onBack={() => navigate(-1)} />} />
           <Route path="/herramientas/deudas-por-cobrar" element={<DebtList type="receivable" onBack={() => navigate(-1)} />} />
+          <Route path="/herramientas/ingresos-estimados" element={<EstimatedIncomeList onBack={() => navigate(-1)} />} />
           <Route path="/tasas" element={<RatesPage />} />
           <Route path="/ajustes" element={<SettingsPage />} />
         </Route>
