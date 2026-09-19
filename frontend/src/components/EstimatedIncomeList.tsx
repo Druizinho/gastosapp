@@ -63,11 +63,13 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
     }
   };
 
-  const convertCurrencyAmount = (amount: number, currency: string, rates: ExchangeRates) => {
+  const convertCurrencyAmount = (amount: number, currency: string, rates: ExchangeRates | null) => {
     let amount_usd = 0;
     let amount_bs = 0;
     let amount_eur = 0;
     let amount_usdt = 0;
+
+    if (!rates) return { usd: 0, bs: 0, eur: 0, usdt: 0 };
 
     const usd_bs = rates.usd_bs || 1;
     const eur_bs = rates.eur_bs || 1;
