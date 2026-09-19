@@ -11,7 +11,7 @@ from ..database import get_db
 from ..push_service import send_push_notification
 
 router = APIRouter(
-    prefix="/push",
+    prefix="/api/push",
     tags=["push"],
 )
 
