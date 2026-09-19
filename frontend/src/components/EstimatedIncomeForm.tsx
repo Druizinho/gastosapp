@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+
 import { createEstimatedIncome, updateEstimatedIncome } from '../api';
 import type { EstimatedIncome, EstimatedIncomeCreate, EstimatedIncomeUpdate, CurrencyType } from '../types';
 
