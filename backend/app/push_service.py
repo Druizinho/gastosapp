@@ -1,28 +1,31 @@
-import os
-from pywebpush import webpush, WebPushException
-import json
+import firebase_admin
+from firebase_admin import messaging
 
-def send_push_notification(subscription_info: dict, payload_data: dict):
+def send_push_notification(fcm_token: str, title: str, body: str, url: str = "/"):
     """
-    Sends a push notification to a specific subscription.
+    Sends a push notification to a specific FCM token.
+    Returns True if successful, False otherwise.
     """
     try:
-        vapid_private_key = os.getenv("VAPID_PRIVATE_KEY")
-        vapid_claims = {"sub": os.getenv("VAPID_CLAIM_EMAIL", "mailto:admin@gastosapp.com")}
-        
-        webpush(
-            subscription_info=subscription_info,
-            data=json.dumps(payload_data),
-            vapid_private_key=vapid_private_key,
-            vapid_claims=vapid_claims,
-            timeout=10
+        message = messaging.Message(
+            notification=messaging.Notification(
+                title=title,
+                body=body,
+            ),
+            webpush=messaging.WebpushConfig(
+                fcm_options=messaging.WebpushFCMOptions(
+                    link=url
+                )
+            ),
+            token=fcm_token,
         )
+
+        # Send a message to the device corresponding to the provided registration token.
+        response = messaging.send(message)
+        print('Successfully sent message:', response)
         return True
-    except WebPushException as ex:
-        print("Push notification failed: {}", repr(ex))
-        # Mozilla returns additional info
-        if ex.response and ex.response.json():
-            print(ex.response.json())
+    except messaging.UnregisteredError:
+        print(f"Token is unregistered or invalid: {fcm_token}")
         return False
     except Exception as e:
         print("Push notification general error:", repr(e))

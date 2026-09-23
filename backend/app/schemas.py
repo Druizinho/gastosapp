@@ -267,9 +267,7 @@ class EstimatedIncomeResponse(EstimatedIncomeBase):
     model_config = ConfigDict(from_attributes=True)
 
 class PushSubscriptionCreate(BaseModel):
-    endpoint: str
-    p256dh: str
-    auth: str
+    fcm_token: str
 
 class PushSubscriptionResponse(PushSubscriptionCreate):
     id: UUID

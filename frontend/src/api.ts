@@ -190,16 +190,11 @@ export const uncheckIncome = async (incomeId: string, month_year: string): Promi
 };
 
 // Push Notifications
-export const getVapidPublicKey = async (): Promise<string> => {
-  const response = await api.get('/push/public-key');
-  return response.data.public_key;
-};
-
-export const subscribeToPush = async (subscription: any): Promise<any> => {
+export const subscribeToPush = async (subscription: { fcm_token: string }): Promise<any> => {
   const response = await api.post('/push/subscribe', subscription);
   return response.data;
 };
 
-export const unsubscribeFromPush = async (endpoint: string): Promise<void> => {
-  await api.post('/push/unsubscribe', null, { params: { endpoint } });
+export const unsubscribeFromPush = async (fcm_token: string): Promise<void> => {
+  await api.post('/push/unsubscribe', null, { params: { fcm_token } });
 };

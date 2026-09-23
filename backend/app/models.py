@@ -150,7 +150,5 @@ class PushSubscription(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
-    endpoint = Column(String, nullable=False, unique=True)
-    p256dh = Column(String, nullable=False)
-    auth = Column(String, nullable=False)
+    fcm_token = Column(String, nullable=False, unique=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

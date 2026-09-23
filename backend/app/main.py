@@ -2,12 +2,25 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import os
+import firebase_admin
+from firebase_admin import credentials
 
 from .routers import expenses, categories, profiles, fixed_expenses, debts, incomes, push
 from .database import engine, Base
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Inicializar Firebase Admin
+    try:
+        cred = credentials.Certificate(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'firebase-adminsdk.json'))
+        firebase_admin.initialize_app(cred)
+        print("Firebase Admin SDK inicializado correctamente.")
+    except ValueError:
+        # Ya inicializado
+        pass
+    except Exception as e:
+        print(f"Error inicializando Firebase Admin SDK: {e}")
+        
     yield
     await engine.dispose()
 

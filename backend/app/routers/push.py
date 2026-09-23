@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import delete
@@ -16,23 +16,15 @@ router = APIRouter(
     tags=["push"],
 )
 
-@router.get("/public-key")
-async def get_public_key():
-    """Returns the VAPID public key needed by the frontend to subscribe."""
-    public_key = os.getenv("VAPID_PUBLIC_KEY")
-    if not public_key:
-        raise HTTPException(status_code=500, detail="VAPID_PUBLIC_KEY not configured")
-    return {"public_key": public_key}
-
 @router.post("/subscribe", response_model=schemas.PushSubscriptionResponse)
 async def subscribe_push(
     subscription: schemas.PushSubscriptionCreate,
     db: AsyncSession = Depends(get_db),
     user_id: UUID = Depends(auth.get_current_user)
 ):
-    """Saves a push subscription for the current user."""
-    # Check if subscription already exists for this endpoint
-    stmt = select(models.PushSubscription).where(models.PushSubscription.endpoint == subscription.endpoint)
+    """Saves a push subscription (FCM token) for the current user."""
+    # Check if subscription already exists for this token
+    stmt = select(models.PushSubscription).where(models.PushSubscription.fcm_token == subscription.fcm_token)
     result = await db.execute(stmt)
     existing_sub = result.scalars().first()
     
@@ -47,24 +39,28 @@ async def subscribe_push(
     # Create new subscription
     new_sub = models.PushSubscription(
         user_id=user_id,
-        endpoint=subscription.endpoint,
-        p256dh=subscription.p256dh,
-        auth=subscription.auth
+        fcm_token=subscription.fcm_token
     )
     db.add(new_sub)
     await db.commit()
     await db.refresh(new_sub)
+    
+    # Send a welcome/test notification
+    title = "¡Bienvenido/a!"
+    body = "Activaste las notificaciones de GastosApp"
+    send_push_notification(fcm_token=subscription.fcm_token, title=title, body=body)
+    
     return new_sub
 
 @router.post("/unsubscribe", status_code=status.HTTP_204_NO_CONTENT)
 async def unsubscribe_push(
-    endpoint: str,
+    fcm_token: str,
     db: AsyncSession = Depends(get_db),
     user_id: UUID = Depends(auth.get_current_user)
 ):
     """Removes a push subscription."""
     stmt = delete(models.PushSubscription).where(
-        models.PushSubscription.endpoint == endpoint,
+        models.PushSubscription.fcm_token == fcm_token,
         models.PushSubscription.user_id == user_id
     )
     await db.execute(stmt)
@@ -72,17 +68,26 @@ async def unsubscribe_push(
     return None
 
 @router.post("/trigger")
-async def trigger_notifications(db: AsyncSession = Depends(get_db)):
+async def trigger_notifications(
+    authorization: str = Header(None),
+    db: AsyncSession = Depends(get_db)
+):
     """
     Trigger endpoint called by Vercel Cron.
-    This will query the database for pending notifications and send them.
-    In a real app, this should be protected by a secret key.
     """
+    cron_secret = os.getenv("CRON_SECRET")
+    if not cron_secret:
+        raise HTTPException(status_code=500, detail="CRON_SECRET is not configured")
+        
+    expected_header = f"Bearer {cron_secret}"
+    if authorization != expected_header:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
     # 1. Check fixed expenses due today
     today = datetime.date.today()
     day_of_month = today.day
     
-    # Very basic example: Find active fixed expenses due today
+    # Find active fixed expenses due today
     stmt_fixed = select(models.FixedExpense).where(
         models.FixedExpense.is_active == True,
         models.FixedExpense.payment_day == day_of_month
@@ -120,6 +125,7 @@ async def trigger_notifications(db: AsyncSession = Depends(get_db)):
         
     sent_count = 0
     failed_count = 0
+    tokens_to_delete = []
     
     # Send notifications
     for user_id, messages in user_notifications.items():
@@ -134,31 +140,29 @@ async def trigger_notifications(db: AsyncSession = Depends(get_db)):
         if not subscriptions:
             continue
             
-        payload = {
-            "title": "Recordatorio de GastosApp",
-            "body": "\\n".join(messages),
-            "url": "/"
-        }
+        title = "Recordatorio de GastosApp"
+        body = "\\n".join(messages)
         
         for sub in subscriptions:
-            sub_info = {
-                "endpoint": sub.endpoint,
-                "keys": {
-                    "p256dh": sub.p256dh,
-                    "auth": sub.auth
-                }
-            }
-            success = send_push_notification(sub_info, payload)
+            success = send_push_notification(fcm_token=sub.fcm_token, title=title, body=body)
             if success:
                 sent_count += 1
             else:
                 failed_count += 1
-                # Optional: Remove failed subscriptions if they are invalid (e.g., 410 Gone)
-                # For simplicity, we just count them here.
+                tokens_to_delete.append(sub.fcm_token)
+
+    # Clean up invalid tokens
+    if tokens_to_delete:
+        del_stmt = delete(models.PushSubscription).where(
+            models.PushSubscription.fcm_token.in_(tokens_to_delete)
+        )
+        await db.execute(del_stmt)
+        await db.commit()
 
     return {
         "status": "success", 
         "sent": sent_count, 
         "failed": failed_count,
+        "deleted_invalid_tokens": len(tokens_to_delete),
         "users_notified": len(user_notifications)
     }

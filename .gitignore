@@ -29,6 +29,7 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+firebase-adminsdk.json
 
 # Node / JS
 frontend/node_modules/

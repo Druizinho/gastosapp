@@ -1,19 +1,5 @@
-import { getVapidPublicKey, subscribeToPush, unsubscribeFromPush } from './api';
-
-function urlBase64ToUint8Array(base64String: string) {
-  const padding = '='.repeat((4 - base64String.length % 4) % 4);
-  const base64 = (base64String + padding)
-    .replace(/\-/g, '+')
-    .replace(/_/g, '/');
-
-  const rawData = window.atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-
-  for (let i = 0; i < rawData.length; ++i) {
-    outputArray[i] = rawData.charCodeAt(i);
-  }
-  return outputArray;
-}
+import { subscribeToPush, unsubscribeFromPush } from './api';
+import { messaging, getToken, onMessage } from './firebase';
 
 export class NotSupportedError extends Error {
   constructor(message: string) {
@@ -30,21 +16,23 @@ export class PermissionDeniedError extends Error {
 }
 
 export const checkPushSubscriptionStatus = async (): Promise<boolean> => {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !messaging) {
     return false;
   }
   
-  const registration = await navigator.serviceWorker.ready;
-  const subscription = await registration.pushManager.getSubscription();
-  return !!subscription;
+  if (Notification.permission !== 'granted') {
+    return false;
+  }
+  
+  const storedToken = localStorage.getItem('fcm_token');
+  return !!storedToken;
 };
 
 export const enablePushNotifications = async (): Promise<boolean> => {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !messaging) {
     throw new NotSupportedError('Push notifications are not supported in this browser or context.');
   }
 
-  // Verificar si estamos en iOS y NO es modo standalone (no agregada a pantalla de inicio)
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone;
   
@@ -59,52 +47,49 @@ export const enablePushNotifications = async (): Promise<boolean> => {
     throw new Error('Permiso de notificaciones no concedido.');
   }
 
-  const registration = await navigator.serviceWorker.ready;
-  let subscription = await registration.pushManager.getSubscription();
-
-  if (!subscription) {
-    try {
-      const publicVapidKey = await getVapidPublicKey();
-      const convertedVapidKey = urlBase64ToUint8Array(publicVapidKey);
-
-      subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: convertedVapidKey
-      });
-    } catch (e: any) {
-      throw new Error(`Error suscribiendo en el navegador o falló la conexión con Vercel/Render: ${e.message}`);
-    }
-  }
-
-  const subJson = subscription.toJSON();
-  if (!subJson.keys) throw new Error('Faltan las claves criptográficas en la suscripción generada.');
-
   try {
-    await subscribeToPush({
-      endpoint: subJson.endpoint,
-      p256dh: subJson.keys.p256dh,
-      auth: subJson.keys.auth
-    });
-  } catch (e: any) {
-    throw new Error(`Error guardando la suscripción en el servidor (Render): ${e.message}`);
-  }
+    const registration = await navigator.serviceWorker.ready;
+    const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
+    
+    if (!vapidKey) {
+      console.warn("VITE_FIREBASE_VAPID_KEY is not defined. Notifications might fail to register on some browsers.");
+    }
 
-  return true;
+    const currentToken = await getToken(messaging, { 
+      vapidKey: vapidKey,
+      serviceWorkerRegistration: registration 
+    });
+
+    if (currentToken) {
+      await subscribeToPush({ fcm_token: currentToken });
+      localStorage.setItem('fcm_token', currentToken);
+      
+      // Attempt to show a native notification for testing since we are in foreground
+      if (Notification.permission === 'granted') {
+         // The backend will send a message but foreground JS might intercept it.
+         // Calling setupForegroundMessageListener ensures we catch it.
+         setupForegroundMessageListener();
+      }
+
+      return true;
+    } else {
+      throw new Error('No registration token available. Request permission to generate one.');
+    }
+  } catch (e: any) {
+    throw new Error(`Error suscribiendo a notificaciones push: ${e.message}`);
+  }
 };
 
 export const disablePushNotifications = async (): Promise<boolean> => {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !messaging) {
     return false;
   }
 
   try {
-    const registration = await navigator.serviceWorker.ready;
-    const subscription = await registration.pushManager.getSubscription();
-
-    if (subscription) {
-      const endpoint = subscription.endpoint;
-      await subscription.unsubscribe();
-      await unsubscribeFromPush(endpoint);
+    const token = localStorage.getItem('fcm_token');
+    if (token) {
+      await unsubscribeFromPush(token);
+      localStorage.removeItem('fcm_token');
     }
     return true;
   } catch (error) {
@@ -112,3 +97,31 @@ export const disablePushNotifications = async (): Promise<boolean> => {
     return false;
   }
 };
+
+let isForegroundListenerSetup = false;
+
+export const setupForegroundMessageListener = () => {
+  if (!messaging || isForegroundListenerSetup) return;
+  
+  try {
+    onMessage(messaging, (payload: any) => {
+      console.log('Mensaje recibido en primer plano:', payload);
+      
+      const title = payload.notification?.title || 'GastosApp';
+      const options = {
+        body: payload.notification?.body,
+        icon: '/pwa-192x192.png',
+        badge: '/favicon.svg'
+      };
+
+      if (Notification.permission === 'granted') {
+        new Notification(title, options);
+      }
+    });
+    isForegroundListenerSetup = true;
+  } catch (err) {
+    console.error("Error setting up foreground message listener:", err);
+  }
+};
+
+
