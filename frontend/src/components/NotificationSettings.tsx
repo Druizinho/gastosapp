@@ -41,7 +41,7 @@ export const NotificationSettings: React.FC = () => {
       }
     } catch (e: any) {
       if (e instanceof NotSupportedError) {
-        setError('Tu navegador no soporta notificaciones push. Por favor, actualízalo o usa otro navegador.');
+        setError(e.message);
       } else if (e instanceof PermissionDeniedError) {
         setError('Has denegado el permiso para recibir notificaciones. Para activarlas, haz clic en el icono del candado junto a la barra de direcciones de tu navegador y permite las notificaciones.');
       } else {
