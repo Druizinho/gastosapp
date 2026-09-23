@@ -32,5 +32,10 @@
     "typescript": "~6.0.2",
     "vite": "^8.2.2",
     "vite-plugin-pwa": "^1.3.0"
+  },
+  "allowScripts": {
+    "@firebase/util": "true",
+    "esbuild": "true",
+    "protobufjs": "true"
   }
 }
