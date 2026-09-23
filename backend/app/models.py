@@ -12,6 +12,10 @@ class Profile(Base):
     id = Column(UUID(as_uuid=True), primary_key=True)
     display_name = Column(String, nullable=True)
     avatar_url = Column(String, nullable=True)
+    notify_fixed_expenses = Column(Boolean, nullable=False, server_default='true')
+    notify_debts = Column(Boolean, nullable=False, server_default='true')
+    notify_incomes = Column(Boolean, nullable=False, server_default='true')
+    notify_inactivity = Column(Boolean, nullable=False, server_default='true')
     updated_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class Category(Base):
@@ -62,6 +66,7 @@ class FixedExpense(Base):
     category = Column(String, nullable=True)
     payment_day = Column(Numeric(2, 0), nullable=True)  # 1-31, optional
     is_active = Column(Boolean, nullable=False, server_default='true')
+    last_paid_month = Column(String(7), nullable=True)  # YYYY-MM
     notes = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

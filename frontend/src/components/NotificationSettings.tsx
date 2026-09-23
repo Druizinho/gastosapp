@@ -7,14 +7,23 @@ import {
   NotSupportedError,
   PermissionDeniedError
 } from '../pushManager';
+import { getProfile, updateProfile } from '../api';
 
 export const NotificationSettings: React.FC = () => {
   const [isEnabled, setIsEnabled] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  const [preferences, setPreferences] = useState({
+    notify_fixed_expenses: true,
+    notify_debts: true,
+    notify_incomes: true,
+    notify_inactivity: true
+  });
 
   useEffect(() => {
     checkStatus();
+    fetchProfilePreferences();
   }, []);
 
   const checkStatus = async () => {
@@ -28,7 +37,21 @@ export const NotificationSettings: React.FC = () => {
     }
   };
 
-  const handleToggle = async () => {
+  const fetchProfilePreferences = async () => {
+    try {
+      const profile = await getProfile();
+      setPreferences({
+        notify_fixed_expenses: profile.notify_fixed_expenses ?? true,
+        notify_debts: profile.notify_debts ?? true,
+        notify_incomes: profile.notify_incomes ?? true,
+        notify_inactivity: profile.notify_inactivity ?? true
+      });
+    } catch (error) {
+      console.error("Error fetching profile for preferences:", error);
+    }
+  };
+
+  const handleToggleSystem = async () => {
     setIsLoading(true);
     setError(null);
     try {
@@ -53,6 +76,51 @@ export const NotificationSettings: React.FC = () => {
     }
   };
 
+  const handleTogglePreference = async (key: keyof typeof preferences) => {
+    const newValue = !preferences[key];
+    setPreferences(prev => ({ ...prev, [key]: newValue }));
+    
+    try {
+      await updateProfile({ [key]: newValue });
+    } catch (error) {
+      console.error("Error updating preference:", error);
+      // Revert if failed
+      setPreferences(prev => ({ ...prev, [key]: !newValue }));
+    }
+  };
+
+  // Reusable toggle switch UI
+  const ToggleSwitch = ({ checked, onChange, disabled = false }: { checked: boolean, onChange: () => void, disabled?: boolean }) => (
+    <button 
+      onClick={onChange}
+      disabled={disabled}
+      style={{
+        position: 'relative',
+        width: '50px',
+        height: '30px',
+        borderRadius: '15px',
+        background: checked ? '#10B981' : 'var(--surface-muted)',
+        border: 'none',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        transition: 'background 0.3s',
+        opacity: disabled ? 0.5 : 1,
+        flexShrink: 0
+      }}
+    >
+      <div style={{
+        position: 'absolute',
+        top: '2px',
+        left: checked ? '22px' : '2px',
+        width: '26px',
+        height: '26px',
+        borderRadius: '50%',
+        background: 'white',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+        transition: 'left 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
+      }} />
+    </button>
+  );
+
   return (
     <div className="soft-card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -65,7 +133,7 @@ export const NotificationSettings: React.FC = () => {
         </div>
         <div>
           <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>Notificaciones Push</h2>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', margin: '0.25rem 0 0 0' }}>Recibe alertas sobre tus gastos y presupuesto</p>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', margin: '0.25rem 0 0 0' }}>Recibe alertas sobre tus finanzas</p>
         </div>
       </div>
 
@@ -85,55 +153,48 @@ export const NotificationSettings: React.FC = () => {
       }}>
         <div>
           <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Permitir Notificaciones</h3>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', margin: '0.25rem 0 0 0' }}>Habilita las notificaciones en este dispositivo</p>
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', margin: '0.25rem 0 0 0' }}>Habilita las notificaciones en tu teléfono o navegador</p>
         </div>
-        
-        {/* iOS style toggle */}
-        <button 
-          onClick={handleToggle}
-          disabled={isLoading}
-          style={{
-            position: 'relative',
-            width: '50px',
-            height: '30px',
-            borderRadius: '15px',
-            background: isEnabled ? '#10B981' : 'var(--surface-muted)',
-            border: 'none',
-            cursor: isLoading ? 'not-allowed' : 'pointer',
-            transition: 'background 0.3s',
-            opacity: isLoading ? 0.7 : 1
-          }}
-        >
-          <div style={{
-            position: 'absolute',
-            top: '2px',
-            left: isEnabled ? '22px' : '2px',
-            width: '26px',
-            height: '26px',
-            borderRadius: '50%',
-            background: 'white',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-            transition: 'left 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
-          }} />
-        </button>
+        <ToggleSwitch checked={isEnabled} onChange={handleToggleSystem} disabled={isLoading} />
       </div>
 
       <div style={{ padding: '1rem', background: 'var(--surface-hover)', borderRadius: '12px' }}>
         <h4 style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', margin: '0 0 0.75rem 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tipos de Alertas</h4>
         
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: isEnabled ? 1 : 0.5 }}>
-            <span style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 500 }}>Gastos Inusuales</span>
-            <input type="checkbox" checked={isEnabled} readOnly style={{ accentColor: '#10B981', transform: 'scale(1.2)' }} />
+            <div style={{ paddingRight: '1rem' }}>
+              <span style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 500, display: 'block' }}>Gastos Fijos</span>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Avisos el día antes y el mismo día que vencen.</span>
+            </div>
+            <ToggleSwitch checked={preferences.notify_fixed_expenses} onChange={() => handleTogglePreference('notify_fixed_expenses')} disabled={!isEnabled} />
           </div>
+
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: isEnabled ? 1 : 0.5 }}>
-            <span style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 500 }}>Límites de Presupuesto</span>
-            <input type="checkbox" checked={isEnabled} readOnly style={{ accentColor: '#10B981', transform: 'scale(1.2)' }} />
+            <div style={{ paddingRight: '1rem' }}>
+              <span style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 500, display: 'block' }}>Deudas</span>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Recordatorios de deudas por cobrar o pagar.</span>
+            </div>
+            <ToggleSwitch checked={preferences.notify_debts} onChange={() => handleTogglePreference('notify_debts')} disabled={!isEnabled} />
           </div>
+
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: isEnabled ? 1 : 0.5 }}>
-            <span style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 500 }}>Resumen Semanal</span>
-            <input type="checkbox" checked={isEnabled} readOnly style={{ accentColor: '#10B981', transform: 'scale(1.2)' }} />
+            <div style={{ paddingRight: '1rem' }}>
+              <span style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 500, display: 'block' }}>Ingresos Estimados</span>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Alertas de pagos esperados o atrasados.</span>
+            </div>
+            <ToggleSwitch checked={preferences.notify_incomes} onChange={() => handleTogglePreference('notify_incomes')} disabled={!isEnabled} />
           </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: isEnabled ? 1 : 0.5 }}>
+            <div style={{ paddingRight: '1rem' }}>
+              <span style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 500, display: 'block' }}>Hábitos de Registro</span>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Aviso si pasas 3 días sin registrar nada.</span>
+            </div>
+            <ToggleSwitch checked={preferences.notify_inactivity} onChange={() => handleTogglePreference('notify_inactivity')} disabled={!isEnabled} />
+          </div>
+
         </div>
       </div>
     </div>

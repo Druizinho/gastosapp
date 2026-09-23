@@ -122,6 +122,11 @@ export const deleteFixedExpense = async (id: string): Promise<void> => {
   await api.delete(`/fixed-expenses/${id}`);
 };
 
+export const markFixedExpensePaid = async (id: string, paid: boolean): Promise<FixedExpense> => {
+  const response = await api.post(`/fixed-expenses/${id}/mark-paid?paid=${paid}`);
+  return response.data;
+};
+
 // Debts
 export const getDebts = async (type: 'owed' | 'receivable', isSettled?: boolean): Promise<Debt[]> => {
   const params: any = { type };

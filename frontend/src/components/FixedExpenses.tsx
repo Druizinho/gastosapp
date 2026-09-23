@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Receipt, Pause, Play, Trash2, Edit3, Calendar } from 'lucide-react';
-import { getFixedExpenses, getFixedExpenseSummary, createFixedExpense, updateFixedExpense, deleteFixedExpense } from '../api';
+import { ArrowLeft, Plus, Receipt, Pause, Play, Trash2, Edit3, Calendar, CheckCircle2, Circle } from 'lucide-react';
+import { getFixedExpenses, getFixedExpenseSummary, createFixedExpense, updateFixedExpense, deleteFixedExpense, markFixedExpensePaid } from '../api';
 import type { FixedExpense, FixedExpenseCreate, FixedExpenseUpdate, FixedExpenseSummary } from '../types';
 import FixedExpenseForm from './FixedExpenseForm';
 import ConfirmModal from './ConfirmModal';
@@ -71,6 +71,17 @@ const FixedExpenses: React.FC = () => {
       await fetchData();
     } catch (error) {
       console.error('Error toggling active:', error);
+    }
+  };
+
+  const handleTogglePaid = async (expense: FixedExpense) => {
+    try {
+      const currentMonthStr = new Date().toISOString().substring(0, 7);
+      const isPaid = expense.last_paid_month === currentMonthStr;
+      await markFixedExpensePaid(expense.id, !isPaid);
+      await fetchData();
+    } catch (error) {
+      console.error('Error toggling paid:', error);
     }
   };
 
@@ -248,6 +259,20 @@ const FixedExpenses: React.FC = () => {
 
                 {/* Action buttons */}
                 <div style={{ display: 'flex', gap: '0.25rem' }}>
+                  <button
+                    onClick={() => handleTogglePaid(expense)}
+                    title={expense.last_paid_month === new Date().toISOString().substring(0, 7) ? 'Marcar como no pagado' : 'Marcar como pagado'}
+                    style={{
+                      width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
+                      background: expense.last_paid_month === new Date().toISOString().substring(0, 7) ? 'rgba(16, 185, 129, 0.15)' : 'var(--surface-muted)',
+                      border: 'none', display: 'flex',
+                      alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                      color: expense.last_paid_month === new Date().toISOString().substring(0, 7) ? 'var(--income-color)' : 'var(--text-tertiary)',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    {expense.last_paid_month === new Date().toISOString().substring(0, 7) ? <CheckCircle2 size={16} /> : <Circle size={16} />}
+                  </button>
                   <button
                     onClick={() => handleToggleActive(expense)}
                     title={expense.is_active ? 'Pausar' : 'Reactivar'}

@@ -92,3 +92,28 @@ async def delete_fixed_expense(
     if not success:
         raise HTTPException(status_code=404, detail="Fixed expense not found")
     return {"message": "Fixed expense deleted successfully"}
+
+
+from datetime import datetime
+
+@router.post("/{expense_id}/mark-paid", response_model=schemas.FixedExpenseResponse)
+async def mark_fixed_expense_paid(
+    expense_id: UUID,
+    paid: bool = True,
+    db: AsyncSession = Depends(get_db),
+    user_id: UUID = Depends(get_current_user)
+):
+    db_expense = await crud_fixed_expenses.get_fixed_expense(db, expense_id=expense_id, user_id=user_id)
+    if not db_expense:
+        raise HTTPException(status_code=404, detail="Fixed expense not found")
+    
+    current_month = datetime.now().strftime("%Y-%m")
+    
+    if paid:
+        db_expense.last_paid_month = current_month
+    else:
+        db_expense.last_paid_month = None
+        
+    await db.commit()
+    await db.refresh(db_expense)
+    return db_expense

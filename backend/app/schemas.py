@@ -17,6 +17,10 @@ class ProfileResponse(BaseModel):
     id: UUID
     display_name: Optional[str] = None
     avatar_url: Optional[str] = None
+    notify_fixed_expenses: bool = True
+    notify_debts: bool = True
+    notify_incomes: bool = True
+    notify_inactivity: bool = True
     updated_at: Optional[datetime.datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -24,6 +28,10 @@ class ProfileResponse(BaseModel):
 class ProfileUpdate(BaseModel):
     display_name: Optional[str] = None
     avatar_url: Optional[str] = None
+    notify_fixed_expenses: Optional[bool] = None
+    notify_debts: Optional[bool] = None
+    notify_incomes: Optional[bool] = None
+    notify_inactivity: Optional[bool] = None
 
 class CategoryBase(BaseModel):
     name: str = Field(..., min_length=1)
@@ -145,6 +153,7 @@ class FixedExpenseResponse(FixedExpenseBase):
     rate_usd_bs: Optional[Decimal] = None
     rate_eur_bs: Optional[Decimal] = None
     rate_usdt_bs: Optional[Decimal] = None
+    last_paid_month: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
