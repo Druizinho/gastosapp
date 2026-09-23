@@ -13,6 +13,10 @@ def send_push_notification(fcm_token: str, title: str, body: str, url: str = "/"
                 body=body,
             ),
             webpush=messaging.WebpushConfig(
+                notification=messaging.WebpushNotification(
+                    icon='/pwa-192x192.png',
+                    badge='/favicon.svg'
+                ),
                 fcm_options=messaging.WebpushFCMOptions(
                     link=url
                 )

@@ -30,17 +30,8 @@ const messaging = (self as any).firebase.messaging();
 
 messaging.onBackgroundMessage((payload: any) => {
   console.log('[sw.ts] Received background message ', payload);
-  
-  const title = payload.notification?.title || 'GastosApp';
-  const options = {
-    body: payload.notification?.body || 'Tienes una nueva notificación.',
-    icon: '/pwa-192x192.png',
-    badge: '/favicon.svg',
-    data: payload.data?.url || '/',
-    vibrate: [100, 50, 100],
-  };
-
-  self.registration.showNotification(title, options);
+  // Do not call self.registration.showNotification here because Firebase Web SDK
+  // automatically displays a notification if the payload contains a 'notification' object.
 });
 
 self.addEventListener('notificationclick', (event) => {
