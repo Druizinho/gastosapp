@@ -1,7 +1,7 @@
 import firebase_admin
 from firebase_admin import messaging
 
-def send_push_notification(fcm_token: str, title: str, body: str, url: str = "/"):
+def send_push_notification(fcm_token: str, title: str, body: str, url: str = "https://gastosapp.vercel.app/"):
     """
     Sends a push notification to a specific FCM token.
     Returns True if successful, False otherwise.
