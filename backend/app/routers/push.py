@@ -5,6 +5,7 @@ from sqlalchemy import delete
 from typing import List, Dict, Any
 import os
 import datetime
+import asyncio
 from uuid import UUID
 
 from .. import schemas, models, auth
@@ -86,73 +87,24 @@ async def trigger_notifications(
     utc_now = datetime.datetime.now(datetime.timezone.utc)
     local_now = utc_now.astimezone(datetime.timezone(datetime.timedelta(hours=-4)))
     
-    # We only want to send notifications if the current local time is between 9:00 AM and 9:09 AM
-    # This 10-minute window guarantees exactly 1 hit if the cron pings every 10 minutes.
-    is_notification_window = local_now.hour == 9 and 0 <= local_now.minute < 10
+    # Determine which window we are in
+    is_morning = local_now.hour == 9 and 0 <= local_now.minute < 10
+    is_evening = local_now.hour == 20 and 0 <= local_now.minute < 10
     
-    if not is_notification_window:
+    if not is_morning and not is_evening:
         return {"status": "awake", "time": local_now.isoformat(), "message": "Ping received. Not notification time."}
 
-    # 1. Check fixed expenses due today
     today = local_now.date()
-    day_of_month = today.day
-    
-    # Find active fixed expenses due today
-    stmt_fixed = select(models.FixedExpense).where(
-        models.FixedExpense.is_active == True,
-        models.FixedExpense.payment_day == day_of_month
-    )
-    fixed_result = await db.execute(stmt_fixed)
-    due_fixed = fixed_result.scalars().all()
-    
-    # Group by user
-    user_notifications = {}
-    for expense in due_fixed:
-        if expense.user_id not in user_notifications:
-            user_notifications[expense.user_id] = []
-        user_notifications[expense.user_id].append(
-            f"Gasto fijo vence hoy: {expense.name} ({expense.amount} {expense.currency})"
-        )
-    
-    # Check debts due today or tomorrow
-    stmt_debts = select(models.Debt).where(
-        models.Debt.is_settled == False,
-        models.Debt.due_date <= today + datetime.timedelta(days=1)
-    )
-    debts_result = await db.execute(stmt_debts)
-    due_debts = debts_result.scalars().all()
-    
-    for debt in due_debts:
-        if debt.user_id not in user_notifications:
-            user_notifications[debt.user_id] = []
-        
-        status_word = "vence pronto" if debt.due_date > today else "venció"
-        type_word = "Te deben" if debt.type == 'receivable' else "Debes"
-        
-        user_notifications[debt.user_id].append(
-            f"{type_word} {debt.total_amount} {debt.currency} por '{debt.concept}' ({status_word})"
-        )
-        
     sent_count = 0
     failed_count = 0
     tokens_to_delete = []
-    
-    # Send notifications
-    for user_id, messages in user_notifications.items():
-        if not messages:
-            continue
-            
-        # Get user's subscriptions
+
+    # Helper function to send to a user
+    async def send_to_user(user_id: UUID, title: str, body: str):
+        nonlocal sent_count, failed_count, tokens_to_delete
         sub_stmt = select(models.PushSubscription).where(models.PushSubscription.user_id == user_id)
         sub_result = await db.execute(sub_stmt)
         subscriptions = sub_result.scalars().all()
-        
-        if not subscriptions:
-            continue
-            
-        title = "Recordatorio de GastosApp"
-        body = "\\n".join(messages)
-        
         for sub in subscriptions:
             success = send_push_notification(fcm_token=sub.fcm_token, title=title, body=body)
             if success:
@@ -160,6 +112,66 @@ async def trigger_notifications(
             else:
                 failed_count += 1
                 tokens_to_delete.append(sub.fcm_token)
+            # Add a 2 second delay to avoid vibrating the phone simultaneously for multiple notifications
+            await asyncio.sleep(2)
+
+    # ==========================================
+    # ☀️ MORNING WINDOW (9:00 AM) - Due Today/Overdue
+    # ==========================================
+    if is_morning:
+        # Fixed expenses due TODAY
+        stmt_fixed = select(models.FixedExpense).where(
+            models.FixedExpense.is_active == True,
+            models.FixedExpense.payment_day == today.day
+        )
+        for expense in (await db.execute(stmt_fixed)).scalars().all():
+            await send_to_user(expense.user_id, "Gasto Fijo Vence Hoy", f"{expense.name} ({expense.amount} {expense.currency})")
+            
+        # Debts due TODAY or OVERDUE
+        stmt_debts = select(models.Debt).where(
+            models.Debt.is_settled == False,
+            models.Debt.due_date <= today
+        )
+        for debt in (await db.execute(stmt_debts)).scalars().all():
+            type_word = "Te deben" if debt.type == 'receivable' else "Debes"
+            await send_to_user(debt.user_id, "Deuda Vencida", f"{type_word} {debt.total_amount} {debt.currency} por '{debt.concept}'")
+
+    # ==========================================
+    # 🌙 EVENING WINDOW (8:00 PM) - Due Tomorrow + Inactivity
+    # ==========================================
+    if is_evening:
+        tomorrow = today + datetime.timedelta(days=1)
+        
+        # Fixed expenses due TOMORROW
+        stmt_fixed_tmr = select(models.FixedExpense).where(
+            models.FixedExpense.is_active == True,
+            models.FixedExpense.payment_day == tomorrow.day
+        )
+        for expense in (await db.execute(stmt_fixed_tmr)).scalars().all():
+            await send_to_user(expense.user_id, "Gasto Fijo Vence Mañana", f"{expense.name} ({expense.amount} {expense.currency})")
+            
+        # Debts due TOMORROW
+        stmt_debts_tmr = select(models.Debt).where(
+            models.Debt.is_settled == False,
+            models.Debt.due_date == tomorrow
+        )
+        for debt in (await db.execute(stmt_debts_tmr)).scalars().all():
+            type_word = "Te deben" if debt.type == 'receivable' else "Debes"
+            await send_to_user(debt.user_id, "Deuda Vence Mañana", f"{type_word} {debt.total_amount} {debt.currency} por '{debt.concept}'")
+
+        # Inactivity Reminder (Exactly 3 days without expenses)
+        three_days_ago = today - datetime.timedelta(days=3)
+        
+        # Get all users who have subscriptions so we only check active users
+        users_with_subs = (await db.execute(select(models.PushSubscription.user_id).distinct())).scalars().all()
+        
+        for uid in users_with_subs:
+            # Get their most recent expense date
+            last_exp_stmt = select(models.Expense.date).where(models.Expense.user_id == uid).order_by(models.Expense.date.desc()).limit(1)
+            last_exp = (await db.execute(last_exp_stmt)).scalar()
+            
+            if last_exp and last_exp == three_days_ago:
+                await send_to_user(uid, "Te hemos extrañado 👀", "Llevas 3 días sin registrar gastos. Mantén tus finanzas al día, ¿registramos algo hoy?")
 
     # Clean up invalid tokens
     if tokens_to_delete:
@@ -171,8 +183,8 @@ async def trigger_notifications(
 
     return {
         "status": "success", 
+        "window": "morning" if is_morning else "evening",
         "sent": sent_count, 
         "failed": failed_count,
-        "deleted_invalid_tokens": len(tokens_to_delete),
-        "users_notified": len(user_notifications)
+        "deleted_invalid_tokens": len(tokens_to_delete)
     }
