@@ -86,8 +86,9 @@ async def trigger_notifications(
     utc_now = datetime.datetime.now(datetime.timezone.utc)
     local_now = utc_now.astimezone(datetime.timezone(datetime.timedelta(hours=-4)))
     
-    # We only want to send notifications if the current local time is between 9:00 AM and 9:14 AM
-    is_notification_window = local_now.hour == 9 and 0 <= local_now.minute < 14
+    # We only want to send notifications if the current local time is between 9:00 AM and 9:09 AM
+    # This 10-minute window guarantees exactly 1 hit if the cron pings every 10 minutes.
+    is_notification_window = local_now.hour == 9 and 0 <= local_now.minute < 10
     
     if not is_notification_window:
         return {"status": "awake", "time": local_now.isoformat(), "message": "Ping received. Not notification time."}
