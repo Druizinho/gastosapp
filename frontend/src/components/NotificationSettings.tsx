@@ -89,37 +89,37 @@ export const NotificationSettings: React.FC = () => {
     }
   };
 
-  // Reusable toggle switch UI
-  const ToggleSwitch = ({ checked, onChange, disabled = false }: { checked: boolean, onChange: () => void, disabled?: boolean }) => (
-    <button 
-      onClick={onChange}
-      disabled={disabled}
-      style={{
-        position: 'relative',
-        width: '50px',
-        height: '30px',
-        borderRadius: '15px',
-        background: checked ? '#10B981' : 'var(--surface-muted)',
-        border: 'none',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        transition: 'background 0.3s',
-        opacity: disabled ? 0.5 : 1,
-        flexShrink: 0
-      }}
-    >
-      <div style={{
-        position: 'absolute',
-        top: '2px',
-        left: checked ? '22px' : '2px',
-        width: '26px',
-        height: '26px',
-        borderRadius: '50%',
-        background: 'white',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-        transition: 'left 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
-      }} />
-    </button>
-  );
+// Reusable toggle switch UI
+const ToggleSwitch = ({ checked, onChange, disabled = false }: { checked: boolean, onChange: () => void, disabled?: boolean }) => (
+  <button 
+    onClick={onChange}
+    disabled={disabled}
+    style={{
+      position: 'relative',
+      width: '50px',
+      height: '30px',
+      borderRadius: '15px',
+      background: checked ? '#10B981' : 'var(--surface-muted)',
+      border: 'none',
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      transition: 'background 0.3s',
+      opacity: disabled ? 0.5 : 1,
+      flexShrink: 0
+    }}
+  >
+    <div style={{
+      position: 'absolute',
+      top: '2px',
+      left: checked ? '22px' : '2px',
+      width: '26px',
+      height: '26px',
+      borderRadius: '50%',
+      background: 'white',
+      boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+      transition: 'left 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
+    }} />
+  </button>
+);
 
   return (
     <div className="soft-card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
