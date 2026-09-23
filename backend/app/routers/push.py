@@ -67,24 +67,33 @@ async def unsubscribe_push(
     await db.commit()
     return None
 
-@router.post("/trigger")
+@router.get("/cron")
 async def trigger_notifications(
-    authorization: str = Header(None),
+    token: str = None,
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Trigger endpoint called by Vercel Cron.
+    Trigger endpoint called by cron-job.org every 14 minutes.
     """
     cron_secret = os.getenv("CRON_SECRET")
     if not cron_secret:
         raise HTTPException(status_code=500, detail="CRON_SECRET is not configured")
         
-    expected_header = f"Bearer {cron_secret}"
-    if authorization != expected_header:
+    if token != cron_secret:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
+    # Get current time in UTC-4 (Venezuela/Miami)
+    utc_now = datetime.datetime.now(datetime.timezone.utc)
+    local_now = utc_now.astimezone(datetime.timezone(datetime.timedelta(hours=-4)))
+    
+    # We only want to send notifications if the current local time is between 9:00 AM and 9:14 AM
+    is_notification_window = local_now.hour == 9 and 0 <= local_now.minute < 14
+    
+    if not is_notification_window:
+        return {"status": "awake", "time": local_now.isoformat(), "message": "Ping received. Not notification time."}
+
     # 1. Check fixed expenses due today
-    today = datetime.date.today()
+    today = local_now.date()
     day_of_month = today.day
     
     # Find active fixed expenses due today
