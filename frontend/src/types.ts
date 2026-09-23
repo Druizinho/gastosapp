@@ -109,6 +109,7 @@ export interface FixedExpense {
   payment_day: number | null;
   is_active: boolean;
   notes: string | null;
+  last_paid_month?: string | null;
   created_at: string;
   amount_usd?: number | null;
   amount_bs?: number | null;
