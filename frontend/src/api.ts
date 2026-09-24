@@ -203,3 +203,13 @@ export const subscribeToPush = async (subscription: { fcm_token: string }): Prom
 export const unsubscribeFromPush = async (fcm_token: string): Promise<void> => {
   await api.post('/push/unsubscribe', null, { params: { fcm_token } });
 };
+
+// Notifications
+export const getNotifications = async (unreadOnly: boolean = false): Promise<any[]> => {
+  const response = await api.get('/notifications/', { params: { unread_only: unreadOnly } });
+  return response.data;
+};
+
+export const markNotificationsAsRead = async (): Promise<void> => {
+  await api.patch('/notifications/mark-read');
+};

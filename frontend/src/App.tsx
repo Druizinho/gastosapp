@@ -1,6 +1,7 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { NotificationProvider } from './context/NotificationContext';
 import { Auth } from './components/Auth';
 import Dashboard from './components/Dashboard';
 import { ToolsHub } from './components/ToolsHub';
@@ -10,17 +11,10 @@ import EstimatedIncomeList from './components/EstimatedIncomeList.tsx';
 import { RatesPage } from './components/RatesPage';
 import { SettingsPage } from './components/SettingsPage';
 import { BottomNav } from './components/BottomNav';
-import { setupForegroundMessageListener } from './pushManager';
 import './index.css';
 
 const ProtectedRoute = ({ children }: { children?: React.ReactNode }) => {
   const { session, loading } = useAuth();
-  
-  useEffect(() => {
-    if (session) {
-      setupForegroundMessageListener();
-    }
-  }, [session]);
   
   if (loading) {
     return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: 'white' }}>Cargando...</div>;
@@ -74,9 +68,11 @@ const AppRoutes = () => {
 function App() {
   return (
     <AuthProvider>
-      <Router>
-        <AppRoutes />
-      </Router>
+      <NotificationProvider>
+        <Router>
+          <AppRoutes />
+        </Router>
+      </NotificationProvider>
     </AuthProvider>
   );
 }

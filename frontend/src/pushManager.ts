@@ -98,10 +98,23 @@ export const disablePushNotifications = async (): Promise<boolean> => {
   }
 };
 
+type ForegroundMessageCallback = (payload: any) => void;
+const listeners: ForegroundMessageCallback[] = [];
 let isForegroundListenerSetup = false;
 
-export const setupForegroundMessageListener = () => {
-  if (!messaging || isForegroundListenerSetup) return;
+export const setupForegroundMessageListener = (callback?: ForegroundMessageCallback) => {
+  if (callback) {
+    listeners.push(callback);
+  }
+
+  if (!messaging || isForegroundListenerSetup) {
+    return () => {
+      if (callback) {
+        const index = listeners.indexOf(callback);
+        if (index > -1) listeners.splice(index, 1);
+      }
+    };
+  }
   
   try {
     onMessage(messaging, (payload: any) => {
@@ -117,11 +130,20 @@ export const setupForegroundMessageListener = () => {
       if (Notification.permission === 'granted') {
         new Notification(title, options);
       }
+
+      listeners.forEach(cb => cb(payload));
     });
     isForegroundListenerSetup = true;
   } catch (err) {
     console.error("Error setting up foreground message listener:", err);
   }
+
+  return () => {
+    if (callback) {
+      const index = listeners.indexOf(callback);
+      if (index > -1) listeners.splice(index, 1);
+    }
+  };
 };
 
 

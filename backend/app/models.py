@@ -157,3 +157,14 @@ class PushSubscription(Base):
     user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     fcm_token = Column(String, nullable=False, unique=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    title = Column(String, nullable=False)
+    body = Column(String, nullable=False)
+    type = Column(String, nullable=False)
+    is_read = Column(Boolean, nullable=False, server_default='false')
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

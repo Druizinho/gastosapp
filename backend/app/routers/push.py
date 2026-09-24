@@ -68,6 +68,36 @@ async def unsubscribe_push(
     await db.commit()
     return None
 
+@router.post("/test")
+async def test_push(
+    db: AsyncSession = Depends(get_db),
+    user_id: UUID = Depends(auth.get_current_user)
+):
+    """Sends a test push notification to the current user."""
+    # Save a test notification in the database
+    new_notification = models.Notification(
+        user_id=user_id,
+        title="Notificación de Prueba 🚀",
+        body="¡Esto es una prueba enviada manualmente desde tu entorno local!",
+        type="general"
+    )
+    db.add(new_notification)
+    
+    # Get all subscriptions for this user
+    sub_stmt = select(models.PushSubscription).where(models.PushSubscription.user_id == user_id)
+    sub_result = await db.execute(sub_stmt)
+    subscriptions = sub_result.scalars().all()
+    
+    sent = 0
+    for sub in subscriptions:
+        success = send_push_notification(fcm_token=sub.fcm_token, title=new_notification.title, body=new_notification.body)
+        if success:
+            sent += 1
+            
+    await db.commit()
+    
+    return {"message": f"Notificación enviada a {sent} dispositivos."}
+
 @router.get("/cron")
 async def trigger_notifications(
     token: str = None,
@@ -111,6 +141,17 @@ async def trigger_notifications(
         profile = (await db.execute(profile_stmt)).scalar()
         if not profile or not getattr(profile, pref_key, True):
             return  # User opted out
+            
+        # Save notification to database
+        notification_type = pref_key.replace('notify_', '')
+        new_notification = models.Notification(
+            user_id=user_id,
+            title=title,
+            body=body,
+            type=notification_type
+        )
+        db.add(new_notification)
+        await db.commit()
             
         sub_stmt = select(models.PushSubscription).where(models.PushSubscription.user_id == user_id)
         sub_result = await db.execute(sub_stmt)

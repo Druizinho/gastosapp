@@ -5,7 +5,7 @@ import os
 import firebase_admin
 from firebase_admin import credentials
 
-from .routers import expenses, categories, profiles, fixed_expenses, debts, incomes, push
+from .routers import expenses, categories, profiles, fixed_expenses, debts, incomes, push, notifications
 from .database import engine, Base
 
 import base64
@@ -56,6 +56,7 @@ app.include_router(fixed_expenses.router)
 app.include_router(debts.router)
 app.include_router(incomes.router)
 app.include_router(push.router)
+app.include_router(notifications.router)
 
 @app.get("/")
 def read_root():

@@ -278,3 +278,14 @@ export interface IncomeCheckCreate {
   notes?: string;
   manual_rate?: number;
 }
+
+// Notifications
+export interface Notification {
+  id: string;
+  user_id: string;
+  title: string;
+  body: string;
+  type: string;
+  is_read: boolean;
+  created_at: string;
+}
