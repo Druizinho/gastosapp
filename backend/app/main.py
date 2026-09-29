@@ -4,12 +4,49 @@ from contextlib import asynccontextmanager
 import os
 import firebase_admin
 from firebase_admin import credentials
+import asyncio
+import datetime
 
 from .routers import expenses, categories, profiles, fixed_expenses, debts, incomes, push, notifications
 from .database import engine, Base
 
 import base64
 import json
+
+# ─── Self-Ping: mantiene el servidor despierto en Render Free Tier ───
+SELF_PING_INTERVAL = 600  # 10 minutos en segundos
+
+async def _self_ping_loop():
+    """
+    Bucle interno que hace ping a su propio endpoint /health cada 10 minutos.
+    Esto garantiza que el servidor de Render nunca se duerma, sin depender
+    exclusivamente de servicios externos como cron-job.org.
+    """
+    import httpx
+    # Esperar 30 segundos a que el servidor arranque completamente
+    await asyncio.sleep(30)
+    
+    # Determinar la URL propia del servidor
+    render_url = os.environ.get("RENDER_EXTERNAL_URL")
+    port = int(os.environ.get("PORT", 8000))
+    
+    if render_url:
+        base_url = render_url  # En producción (Render)
+    else:
+        base_url = f"http://localhost:{port}"  # En desarrollo local
+    
+    health_url = f"{base_url}/health"
+    print(f"🏓 Self-ping activado: {health_url} cada {SELF_PING_INTERVAL}s")
+    
+    async with httpx.AsyncClient(timeout=30) as client:
+        while True:
+            try:
+                response = await client.get(health_url)
+                now = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-4)))
+                print(f"🏓 Self-ping OK ({response.status_code}) a las {now.strftime('%H:%M:%S')}")
+            except Exception as e:
+                print(f"⚠️ Self-ping falló: {e}")
+            await asyncio.sleep(SELF_PING_INTERVAL)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -34,8 +71,19 @@ async def lifespan(app: FastAPI):
         pass
     except Exception as e:
         print(f"Error inicializando Firebase Admin SDK: {e}")
-        
+    
+    # Lanzar el self-ping como tarea de fondo
+    ping_task = asyncio.create_task(_self_ping_loop())
+    print("✅ Tarea de self-ping lanzada en segundo plano.")
+    
     yield
+    
+    # Cancelar el self-ping al apagar
+    ping_task.cancel()
+    try:
+        await ping_task
+    except asyncio.CancelledError:
+        print("🛑 Self-ping detenido.")
     await engine.dispose()
 
 app = FastAPI(title="GastosApp API", lifespan=lifespan)
@@ -61,6 +109,19 @@ app.include_router(notifications.router)
 @app.get("/")
 def read_root():
     return {"message": "Welcome to GastosApp API"}
+
+@app.get("/health")
+def health_check():
+    """
+    Endpoint liviano de health check. No requiere autenticación.
+    Usado por el self-ping interno y opcionalmente por cron-job.org como respaldo.
+    """
+    now = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-4)))
+    return {
+        "status": "alive",
+        "timestamp": now.isoformat(),
+        "message": "Server is running 🟢"
+    }
 
 if __name__ == "__main__":
     import uvicorn
