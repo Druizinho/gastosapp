@@ -11,6 +11,7 @@ import EstimatedIncomeList from './components/EstimatedIncomeList.tsx';
 import { RatesPage } from './components/RatesPage';
 import { SettingsPage } from './components/SettingsPage';
 import { BottomNav } from './components/BottomNav';
+import { InstallPWA } from './components/InstallPWA';
 import './index.css';
 
 const ProtectedRoute = ({ children }: { children?: React.ReactNode }) => {
@@ -71,6 +72,7 @@ function App() {
       <NotificationProvider>
         <Router>
           <AppRoutes />
+          <InstallPWA />
         </Router>
       </NotificationProvider>
     </AuthProvider>

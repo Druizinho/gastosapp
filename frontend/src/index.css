@@ -1772,3 +1772,143 @@ body {
   color: var(--text-tertiary);
   gap: 1rem;
 }
+
+/* =============================================
+   PWA INSTALL BANNER
+   ============================================= */
+
+.install-banner {
+  position: fixed;
+  bottom: 80px; /* Above the bottom nav */
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 2rem);
+  max-width: 440px;
+  background: var(--surface-color);
+  border: 1px solid var(--accent-light);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xl);
+  padding: 1rem 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  z-index: 1100;
+  animation: installBannerSlideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes installBannerSlideUp {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.install-banner__icon {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  background: var(--info-bg);
+  color: var(--info-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.install-banner__content {
+  flex: 1;
+  min-width: 0;
+}
+
+.install-banner__content strong {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.125rem;
+}
+
+.install-banner__content p {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.install-banner__inline-icon {
+  display: inline-flex;
+  vertical-align: middle;
+  color: var(--info-color);
+}
+
+.install-banner__step {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.install-banner__button {
+  flex-shrink: 0;
+  background: var(--accent-color);
+  color: var(--text-inverse);
+  border: none;
+  border-radius: var(--radius-xs);
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-base);
+  font-family: inherit;
+}
+
+.install-banner__button:hover:not(:disabled) {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.install-banner__button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.install-banner__button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.install-banner__close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-base);
+}
+
+.install-banner__close:hover {
+  color: var(--text-primary);
+  background: var(--surface-muted);
+}
+
+/* iOS variant: slightly taller to fit instructions */
+.install-banner--ios {
+  padding-right: 2.5rem; /* space for close button */
+}
+

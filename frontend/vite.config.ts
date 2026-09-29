@@ -21,8 +21,13 @@ export default defineConfig({
         short_name: 'GastosApp',
         description: 'Aplicación para gestionar tus gastos e ingresos',
         theme_color: '#863bff',
-        background_color: '#ffffff',
+        background_color: '#EDE9E3',
         display: 'standalone',
+        orientation: 'portrait',
+        scope: '/',
+        start_url: '/',
+        id: '/',
+        categories: ['finance', 'utilities'],
         icons: [
           {
             src: 'pwa-192x192.png',
@@ -38,7 +43,7 @@ export default defineConfig({
             src: 'pwa-512x512.png',
             sizes: '512x512',
             type: 'image/png',
-            purpose: 'any maskable'
+            purpose: 'maskable'
           }
         ]
       },
