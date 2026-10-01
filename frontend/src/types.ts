@@ -99,6 +99,36 @@ export interface RangeSummaryResponse {
 
 // Fixed Expenses
 
+export interface FixedExpenseCheck {
+  id: string;
+  fixed_expense_id: string;
+  month_year: string;
+  paid_amount: number;
+  currency: CurrencyType;
+  paid_date: string;
+  create_expense: boolean;
+  expense_id: string | null;
+  notes: string | null;
+  created_at: string;
+  amount_usd?: number | null;
+  amount_bs?: number | null;
+  amount_eur?: number | null;
+  amount_usdt?: number | null;
+  rate_usd_bs?: number | null;
+  rate_eur_bs?: number | null;
+  rate_usdt_bs?: number | null;
+}
+
+export interface FixedExpenseCheckCreate {
+  month_year: string;
+  paid_amount: number;
+  currency?: CurrencyType;
+  paid_date?: string;
+  create_expense?: boolean;
+  notes?: string;
+  manual_rate?: number;
+}
+
 export interface FixedExpense {
   id: string;
   user_id: string;
@@ -118,6 +148,7 @@ export interface FixedExpense {
   rate_usd_bs?: number | null;
   rate_eur_bs?: number | null;
   rate_usdt_bs?: number | null;
+  checks: FixedExpenseCheck[];
 }
 
 export interface FixedExpenseCreate {
@@ -144,6 +175,8 @@ export interface FixedExpenseUpdate {
 
 export interface FixedExpenseSummary {
   total_active: number;
+  total_paid: number;
+  total_pending: number;
   total_bs: number;
   total_usd: number;
   total_eur: number;

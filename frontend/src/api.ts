@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Expense, ExpenseCreate, ExpenseUpdate, SummaryResponse, ExchangeRates, RangeSummaryResponse, FixedExpense, FixedExpenseCreate, FixedExpenseUpdate, FixedExpenseSummary, Debt, DebtCreate, DebtUpdate, DebtPaymentCreate, EstimatedIncome, EstimatedIncomeCreate, EstimatedIncomeUpdate, IncomeCheckCreate, IncomeCheck } from './types';
+import type { Expense, ExpenseCreate, ExpenseUpdate, SummaryResponse, ExchangeRates, RangeSummaryResponse, FixedExpense, FixedExpenseCreate, FixedExpenseUpdate, FixedExpenseSummary, FixedExpenseCheck, FixedExpenseCheckCreate, Debt, DebtCreate, DebtUpdate, DebtPaymentCreate, EstimatedIncome, EstimatedIncomeCreate, EstimatedIncomeUpdate, IncomeCheckCreate, IncomeCheck } from './types';
 import { supabase } from './supabaseClient';
 
 const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
@@ -103,8 +103,15 @@ export const getFixedExpenses = async (activeOnly: boolean = false): Promise<Fix
   return response.data;
 };
 
-export const getFixedExpenseSummary = async (): Promise<FixedExpenseSummary> => {
-  const response = await api.get('/fixed-expenses/summary');
+export const getMonthlyFixedExpenses = async (monthYear: string): Promise<FixedExpense[]> => {
+  const response = await api.get(`/fixed-expenses/monthly/${monthYear}`);
+  return response.data;
+};
+
+export const getFixedExpenseSummary = async (month?: string): Promise<FixedExpenseSummary> => {
+  const params: any = {};
+  if (month) params.month = month;
+  const response = await api.get('/fixed-expenses/summary', { params });
   return response.data;
 };
 
@@ -122,6 +129,16 @@ export const deleteFixedExpense = async (id: string): Promise<void> => {
   await api.delete(`/fixed-expenses/${id}`);
 };
 
+export const checkFixedExpense = async (id: string, data: FixedExpenseCheckCreate): Promise<FixedExpenseCheck> => {
+  const response = await api.post(`/fixed-expenses/${id}/checks`, data);
+  return response.data;
+};
+
+export const uncheckFixedExpense = async (id: string, monthYear: string): Promise<void> => {
+  await api.delete(`/fixed-expenses/${id}/checks/${monthYear}`);
+};
+
+// Legacy — kept for backward compat
 export const markFixedExpensePaid = async (id: string, paid: boolean): Promise<FixedExpense> => {
   const response = await api.post(`/fixed-expenses/${id}/mark-paid?paid=${paid}`);
   return response.data;

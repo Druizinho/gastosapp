@@ -66,9 +66,37 @@ class FixedExpense(Base):
     category = Column(String, nullable=True)
     payment_day = Column(Numeric(2, 0), nullable=True)  # 1-31, optional
     is_active = Column(Boolean, nullable=False, server_default='true')
-    last_paid_month = Column(String(7), nullable=True)  # YYYY-MM
+    last_paid_month = Column(String(7), nullable=True)  # YYYY-MM (legacy, kept for compat)
     notes = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    checks = relationship("FixedExpenseCheck", back_populates="fixed_expense", cascade="all, delete-orphan")
+
+
+class FixedExpenseCheck(Base):
+    __tablename__ = "fixed_expense_checks"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    fixed_expense_id = Column(UUID(as_uuid=True), ForeignKey("fixed_expenses.id", ondelete="CASCADE"), nullable=False, index=True)
+    month_year = Column(String(7), nullable=False, index=True)  # YYYY-MM
+    paid_amount = Column(Numeric(12, 4), nullable=False)
+    currency = Column(String(10), nullable=False, default='BS')
+    amount_usd = Column(Numeric(12, 4), nullable=True)
+    amount_bs = Column(Numeric(12, 4), nullable=True)
+    amount_eur = Column(Numeric(12, 4), nullable=True)
+    amount_usdt = Column(Numeric(12, 4), nullable=True)
+    rate_usd_bs = Column(Numeric(12, 4), nullable=True)
+    rate_eur_bs = Column(Numeric(12, 4), nullable=True)
+    rate_usdt_bs = Column(Numeric(12, 4), nullable=True)
+    paid_date = Column(Date, nullable=False, server_default=func.current_date())
+    create_expense = Column(Boolean, nullable=False, server_default='false')
+    expense_id = Column(UUID(as_uuid=True), nullable=True)  # ref to Expense if created
+    notes = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    fixed_expense = relationship("FixedExpense", back_populates="checks")
+
+    __table_args__ = (UniqueConstraint('fixed_expense_id', 'month_year', name='_fixed_expense_month_uc'),)
 
 class Debt(Base):
     __tablename__ = "debts"

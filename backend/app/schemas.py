@@ -142,6 +142,34 @@ class FixedExpenseUpdate(BaseModel):
     notes: Optional[str] = None
     manual_rate: Optional[Decimal] = Field(None, gt=0)
 
+# Fixed Expense Check Schemas
+
+class FixedExpenseCheckBase(BaseModel):
+    month_year: str = Field(..., pattern=r"^\d{4}-\d{2}$")
+    paid_amount: Decimal = Field(..., gt=0)
+    currency: CurrencyType = Field(default=CurrencyType.BS)
+    paid_date: Optional[datetime.date] = None
+    create_expense: bool = False
+    notes: Optional[str] = None
+
+class FixedExpenseCheckCreate(FixedExpenseCheckBase):
+    manual_rate: Optional[Decimal] = Field(None, gt=0)
+
+class FixedExpenseCheckResponse(FixedExpenseCheckBase):
+    id: UUID
+    fixed_expense_id: UUID
+    created_at: datetime.datetime
+    expense_id: Optional[UUID] = None
+    amount_usd: Optional[Decimal] = None
+    amount_bs: Optional[Decimal] = None
+    amount_eur: Optional[Decimal] = None
+    amount_usdt: Optional[Decimal] = None
+    rate_usd_bs: Optional[Decimal] = None
+    rate_eur_bs: Optional[Decimal] = None
+    rate_usdt_bs: Optional[Decimal] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
 class FixedExpenseResponse(FixedExpenseBase):
     id: UUID
     user_id: UUID
@@ -154,11 +182,14 @@ class FixedExpenseResponse(FixedExpenseBase):
     rate_eur_bs: Optional[Decimal] = None
     rate_usdt_bs: Optional[Decimal] = None
     last_paid_month: Optional[str] = None
+    checks: List[FixedExpenseCheckResponse] = []
 
     model_config = ConfigDict(from_attributes=True)
 
 class FixedExpenseSummary(BaseModel):
     total_active: int
+    total_paid: int
+    total_pending: int
     total_bs: Decimal
     total_usd: Decimal
     total_eur: Decimal
