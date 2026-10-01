@@ -333,8 +333,8 @@ const FixedExpenses: React.FC = () => {
   return (
     <div style={{ padding: '1rem', paddingBottom: '6rem', maxWidth: '600px', margin: '0 auto' }}>
       {/* Header with back button */}
-      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1.5rem', paddingTop: '0.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'nowrap', gap: '0.5rem', marginBottom: '1.5rem', paddingTop: '0.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
           <button
             onClick={() => navigate('/herramientas')}
             style={{
@@ -342,16 +342,17 @@ const FixedExpenses: React.FC = () => {
               background: 'var(--surface-color)', border: 'none', display: 'flex',
               alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
               boxShadow: 'var(--shadow-sm)', color: 'var(--text-primary)',
+              flexShrink: 0
             }}
           >
             <ArrowLeft size={20} />
           </button>
-          <div>
-            <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+          <div style={{ minWidth: 0 }}>
+            <h1 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               Gastos Fijos
             </h1>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0 }}>
-              Gastos recurrentes mensuales
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              Gastos recurrentes
             </p>
           </div>
         </div>
@@ -361,7 +362,7 @@ const FixedExpenses: React.FC = () => {
           position: 'relative', display: 'flex', alignItems: 'center', gap: '0.5rem', 
           background: 'var(--surface-color)', padding: '0.4rem 0.6rem', 
           borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', 
-          cursor: 'pointer' 
+          cursor: 'pointer', flexShrink: 0
         }}>
           <Calendar size={18} color="var(--text-secondary)" />
           <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
