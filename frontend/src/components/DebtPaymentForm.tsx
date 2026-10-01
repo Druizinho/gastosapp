@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { DebtPaymentCreate } from '../types';
+import ConfirmModal from './ConfirmModal';
 
 interface DebtPaymentFormProps {
   debtCurrency: string;
@@ -26,6 +27,7 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({ debtCurrency, debtTot
     payment_date: new Date().toISOString().split('T')[0],
     note: ''
   });
+  const [showConfirm, setShowConfirm] = useState(false);
 
   // Check if user is paying in the same currency as the debt
   const isSameCurrency = formData.currency === debtCurrency;
@@ -47,12 +49,17 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({ debtCurrency, debtTot
     submitData.amount = Number(submitData.amount);
     
     if (isSameCurrency && submitData.amount > remaining) {
-      const confirmOverpay = window.confirm(
-        `El abono (${formatCurrency(submitData.amount, debtCurrency)}) es mayor al monto pendiente (${formatCurrency(remaining, debtCurrency)}).\n\n¿Deseas registrarlo de todas formas?`
-      );
-      if (!confirmOverpay) return;
+      setShowConfirm(true);
+      return;
     }
     
+    onSubmit(submitData);
+  };
+
+  const handleConfirmSubmit = () => {
+    setShowConfirm(false);
+    const submitData = { ...formData };
+    submitData.amount = Number(submitData.amount);
     onSubmit(submitData);
   };
 
@@ -184,6 +191,14 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({ debtCurrency, debtTot
           {loading ? 'Procesando...' : 'Registrar Abono'}
         </button>
       </div>
+      
+      <ConfirmModal
+        isOpen={showConfirm}
+        title="Confirmar Abono Mayor al Pendiente"
+        message={`El abono (${formatCurrency(currentAmount, debtCurrency)}) es mayor al monto pendiente (${formatCurrency(remaining, debtCurrency)}).\n\n¿Deseas registrarlo de todas formas?`}
+        onConfirm={handleConfirmSubmit}
+        onCancel={() => setShowConfirm(false)}
+      />
     </form>
   );
 };

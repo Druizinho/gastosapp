@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Edit3, ArrowLeft, Wallet } from 'lucide-react';
+import { Plus, Trash2, Edit3, ArrowLeft, Wallet, Calendar, AlertCircle, CheckCircle } from 'lucide-react';
 import type { Debt, DebtCreate, DebtUpdate, DebtPaymentCreate, ExchangeRates } from '../types';
-import { getDebts, createDebt, updateDebt, addDebtPayment, deleteDebt, getRates } from '../api';
+import { getDebts, createDebt, updateDebt, addDebtPayment, deleteDebt, getRates, deleteDebtPayment } from '../api';
 import DebtForm from './DebtForm';
 import DebtPaymentForm from './DebtPaymentForm';
 
@@ -42,6 +42,8 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
   
   const [selectedDebt, setSelectedDebt] = useState<Debt | null>(null);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
+
+  const [confirmDelete, setConfirmDelete] = useState<{isOpen: boolean; debtId?: string; paymentId?: string}>({isOpen: false});
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -119,8 +121,7 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm('¿Estás seguro de eliminar esta deuda? Se borrará también su historial de pagos.')) return;
+  const handleDeleteDebt = async (id: string) => {
     try {
       setSubmitting(true);
       await deleteDebt(id);
@@ -131,6 +132,22 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
       console.error('Error deleting debt:', error);
     } finally {
       setSubmitting(false);
+      setConfirmDelete({isOpen: false});
+    }
+  };
+
+  const handleDeletePayment = async (paymentId: string) => {
+    try {
+      setSubmitting(true);
+      const updatedDebt = await deleteDebtPayment(paymentId);
+      setSelectedDebt(updatedDebt);
+      await fetchDebts();
+      showToast('Abono eliminado');
+    } catch (error) {
+      console.error('Error deleting payment:', error);
+    } finally {
+      setSubmitting(false);
+      setConfirmDelete({isOpen: false});
     }
   };
 
@@ -362,7 +379,7 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
                 <Edit3 size={16} />
               </button>
               <button
-                onClick={() => handleDelete(selectedDebt.id)}
+                onClick={() => setConfirmDelete({isOpen: true, debtId: selectedDebt.id})}
                 style={{
                   width: '40px', padding: '0', borderRadius: 'var(--radius-md)',
                   background: 'none', color: 'var(--expense-color)',
@@ -423,6 +440,17 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
                         </p>
                       )}
                     </div>
+                    <button
+                      onClick={() => setConfirmDelete({isOpen: true, paymentId: payment.id})}
+                      style={{
+                        background: 'transparent', border: 'none', color: 'var(--expense-color)',
+                        cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0.25rem',
+                        marginLeft: '0.5rem'
+                      }}
+                      title="Eliminar abono"
+                    >
+                      <Trash2 size={14} />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -568,53 +596,102 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
                   <div 
                     key={debt.id} 
                     className="soft-card"
-                    style={{ padding: '1rem 1.25rem', cursor: 'pointer', opacity: debt.is_settled ? 0.7 : 1 }}
+                    style={{ 
+                      padding: '1rem 1.25rem', cursor: 'pointer',
+                      borderLeft: debt.is_settled ? '3px solid var(--income-color)' : `3px solid ${themeColor}`,
+                    }}
                     onClick={() => {
                       const freshDebt = debts.find(d => d.id === debt.id) || debt;
                       setSelectedDebt(freshDebt);
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.25rem' }}>
-                      <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                        {debt.concept}
-                      </h3>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                        <span style={{ fontSize: '1rem', fontWeight: 800, color: themeColor }}>
-                          {formatCurrency(remaining, debt.currency)}
-                        </span>
-                        {filterSettled && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDelete(debt.id);
-                            }}
-                            style={{
-                              background: 'transparent', border: 'none', color: 'var(--text-tertiary)',
-                              cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0.25rem'
-                            }}
-                          >
-                            <Trash2 size={16} />
-                          </button>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.35rem' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                          {debt.concept}
+                        </div>
+                        {debt.is_settled ? (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.7rem', fontWeight: 500, color: 'var(--income-color)', background: 'var(--surface-muted)', padding: '0.15rem 0.5rem', borderRadius: 'var(--radius-full)', marginTop: '0.25rem' }}>
+                            <CheckCircle size={10} />
+                            Liquidada
+                          </span>
+                        ) : (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.7rem', fontWeight: 500, color: themeColor, background: 'var(--surface-muted)', padding: '0.15rem 0.5rem', borderRadius: 'var(--radius-full)', marginTop: '0.25rem' }}>
+                            <AlertCircle size={10} />
+                            Activa
+                          </span>
                         )}
+                      </div>
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ fontSize: '1.05rem', fontWeight: 700, color: debt.is_settled ? 'var(--income-color)' : themeColor }}>
+                          {formatCurrency(remaining, debt.currency)}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                          Total: {formatCurrency(debt.total_amount, debt.currency)}
+                        </div>
                       </div>
                     </div>
                     
-                    <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
-                      {isOwed ? 'A: ' : 'De: '}<span style={{ fontWeight: 600 }}>{debt.counterpart}</span>
-                    </p>
-
-                    <div style={{ width: '100%', background: 'var(--surface-muted)', borderRadius: 'var(--radius-full)', height: '4px', marginBottom: '0.75rem' }}>
+                    <div style={{ width: '100%', background: 'var(--surface-muted)', borderRadius: 'var(--radius-full)', height: '4px', marginBottom: '0.5rem', marginTop: '0.5rem' }}>
                       <div style={{ 
                         height: '4px', 
-                        background: themeColor, 
+                        background: debt.is_settled ? 'var(--income-color)' : themeColor, 
                         width: `${progress}%`,
                         borderRadius: 'var(--radius-full)'
                       }}></div>
                     </div>
                     
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-                      <span>Abonado: {formatCurrency(paid, debt.currency)}</span>
-                      <span>Total: {formatCurrency(debt.total_amount, debt.currency)}</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                          {isOwed ? 'A:' : 'De:'} <span style={{ fontWeight: 600 }}>{debt.counterpart}</span>
+                        </span>
+                        {debt.due_date && (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                            <Calendar size={12} />
+                            Vence: {formatDate(debt.due_date)}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.25rem' }}>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); const freshDebt = debts.find(d => d.id === debt.id) || debt; setSelectedDebt(freshDebt); setShowPaymentForm(true); }} 
+                          title="Registrar abono" 
+                          disabled={debt.is_settled}
+                          style={{
+                            width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
+                            background: debt.is_settled ? 'var(--surface-muted)' : 'rgba(59, 130, 246, 0.1)', border: 'none', display: 'flex',
+                            alignItems: 'center', justifyContent: 'center', cursor: debt.is_settled ? 'not-allowed' : 'pointer',
+                            color: debt.is_settled ? 'var(--text-tertiary)' : '#3B82F6', transition: 'all 0.15s ease',
+                          }}
+                        >
+                          <Plus size={16} />
+                        </button>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); setEditingDebt(debt); setShowForm(true); }} 
+                          title="Editar" 
+                          style={{
+                            width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
+                            background: 'var(--surface-muted)', border: 'none', display: 'flex',
+                            alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                            color: 'var(--text-secondary)', transition: 'all 0.15s ease',
+                          }}
+                        >
+                          <Edit3 size={14} />
+                        </button>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); setConfirmDelete({isOpen: true, debtId: debt.id}); }} 
+                          title="Eliminar" 
+                          style={{
+                            width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
+                            background: 'var(--surface-muted)', border: 'none', display: 'flex',
+                            alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                            color: 'var(--expense-color)', transition: 'all 0.15s ease',
+                          }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -641,6 +718,69 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
           animation: 'toastSlideUp 0.3s ease'
         }}>
           {toastMessage}
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {confirmDelete.isOpen && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0, 0, 0, 0.4)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000, padding: '1rem',
+          animation: 'fadeIn 0.2s ease'
+        }}>
+          <div className="soft-card" style={{
+            background: 'var(--surface-color)', width: '100%', maxWidth: '320px',
+            padding: '1.5rem', textAlign: 'center'
+          }}>
+            <div style={{
+              width: '48px', height: '48px', borderRadius: '50%', background: 'rgba(239, 68, 68, 0.1)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem',
+              color: 'var(--expense-color)'
+            }}>
+              <Trash2 size={24} />
+            </div>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
+              Confirmar Eliminación
+            </h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.5rem', lineHeight: 1.4 }}>
+              {confirmDelete.debtId 
+                ? '¿Estás seguro de que deseas eliminar esta deuda? Se borrará también su historial de pagos.'
+                : '¿Estás seguro de que deseas eliminar este abono?'}
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <button
+                onClick={() => setConfirmDelete({isOpen: false})}
+                disabled={submitting}
+                style={{
+                  flex: 1, padding: '0.75rem', borderRadius: 'var(--radius-md)',
+                  background: 'var(--surface-muted)', border: 'none', color: 'var(--text-primary)',
+                  fontWeight: 600, fontSize: '0.9rem', cursor: submitting ? 'not-allowed' : 'pointer'
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  if (confirmDelete.debtId) {
+                    handleDeleteDebt(confirmDelete.debtId);
+                  } else if (confirmDelete.paymentId) {
+                    handleDeletePayment(confirmDelete.paymentId);
+                  }
+                }}
+                disabled={submitting}
+                style={{
+                  flex: 1, padding: '0.75rem', borderRadius: 'var(--radius-md)',
+                  background: 'var(--expense-color)', border: 'none', color: 'white',
+                  fontWeight: 600, fontSize: '0.9rem', cursor: submitting ? 'not-allowed' : 'pointer',
+                  opacity: submitting ? 0.7 : 1
+                }}
+              >
+                {submitting ? 'Eliminando...' : 'Eliminar'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

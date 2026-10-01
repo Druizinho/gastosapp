@@ -97,3 +97,36 @@ async def add_debt_payment(db: AsyncSession, debt_id: UUID, user_id: UUID, payme
         await db.commit()
     
     return await get_debt(db, debt_id, user_id)
+
+async def delete_debt_payment(db: AsyncSession, payment_id: UUID, user_id: UUID):
+    result = await db.execute(
+        select(models.DebtPayment)
+        .join(models.Debt)
+        .filter(models.DebtPayment.id == payment_id, models.Debt.user_id == user_id)
+    )
+    payment = result.scalars().first()
+    if not payment:
+        return None
+        
+    debt_id = payment.debt_id
+    await db.delete(payment)
+    await db.commit()
+    
+    db_debt = await get_debt(db, debt_id, user_id)
+    
+    currency_key = "amount_" + db_debt.currency.lower().replace("_bcv", "").replace("_cash", "")
+    total_paid = Decimal("0")
+    for p in db_debt.payments:
+        if p.currency == db_debt.currency:
+            total_paid += p.amount
+        else:
+            equivalent = getattr(p, currency_key, None)
+            if equivalent is not None:
+                total_paid += equivalent
+    
+    if total_paid < db_debt.total_amount and db_debt.is_settled:
+        db_debt.is_settled = False
+        await db.commit()
+        
+    return db_debt
+

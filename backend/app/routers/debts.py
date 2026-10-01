@@ -94,3 +94,15 @@ async def add_debt_payment(
         raise HTTPException(status_code=404, detail="Debt not found")
         
     return db_debt
+
+@router.delete("/payments/{payment_id}", response_model=schemas.DebtResponse)
+async def delete_debt_payment(
+    payment_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user_id: UUID = Depends(get_current_user)
+):
+    db_debt = await crud_debts.delete_debt_payment(db, payment_id=payment_id, user_id=user_id)
+    if not db_debt:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    return db_debt
+

@@ -176,6 +176,11 @@ export const addDebtPayment = async (debtId: string, payment: DebtPaymentCreate)
   return response.data;
 };
 
+export const deleteDebtPayment = async (paymentId: string): Promise<Debt> => {
+  const response = await api.delete(`/debts/payments/${paymentId}`);
+  return response.data;
+};
+
 // Estimated Incomes
 
 export const getEstimatedIncomes = async (active_only: boolean = false): Promise<EstimatedIncome[]> => {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Receipt, Pause, Play, Trash2, Edit3, Calendar, CheckCircle2, Circle, ChevronLeft, ChevronRight, Undo2 } from 'lucide-react';
+import { ArrowLeft, Plus, Receipt, Pause, Play, Trash2, Edit3, Calendar, CheckCircle2, Circle, Undo2 } from 'lucide-react';
 import { getFixedExpenses, getFixedExpenseSummary, createFixedExpense, updateFixedExpense, deleteFixedExpense, checkFixedExpense, uncheckFixedExpense } from '../api';
 import type { FixedExpense, FixedExpenseCreate, FixedExpenseUpdate, FixedExpenseSummary, FixedExpenseCheckCreate } from '../types';
 import FixedExpenseForm from './FixedExpenseForm';
@@ -32,6 +32,7 @@ const FixedExpenses: React.FC = () => {
   const [payingExpense, setPayingExpense] = useState<FixedExpense | null>(null);
   const [confirmDelete, setConfirmDelete] = useState({ isOpen: false, expenseId: '' });
   const [displayCurrency, setDisplayCurrency] = useState<'bs' | 'usd' | 'eur' | 'usdt'>('usd');
+  const [activeTab, setActiveTab] = useState<'pending' | 'paid'>('pending');
 
   // Month selector
   const [currentMonth, setCurrentMonth] = useState(() => {
@@ -39,21 +40,10 @@ const FixedExpenses: React.FC = () => {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
 
-  const isCurrentMonth = useMemo(() => {
-    const now = new Date();
-    return currentMonth === `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  }, [currentMonth]);
-
   const monthLabel = useMemo(() => {
     const [y, m] = currentMonth.split('-');
     return `${monthNames[parseInt(m) - 1]} ${y}`;
   }, [currentMonth]);
-
-  const navigateMonth = (delta: number) => {
-    const [y, m] = currentMonth.split('-').map(Number);
-    const d = new Date(y, m - 1 + delta, 1);
-    setCurrentMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
-  };
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -486,62 +476,80 @@ const FixedExpenses: React.FC = () => {
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          
+          {/* Tabs */}
+          <div style={{ display: 'flex', background: 'var(--surface-muted)', borderRadius: 'var(--radius-full)', padding: '0.25rem' }}>
+            <button
+              onClick={() => setActiveTab('pending')}
+              style={{
+                flex: 1, padding: '0.6rem', border: 'none', borderRadius: 'var(--radius-full)',
+                fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
+                background: activeTab === 'pending' ? 'var(--surface-color)' : 'transparent',
+                color: activeTab === 'pending' ? 'var(--warning-color)' : 'var(--text-secondary)',
+                boxShadow: activeTab === 'pending' ? 'var(--shadow-sm)' : 'none'
+              }}
+            >
+              Pendientes ({pendingExpenses.length + pausedExpenses.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('paid')}
+              style={{
+                flex: 1, padding: '0.6rem', border: 'none', borderRadius: 'var(--radius-full)',
+                fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
+                background: activeTab === 'paid' ? 'var(--surface-color)' : 'transparent',
+                color: activeTab === 'paid' ? 'var(--income-color)' : 'var(--text-secondary)',
+                boxShadow: activeTab === 'paid' ? 'var(--shadow-sm)' : 'none'
+              }}
+            >
+              Pagados ({paidExpenses.length})
+            </button>
+          </div>
+
           {/* Pending section */}
-          {pendingExpenses.length > 0 && (
-            <div>
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: '0.5rem',
-                marginBottom: '0.6rem', paddingLeft: '0.25rem',
-              }}>
-                <Circle size={14} style={{ color: 'var(--warning-color)' }} />
-                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  Pendientes ({pendingExpenses.length})
-                </span>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {pendingExpenses.map(exp => renderExpenseCard(exp, false))}
-              </div>
+          {activeTab === 'pending' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {pendingExpenses.length === 0 && pausedExpenses.length === 0 ? (
+                <p style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: '2rem 0', fontSize: '0.9rem' }}>
+                  No hay gastos pendientes.
+                </p>
+              ) : (
+                <>
+                  {pendingExpenses.map(exp => renderExpenseCard(exp, false))}
+                  
+                  {pausedExpenses.length > 0 && (
+                    <>
+                      <div style={{
+                        display: 'flex', alignItems: 'center', gap: '0.5rem',
+                        marginTop: '1rem', marginBottom: '0.2rem', paddingLeft: '0.25rem',
+                      }}>
+                        <Pause size={14} style={{ color: 'var(--text-tertiary)' }} />
+                        <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          Pausados
+                        </span>
+                      </div>
+                      {pausedExpenses.map(exp => renderExpenseCard(exp, false))}
+                    </>
+                  )}
+                </>
+              )}
             </div>
           )}
 
           {/* Paid section */}
-          {paidExpenses.length > 0 && (
-            <div>
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: '0.5rem',
-                marginBottom: '0.6rem', paddingLeft: '0.25rem',
-              }}>
-                <CheckCircle2 size={14} style={{ color: 'var(--income-color)' }} />
-                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  Pagados ({paidExpenses.length})
-                </span>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {paidExpenses.map(exp => renderExpenseCard(exp, true))}
-              </div>
-            </div>
-          )}
-
-          {/* Paused section */}
-          {pausedExpenses.length > 0 && (
-            <div>
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: '0.5rem',
-                marginBottom: '0.6rem', paddingLeft: '0.25rem',
-              }}>
-                <Pause size={14} style={{ color: 'var(--text-tertiary)' }} />
-                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  Pausados ({pausedExpenses.length})
-                </span>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {pausedExpenses.map(exp => renderExpenseCard(exp, false))}
-              </div>
+          {activeTab === 'paid' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {paidExpenses.length === 0 ? (
+                <p style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: '2rem 0', fontSize: '0.9rem' }}>
+                  Aún no has registrado pagos este mes.
+                </p>
+              ) : (
+                paidExpenses.map(exp => renderExpenseCard(exp, true))
+              )}
             </div>
           )}
 
           {/* All paid celebration */}
-          {totalActive > 0 && totalPaid === totalActive && pendingExpenses.length === 0 && (
+          {totalActive > 0 && totalPaid === totalActive && pendingExpenses.length === 0 && activeTab === 'pending' && (
             <div style={{
               textAlign: 'center', padding: '1.5rem',
               background: 'rgba(16, 185, 129, 0.06)',

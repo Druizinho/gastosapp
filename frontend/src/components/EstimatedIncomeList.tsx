@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Wallet, Trash2, Edit3, CheckCircle, Clock, AlertCircle, Calendar, Circle, Undo2 } from 'lucide-react';
-import { getMonthlyIncomes, deleteEstimatedIncome, uncheckIncome, getRates } from '../api';
+import { ArrowLeft, Plus, Wallet, Trash2, Edit3, CheckCircle, Clock, AlertCircle, Calendar, Circle, Undo2, Pause, Play } from 'lucide-react';
+import { getMonthlyIncomes, deleteEstimatedIncome, uncheckIncome, getRates, updateEstimatedIncome } from '../api';
 import type { EstimatedIncome, ExchangeRates } from '../types';
 import ConfirmModal from './ConfirmModal';
 import EstimatedIncomeForm from './EstimatedIncomeForm.tsx'; // Form
@@ -35,6 +35,7 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
   const [checkingIncome, setCheckingIncome] = useState<EstimatedIncome | null>(null);
   
   const [confirmDelete, setConfirmDelete] = useState({ isOpen: false, incomeId: '' });
+  const [activeTab, setActiveTab] = useState<'pending' | 'paid'>('pending');
   
   // Month selector logic
   const [currentDate, setCurrentDate] = useState(() => new Date());
@@ -169,6 +170,15 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
     }
   };
 
+  const handleTogglePause = async (income: EstimatedIncome) => {
+    try {
+      await updateEstimatedIncome(income.id, { is_active: !income.is_active });
+      fetchData();
+    } catch (error) {
+      console.error('Error toggling income state:', error);
+    }
+  };
+
   // Totals calculations (approximate, since currencies might mix, 
   // ideally we convert all to a base currency. For simplicity in the UI we will show native sums or just count them, 
   // but let's sum by base currency if available, or just group them).
@@ -176,6 +186,188 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
   const totalExpectedCount = incomes.length;
   const confirmedIncomes = incomes.filter(i => i.checks && i.checks.length > 0);
   const confirmedCount = confirmedIncomes.length;
+
+  const renderIncomeCard = (income: EstimatedIncome) => {
+    const check = income.checks && income.checks.length > 0 ? income.checks[0] : null;
+    const isConfirmed = !!check;
+    const isPartial = check?.is_partial;
+    
+    // Calculate equivalencies
+    let receivedEquivalent = 0;
+    let remaining = income.expected_amount;
+    if (check) {
+      if (check.currency === income.currency) {
+        receivedEquivalent = check.real_amount;
+      } else {
+        const checkInBs = convertCurrencyAmount(check.real_amount, check.currency, rates).bs;
+        const incomeOneUnitInBs = convertCurrencyAmount(1, income.currency, rates).bs;
+        receivedEquivalent = incomeOneUnitInBs > 0 ? checkInBs / incomeOneUnitInBs : 0;
+      }
+      remaining = Math.max(income.expected_amount - receivedEquivalent, 0);
+    }
+
+    // Lógica de atraso
+    const today = new Date();
+    let isOverdue = false;
+    if (!isConfirmed && income.payment_day) {
+      const paymentDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), income.payment_day);
+      if (today > paymentDate && currentDate.getMonth() <= today.getMonth() && currentDate.getFullYear() <= today.getFullYear()) {
+        isOverdue = true;
+      }
+    }
+
+    return (
+      <div 
+        key={income.id} 
+        className="soft-card" 
+        style={{ 
+          padding: '1rem 1.25rem',
+          borderLeft: isConfirmed && !isPartial ? '3px solid var(--income-color)' : isConfirmed && isPartial ? '3px solid var(--warning-color)' : isOverdue && income.is_active ? '3px solid var(--expense-color)' : !income.is_active ? '3px solid var(--text-tertiary)' : undefined,
+          opacity: !income.is_active ? 0.7 : 1,
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.35rem' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+              {income.name}
+            </div>
+            {isConfirmed ? (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.7rem', fontWeight: 500, color: isPartial ? 'var(--warning-color)' : 'var(--income-color)', background: 'var(--surface-muted)', padding: '0.15rem 0.5rem', borderRadius: 'var(--radius-full)', marginTop: '0.25rem' }}>
+                <CheckCircle size={10} />
+                {isPartial ? 'Pago Parcial' : 'Pagado'}
+              </span>
+            ) : !income.is_active ? (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.7rem', fontWeight: 500, color: 'var(--text-tertiary)', background: 'var(--surface-muted)', padding: '0.15rem 0.5rem', borderRadius: 'var(--radius-full)', marginTop: '0.25rem' }}>
+                <Pause size={10} />
+                Pausado
+              </span>
+            ) : isOverdue ? (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.7rem', fontWeight: 500, color: 'var(--expense-color)', background: 'var(--surface-muted)', padding: '0.15rem 0.5rem', borderRadius: 'var(--radius-full)', marginTop: '0.25rem' }}>
+                <AlertCircle size={10} />
+                Atrasado
+              </span>
+            ) : (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.7rem', fontWeight: 500, color: 'var(--text-secondary)', background: 'var(--surface-muted)', padding: '0.15rem 0.5rem', borderRadius: 'var(--radius-full)', marginTop: '0.25rem' }}>
+                <Clock size={10} />
+                Pendiente
+              </span>
+            )}
+          </div>
+          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+            <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              {currencyLabels[income.currency]} {formatAmount(income.expected_amount)}
+            </div>
+            {isConfirmed && (
+              <>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                  Recibido: {currencyLabels[check.currency]} {formatAmount(check.real_amount)}
+                </div>
+                {check.currency !== income.currency && receivedEquivalent > 0 && (
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
+                    ≈ {currencyLabels[income.currency]} {formatAmount(receivedEquivalent)}
+                  </div>
+                )}
+                {isPartial && remaining > 0 && (
+                  <div style={{ fontSize: '0.75rem', color: 'var(--warning-color)', fontWeight: 600 }}>
+                    Faltan: {currencyLabels[income.currency]} {formatAmount(remaining)}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Bottom info row and actions */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            {income.payment_day && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                <Calendar size={12} />
+                Día {income.payment_day}
+              </span>
+            )}
+            {isConfirmed && isPartial && check.pending_date && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', color: 'var(--warning-color)' }}>
+                <AlertCircle size={12} />
+                Resto: {new Date(check.pending_date).toLocaleDateString('es-VE')}
+              </span>
+            )}
+          </div>
+
+          {/* Action buttons */}
+          <div style={{ display: 'flex', gap: '0.25rem' }}>
+            {!isConfirmed ? (
+              <button 
+                onClick={(e) => { e.stopPropagation(); setCheckingIncome(income); setIsCheckFormOpen(true); }} 
+                title="Confirmar" 
+                style={{
+                  width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
+                  background: 'var(--surface-muted)', border: 'none', display: 'flex',
+                  alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                  color: 'var(--text-tertiary)', transition: 'all 0.15s ease',
+                }}
+              >
+                <Circle size={16} />
+              </button>
+            ) : (
+              <button 
+                onClick={(e) => { e.stopPropagation(); handleUncheck(income.id); }} 
+                title="Deshacer pago" 
+                style={{
+                  width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
+                  background: 'rgba(16, 185, 129, 0.15)', border: 'none', display: 'flex',
+                  alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                  color: 'var(--income-color)', transition: 'all 0.15s ease',
+                }}
+              >
+                <Undo2 size={14} />
+              </button>
+            )}
+            <button 
+              onClick={(e) => { e.stopPropagation(); handleTogglePause(income); }} 
+              title={income.is_active ? "Pausar" : "Reanudar"} 
+              style={{
+                width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
+                background: 'var(--surface-muted)', border: 'none', display: 'flex',
+                alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                color: income.is_active ? 'var(--text-secondary)' : '#3B82F6', transition: 'all 0.15s ease',
+              }}
+            >
+              {income.is_active ? <Pause size={14} /> : <Play size={14} />}
+            </button>
+            <button 
+              onClick={(e) => { e.stopPropagation(); setEditingIncome(income); setIsFormOpen(true); }} 
+              title="Editar" 
+              style={{
+                width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
+                background: 'var(--surface-muted)', border: 'none', display: 'flex',
+                alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                color: 'var(--text-secondary)', transition: 'all 0.15s ease',
+              }}
+            >
+              <Edit3 size={14} />
+            </button>
+            <button 
+              onClick={(e) => { e.stopPropagation(); setConfirmDelete({ isOpen: true, incomeId: income.id }); }} 
+              title="Eliminar" 
+              style={{
+                width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
+                background: 'var(--surface-muted)', border: 'none', display: 'flex',
+                alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                color: 'var(--expense-color)', transition: 'all 0.15s ease',
+              }}
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const pendingIncomesList = incomes.filter(i => !(i.checks && i.checks.length > 0) && i.is_active);
+  const pausedIncomesList = incomes.filter(i => !(i.checks && i.checks.length > 0) && !i.is_active);
+  const paidIncomesList = incomes.filter(i => i.checks && i.checks.length > 0);
 
   return (
     <div style={{ padding: '1rem', paddingBottom: '6rem', maxWidth: '600px', margin: '0 auto' }}>
@@ -285,166 +477,78 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
           <p>No tienes ingresos estimados para este mes.</p>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {incomes.map(income => {
-            const check = income.checks && income.checks.length > 0 ? income.checks[0] : null;
-            const isConfirmed = !!check;
-            const isPartial = check?.is_partial;
-            
-            // Calculate equivalencies
-            let receivedEquivalent = 0;
-            let remaining = income.expected_amount;
-            if (check) {
-              if (check.currency === income.currency) {
-                receivedEquivalent = check.real_amount;
-              } else {
-                const checkInBs = convertCurrencyAmount(check.real_amount, check.currency, rates).bs;
-                const incomeOneUnitInBs = convertCurrencyAmount(1, income.currency, rates).bs;
-                receivedEquivalent = incomeOneUnitInBs > 0 ? checkInBs / incomeOneUnitInBs : 0;
-              }
-              remaining = Math.max(income.expected_amount - receivedEquivalent, 0);
-            }
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          
+          {/* Tabs */}
+          <div style={{ display: 'flex', background: 'var(--surface-muted)', borderRadius: 'var(--radius-full)', padding: '0.25rem' }}>
+            <button
+              onClick={() => setActiveTab('pending')}
+              style={{
+                flex: 1, padding: '0.6rem', border: 'none', borderRadius: 'var(--radius-full)',
+                fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
+                background: activeTab === 'pending' ? 'var(--surface-color)' : 'transparent',
+                color: activeTab === 'pending' ? 'var(--warning-color)' : 'var(--text-secondary)',
+                boxShadow: activeTab === 'pending' ? 'var(--shadow-sm)' : 'none'
+              }}
+            >
+              Pendientes ({pendingIncomesList.length + pausedIncomesList.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('paid')}
+              style={{
+                flex: 1, padding: '0.6rem', border: 'none', borderRadius: 'var(--radius-full)',
+                fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
+                background: activeTab === 'paid' ? 'var(--surface-color)' : 'transparent',
+                color: activeTab === 'paid' ? '#3B82F6' : 'var(--text-secondary)',
+                boxShadow: activeTab === 'paid' ? 'var(--shadow-sm)' : 'none'
+              }}
+            >
+              Confirmados ({paidIncomesList.length})
+            </button>
+          </div>
 
-            // Lógica de atraso
-            const today = new Date();
-            let isOverdue = false;
-            if (!isConfirmed && income.payment_day) {
-              const paymentDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), income.payment_day);
-              if (today > paymentDate && currentDate.getMonth() <= today.getMonth() && currentDate.getFullYear() <= today.getFullYear()) {
-                isOverdue = true;
-              }
-            }
+          {/* Pending section */}
+          {activeTab === 'pending' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {pendingIncomesList.length === 0 && pausedIncomesList.length === 0 ? (
+                <p style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: '2rem 0', fontSize: '0.9rem' }}>
+                  No hay ingresos pendientes.
+                </p>
+              ) : (
+                <>
+                  {pendingIncomesList.map(income => renderIncomeCard(income))}
 
-            return (
-              <div 
-                key={income.id} 
-                className="soft-card" 
-                style={{ 
-                  padding: '1rem 1.25rem',
-                  borderLeft: isConfirmed && !isPartial ? '3px solid var(--income-color)' : isConfirmed && isPartial ? '3px solid var(--warning-color)' : isOverdue ? '3px solid var(--expense-color)' : undefined,
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.35rem' }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                      {income.name}
-                    </div>
-                    {isConfirmed ? (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.7rem', fontWeight: 500, color: isPartial ? 'var(--warning-color)' : 'var(--income-color)', background: 'var(--surface-muted)', padding: '0.15rem 0.5rem', borderRadius: 'var(--radius-full)', marginTop: '0.25rem' }}>
-                        <CheckCircle size={10} />
-                        {isPartial ? 'Pago Parcial' : 'Pagado'}
-                      </span>
-                    ) : isOverdue ? (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.7rem', fontWeight: 500, color: 'var(--expense-color)', background: 'var(--surface-muted)', padding: '0.15rem 0.5rem', borderRadius: 'var(--radius-full)', marginTop: '0.25rem' }}>
-                        <AlertCircle size={10} />
-                        Atrasado
-                      </span>
-                    ) : (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.7rem', fontWeight: 500, color: 'var(--text-secondary)', background: 'var(--surface-muted)', padding: '0.15rem 0.5rem', borderRadius: 'var(--radius-full)', marginTop: '0.25rem' }}>
-                        <Clock size={10} />
-                        Pendiente
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                      {currencyLabels[income.currency]} {formatAmount(income.expected_amount)}
-                    </div>
-                    {isConfirmed && (
-                      <>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                          Recibido: {currencyLabels[check.currency]} {formatAmount(check.real_amount)}
-                        </div>
-                        {check.currency !== income.currency && receivedEquivalent > 0 && (
-                          <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
-                            ≈ {currencyLabels[income.currency]} {formatAmount(receivedEquivalent)}
-                          </div>
-                        )}
-                        {isPartial && remaining > 0 && (
-                          <div style={{ fontSize: '0.75rem', color: 'var(--warning-color)', fontWeight: 600 }}>
-                            Faltan: {currencyLabels[income.currency]} {formatAmount(remaining)}
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
+                  {pausedIncomesList.length > 0 && (
+                    <>
+                      <div style={{
+                        display: 'flex', alignItems: 'center', gap: '0.5rem',
+                        marginTop: '1rem', marginBottom: '0.2rem', paddingLeft: '0.25rem',
+                      }}>
+                        <Pause size={14} style={{ color: 'var(--text-tertiary)' }} />
+                        <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          Pausados
+                        </span>
+                      </div>
+                      {pausedIncomesList.map(income => renderIncomeCard(income))}
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+          )}
 
-                {/* Bottom info row and actions */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    {income.payment_day && (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-                        <Calendar size={12} />
-                        Día {income.payment_day}
-                      </span>
-                    )}
-                    {isConfirmed && isPartial && check.pending_date && (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', color: 'var(--warning-color)' }}>
-                        <AlertCircle size={12} />
-                        Resto: {new Date(check.pending_date).toLocaleDateString('es-VE')}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Action buttons */}
-                  <div style={{ display: 'flex', gap: '0.25rem' }}>
-                    {!isConfirmed ? (
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); setCheckingIncome(income); setIsCheckFormOpen(true); }} 
-                        title="Confirmar" 
-                        style={{
-                          width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
-                          background: 'var(--surface-muted)', border: 'none', display: 'flex',
-                          alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                          color: 'var(--text-tertiary)', transition: 'all 0.15s ease',
-                        }}
-                      >
-                        <Circle size={16} />
-                      </button>
-                    ) : (
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleUncheck(income.id); }} 
-                        title="Deshacer pago" 
-                        style={{
-                          width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
-                          background: 'rgba(16, 185, 129, 0.15)', border: 'none', display: 'flex',
-                          alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                          color: 'var(--income-color)', transition: 'all 0.15s ease',
-                        }}
-                      >
-                        <Undo2 size={14} />
-                      </button>
-                    )}
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); setEditingIncome(income); setIsFormOpen(true); }} 
-                      title="Editar" 
-                      style={{
-                        width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
-                        background: 'var(--surface-muted)', border: 'none', display: 'flex',
-                        alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                        color: 'var(--text-secondary)', transition: 'all 0.15s ease',
-                      }}
-                    >
-                      <Edit3 size={14} />
-                    </button>
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); setConfirmDelete({ isOpen: true, incomeId: income.id }); }} 
-                      title="Eliminar" 
-                      style={{
-                        width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
-                        background: 'var(--surface-muted)', border: 'none', display: 'flex',
-                        alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                        color: 'var(--expense-color)', transition: 'all 0.15s ease',
-                      }}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+          {/* Paid section */}
+          {activeTab === 'paid' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {paidIncomesList.length === 0 ? (
+                <p style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: '2rem 0', fontSize: '0.9rem' }}>
+                  Aún no has confirmado ingresos este mes.
+                </p>
+              ) : (
+                paidIncomesList.map(income => renderIncomeCard(income))
+              )}
+            </div>
+          )}
         </div>
       )}
 
