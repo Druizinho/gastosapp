@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { FixedExpense, FixedExpenseCheckCreate, CurrencyType, ExchangeRates } from '../types';
 import { getRates } from '../api';
-import { Info, Receipt } from 'lucide-react';
+import { Receipt } from 'lucide-react';
 
 interface FixedExpensePayFormProps {
   expense: FixedExpense;
