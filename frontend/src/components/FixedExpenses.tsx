@@ -343,73 +343,64 @@ const FixedExpenses: React.FC = () => {
   return (
     <div style={{ padding: '1rem', paddingBottom: '6rem', maxWidth: '600px', margin: '0 auto' }}>
       {/* Header with back button */}
-      <header style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', paddingTop: '0.5rem' }}>
-        <button
-          onClick={() => navigate('/herramientas')}
-          style={{
-            width: '40px', height: '40px', borderRadius: 'var(--radius-full)',
-            background: 'var(--surface-color)', border: 'none', display: 'flex',
-            alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-            boxShadow: 'var(--shadow-sm)', color: 'var(--text-primary)',
-          }}
-        >
-          <ArrowLeft size={20} />
-        </button>
-        <div>
-          <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
-            Gastos Fijos
-          </h1>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0 }}>
-            Gastos recurrentes mensuales
-          </p>
+      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1.5rem', paddingTop: '0.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <button
+            onClick={() => navigate('/herramientas')}
+            style={{
+              width: '40px', height: '40px', borderRadius: 'var(--radius-full)',
+              background: 'var(--surface-color)', border: 'none', display: 'flex',
+              alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+              boxShadow: 'var(--shadow-sm)', color: 'var(--text-primary)',
+            }}
+          >
+            <ArrowLeft size={20} />
+          </button>
+          <div>
+            <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+              Gastos Fijos
+            </h1>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0 }}>
+              Gastos recurrentes mensuales
+            </p>
+          </div>
+        </div>
+
+        {/* Compact Month Navigator */}
+        <div style={{ 
+          position: 'relative', display: 'flex', alignItems: 'center', gap: '0.5rem', 
+          background: 'var(--surface-color)', padding: '0.4rem 0.6rem', 
+          borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', 
+          cursor: 'pointer' 
+        }}>
+          <Calendar size={18} color="var(--text-secondary)" />
+          <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+            {React.useMemo(() => {
+              const shortMonths = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+              const [y, m] = currentMonth.split('-');
+              return `${shortMonths[parseInt(m) - 1]} ${y}`;
+            }, [currentMonth])}
+          </span>
+          <input
+            type="month"
+            value={currentMonth}
+            onChange={(e) => {
+              if (e.target.value) setCurrentMonth(e.target.value);
+            }}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              opacity: 0,
+              cursor: 'pointer'
+            }}
+          />
         </div>
       </header>
 
-      {/* Month Selector */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem',
-        marginBottom: '1.25rem',
-      }}>
-        <button
-          onClick={() => navigateMonth(-1)}
-          style={{
-            width: '36px', height: '36px', borderRadius: 'var(--radius-full)',
-            background: 'var(--surface-color)', border: 'none', display: 'flex',
-            alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-            boxShadow: 'var(--shadow-xs)', color: 'var(--text-secondary)',
-          }}
-        >
-          <ChevronLeft size={18} />
-        </button>
-        <div
-          onClick={() => {
-            const now = new Date();
-            setCurrentMonth(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
-          }}
-          style={{
-            padding: '0.5rem 1.25rem', borderRadius: 'var(--radius-full)',
-            background: isCurrentMonth ? 'var(--accent-color)' : 'var(--surface-color)',
-            color: isCurrentMonth ? 'var(--text-inverse)' : 'var(--text-primary)',
-            boxShadow: 'var(--shadow-xs)',
-            fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer',
-            minWidth: '160px', textAlign: 'center',
-            transition: 'all 0.2s ease',
-          }}
-        >
-          {monthLabel}
-        </div>
-        <button
-          onClick={() => navigateMonth(1)}
-          style={{
-            width: '36px', height: '36px', borderRadius: 'var(--radius-full)',
-            background: 'var(--surface-color)', border: 'none', display: 'flex',
-            alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-            boxShadow: 'var(--shadow-xs)', color: 'var(--text-secondary)',
-          }}
-        >
-          <ChevronRight size={18} />
-        </button>
-      </div>
+
 
       {/* Summary card with progress bar */}
       <div
@@ -429,6 +420,7 @@ const FixedExpenses: React.FC = () => {
             padding: '0.25rem 0.6rem', borderRadius: 'var(--radius-full)',
             background: 'rgba(245, 158, 11, 0.1)', color: '#F59E0B',
             fontSize: '0.75rem', fontWeight: 600,
+            whiteSpace: 'nowrap', flexShrink: 0
           }}>
             <Receipt size={14} />
             {totalActive} activos

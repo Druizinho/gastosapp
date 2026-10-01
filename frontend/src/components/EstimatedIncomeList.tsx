@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Wallet, Trash2, Edit3, CheckCircle, Clock, AlertCircle, Calendar } from 'lucide-react';
+import { ArrowLeft, Plus, Wallet, Trash2, Edit3, CheckCircle, Clock, AlertCircle, Calendar, Circle, Undo2 } from 'lucide-react';
 import { getMonthlyIncomes, deleteEstimatedIncome, uncheckIncome, getRates } from '../api';
 import type { EstimatedIncome, ExchangeRates } from '../types';
 import ConfirmModal from './ConfirmModal';
@@ -179,7 +179,7 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
 
   return (
     <div style={{ padding: '1rem', paddingBottom: '6rem', maxWidth: '600px', margin: '0 auto' }}>
-      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', paddingTop: '0.5rem' }}>
+      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', paddingTop: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <button
             onClick={onBack}
@@ -198,24 +198,33 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
           </h1>
         </div>
         
-        {/* Month Navigator native input */}
-        <div style={{ position: 'relative' }}>
+        {/* Compact Month Navigator */}
+        <div style={{ 
+          position: 'relative', display: 'flex', alignItems: 'center', gap: '0.5rem', 
+          background: 'var(--surface-color)', padding: '0.4rem 0.6rem', 
+          borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', 
+          cursor: 'pointer' 
+        }}>
+          <Calendar size={18} color="var(--text-secondary)" />
+          <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+            {React.useMemo(() => {
+              const shortMonths = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+              const [y, m] = currentMonthYear.split('-');
+              return `${shortMonths[parseInt(m) - 1]} ${y}`;
+            }, [currentMonthYear])}
+          </span>
           <input
             type="month"
             value={currentMonthYear}
             onChange={handleMonthChange}
             style={{
-              appearance: 'none',
-              background: 'var(--surface-color)',
-              border: '1px solid var(--border-color)',
-              color: 'var(--text-primary)',
-              padding: '0.4rem 0.6rem',
-              borderRadius: 'var(--radius-md)',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              outline: 'none',
-              fontFamily: 'inherit'
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              opacity: 0,
+              cursor: 'pointer'
             }}
           />
         </div>
@@ -239,6 +248,7 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
             padding: '0.25rem 0.6rem', borderRadius: 'var(--radius-full)',
             background: 'rgba(59, 130, 246, 0.1)', color: '#3B82F6',
             fontSize: '0.75rem', fontWeight: 600,
+            whiteSpace: 'nowrap', flexShrink: 0
           }}>
             <Wallet size={14} />
             {confirmedCount} / {totalExpectedCount} confirmados
@@ -306,14 +316,15 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
             }
 
             return (
-              <div key={income.id} className="soft-card" style={{ padding: '1.25rem', position: 'relative' }}>
-                <div style={{
-                  position: 'absolute', left: 0, top: '1rem', bottom: '1rem', width: '3px',
-                  background: isConfirmed && !isPartial ? 'var(--income-color)' : isConfirmed && isPartial ? 'var(--warning-color)' : isOverdue ? 'var(--expense-color)' : 'var(--text-tertiary)',
-                  borderTopRightRadius: '3px', borderBottomRightRadius: '3px'
-                }} />
-                
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.35rem', paddingLeft: '0.75rem' }}>
+              <div 
+                key={income.id} 
+                className="soft-card" 
+                style={{ 
+                  padding: '1rem 1.25rem',
+                  borderLeft: isConfirmed && !isPartial ? '3px solid var(--income-color)' : isConfirmed && isPartial ? '3px solid var(--warning-color)' : isOverdue ? '3px solid var(--expense-color)' : undefined,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.35rem' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                       {income.name}
@@ -360,7 +371,7 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
                 </div>
 
                 {/* Bottom info row and actions */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem', paddingLeft: '0.75rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     {income.payment_day && (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
@@ -377,21 +388,57 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
                   </div>
 
                   {/* Action buttons */}
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', gap: '0.25rem' }}>
                     {!isConfirmed ? (
-                      <button onClick={(e) => { e.stopPropagation(); setCheckingIncome(income); setIsCheckFormOpen(true); }} title="Confirmar" style={{ width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(16, 185, 129, 0.1)', border: 'none', color: 'var(--income-color)', cursor: 'pointer', borderRadius: 'var(--radius-sm)' }}>
-                        <CheckCircle size={16} />
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setCheckingIncome(income); setIsCheckFormOpen(true); }} 
+                        title="Confirmar" 
+                        style={{
+                          width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
+                          background: 'var(--surface-muted)', border: 'none', display: 'flex',
+                          alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                          color: 'var(--text-tertiary)', transition: 'all 0.15s ease',
+                        }}
+                      >
+                        <Circle size={16} />
                       </button>
                     ) : (
-                      <button onClick={(e) => { e.stopPropagation(); handleUncheck(income.id); }} title="Deshacer pago" style={{ width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: '1px solid var(--border-color)', color: 'var(--warning-color)', cursor: 'pointer', borderRadius: 'var(--radius-sm)' }}>
-                        <Clock size={16} />
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleUncheck(income.id); }} 
+                        title="Deshacer pago" 
+                        style={{
+                          width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
+                          background: 'rgba(16, 185, 129, 0.15)', border: 'none', display: 'flex',
+                          alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                          color: 'var(--income-color)', transition: 'all 0.15s ease',
+                        }}
+                      >
+                        <Undo2 size={14} />
                       </button>
                     )}
-                    <button onClick={(e) => { e.stopPropagation(); setEditingIncome(income); setIsFormOpen(true); }} title="Editar ingreso" style={{ width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-secondary)', cursor: 'pointer', borderRadius: 'var(--radius-sm)' }}>
-                      <Edit3 size={16} />
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); setEditingIncome(income); setIsFormOpen(true); }} 
+                      title="Editar" 
+                      style={{
+                        width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
+                        background: 'var(--surface-muted)', border: 'none', display: 'flex',
+                        alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                        color: 'var(--text-secondary)', transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <Edit3 size={14} />
                     </button>
-                    <button onClick={(e) => { e.stopPropagation(); setConfirmDelete({ isOpen: true, incomeId: income.id }); }} title="Eliminar" style={{ width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: '1px solid var(--border-color)', color: 'var(--expense-color)', cursor: 'pointer', borderRadius: 'var(--radius-sm)' }}>
-                      <Trash2 size={16} />
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); setConfirmDelete({ isOpen: true, incomeId: income.id }); }} 
+                      title="Eliminar" 
+                      style={{
+                        width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
+                        background: 'var(--surface-muted)', border: 'none', display: 'flex',
+                        alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                        color: 'var(--expense-color)', transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <Trash2 size={14} />
                     </button>
                   </div>
                 </div>
