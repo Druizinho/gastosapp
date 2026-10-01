@@ -19,8 +19,7 @@ async def create_fixed_expense(db: AsyncSession, expense: schemas.FixedExpenseCr
     db_expense = models.FixedExpense(**data, user_id=user_id)
     db.add(db_expense)
     await db.commit()
-    await db.refresh(db_expense)
-    return db_expense
+    return await get_fixed_expense(db, db_expense.id, user_id)
 
 
 async def get_fixed_expenses(db: AsyncSession, user_id: UUID, active_only: bool = False):
@@ -61,8 +60,7 @@ async def update_fixed_expense(db: AsyncSession, expense_id: UUID, expense: sche
         setattr(db_expense, key, value)
     
     await db.commit()
-    await db.refresh(db_expense)
-    return db_expense
+    return await get_fixed_expense(db, expense_id, user_id)
 
 
 async def delete_fixed_expense(db: AsyncSession, expense_id: UUID, user_id: UUID):
