@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func
+from sqlalchemy.orm import selectinload
 from typing import List
 from uuid import UUID
 from . import models, schemas
@@ -23,7 +24,7 @@ async def create_fixed_expense(db: AsyncSession, expense: schemas.FixedExpenseCr
 
 
 async def get_fixed_expenses(db: AsyncSession, user_id: UUID, active_only: bool = False):
-    query = select(models.FixedExpense).filter(models.FixedExpense.user_id == user_id)
+    query = select(models.FixedExpense).options(selectinload(models.FixedExpense.checks)).filter(models.FixedExpense.user_id == user_id)
     
     if active_only:
         query = query.filter(models.FixedExpense.is_active == True)
@@ -35,7 +36,9 @@ async def get_fixed_expenses(db: AsyncSession, user_id: UUID, active_only: bool 
 
 async def get_fixed_expense(db: AsyncSession, expense_id: UUID, user_id: UUID):
     result = await db.execute(
-        select(models.FixedExpense).filter(
+        select(models.FixedExpense)
+        .options(selectinload(models.FixedExpense.checks))
+        .filter(
             models.FixedExpense.id == expense_id,
             models.FixedExpense.user_id == user_id
         )
@@ -143,7 +146,9 @@ async def check_fixed_expense(
 
     # Also update legacy last_paid_month for backward compatibility
     expense = await db.execute(
-        select(models.FixedExpense).filter(models.FixedExpense.id == fixed_expense_id)
+        select(models.FixedExpense)
+        .options(selectinload(models.FixedExpense.checks))
+        .filter(models.FixedExpense.id == fixed_expense_id)
     )
     fe = expense.scalars().first()
     if fe:
@@ -171,7 +176,9 @@ async def uncheck_fixed_expense(db: AsyncSession, fixed_expense_id: UUID, month_
 
     # Update legacy last_paid_month
     expense = await db.execute(
-        select(models.FixedExpense).filter(models.FixedExpense.id == fixed_expense_id)
+        select(models.FixedExpense)
+        .options(selectinload(models.FixedExpense.checks))
+        .filter(models.FixedExpense.id == fixed_expense_id)
     )
     fe = expense.scalars().first()
     if fe and fe.last_paid_month == month_year:
@@ -185,6 +192,7 @@ async def get_monthly_fixed_expenses(db: AsyncSession, user_id: UUID, month_year
     """Get all fixed expenses with their check status for a specific month."""
     query = (
         select(models.FixedExpense)
+        .options(selectinload(models.FixedExpense.checks))
         .filter(models.FixedExpense.user_id == user_id)
         .order_by(models.FixedExpense.payment_day.asc().nullslast(), models.FixedExpense.created_at.desc())
     )
