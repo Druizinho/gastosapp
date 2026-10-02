@@ -108,30 +108,42 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
     return { usd: amount_usd, bs: amount_bs, eur: amount_eur, usdt: amount_usdt };
   };
 
-  const getSummaryAmount = () => {
-    if (!rates) return 0;
-    let totalUsd = 0;
-    let totalBs = 0;
-    let totalEur = 0;
-    let totalUsdt = 0;
+  const getSummaryAmounts = () => {
+    if (!rates) return { expected: 0, received: 0, pending: 0 };
+    
+    let expectedUsd = 0; let expectedBs = 0; let expectedEur = 0; let expectedUsdt = 0;
+    let receivedUsd = 0; let receivedBs = 0; let receivedEur = 0; let receivedUsdt = 0;
 
     incomes.forEach(income => {
-      // Amount expected to receive
-      const amountToSum = Number(income.expected_amount);
-      const converted = convertCurrencyAmount(amountToSum, income.currency, rates);
-      totalUsd += converted.usd;
-      totalBs += converted.bs;
-      totalEur += converted.eur;
-      totalUsdt += converted.usdt;
+      // Amount expected
+      const expConverted = convertCurrencyAmount(Number(income.expected_amount), income.currency, rates);
+      expectedUsd += expConverted.usd;
+      expectedBs += expConverted.bs;
+      expectedEur += expConverted.eur;
+      expectedUsdt += expConverted.usdt;
+
+      // Amount received (if any check)
+      if (income.checks && income.checks.length > 0) {
+        const check = income.checks[0];
+        const recConverted = convertCurrencyAmount(Number(check.real_amount), check.currency, rates);
+        receivedUsd += recConverted.usd;
+        receivedBs += recConverted.bs;
+        receivedEur += recConverted.eur;
+        receivedUsdt += recConverted.usdt;
+      }
     });
 
-    const map: Record<string, number> = {
-      'USD': totalUsd,
-      'BS': totalBs,
-      'EUR': totalEur,
-      'USDT': totalUsdt,
+    const expectedMap: Record<string, number> = { 'USD': expectedUsd, 'BS': expectedBs, 'EUR': expectedEur, 'USDT': expectedUsdt };
+    const receivedMap: Record<string, number> = { 'USD': receivedUsd, 'BS': receivedBs, 'EUR': receivedEur, 'USDT': receivedUsdt };
+
+    const expected = expectedMap[displayCurrency] || 0;
+    const received = receivedMap[displayCurrency] || 0;
+    
+    return {
+      expected,
+      received,
+      pending: Math.max(expected - received, 0)
     };
-    return map[displayCurrency] || 0;
   };
 
   const cycleCurrency = () => {
@@ -431,9 +443,9 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
           background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.06) 0%, var(--surface-color) 100%)',
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
           <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Total Esperado
+            Total Recibido
           </span>
           <div style={{
             display: 'flex', alignItems: 'center', gap: '0.5rem',
@@ -446,10 +458,37 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
             {confirmedCount} / {totalExpectedCount} confirmados
           </div>
         </div>
-        <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-          {isLoading ? '...' : `${currencyLabels[displayCurrency === 'USD' ? 'USD_BCV' : displayCurrency === 'EUR' ? 'EUR_BCV' : displayCurrency]} ${formatAmount(getSummaryAmount())}`}
-        </div>
-        <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginTop: '0.25rem' }}>
+        
+        {(() => {
+          const { expected, received, pending } = getSummaryAmounts();
+          const currLabel = currencyLabels[displayCurrency === 'USD' ? 'USD_BCV' : displayCurrency === 'EUR' ? 'EUR_BCV' : displayCurrency];
+          
+          return (
+            <>
+              <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--income-color)', letterSpacing: '-0.02em', marginBottom: '0.75rem' }}>
+                {isLoading ? '...' : `${currLabel} ${formatAmount(received)}`}
+              </div>
+              
+              <div style={{ display: 'flex', gap: '1rem', borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginBottom: '0.15rem' }}>ESPERADO</div>
+                  <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                    {isLoading ? '...' : `${currLabel} ${formatAmount(expected)}`}
+                  </div>
+                </div>
+                <div style={{ width: '1px', background: 'var(--border-color)' }}></div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginBottom: '0.15rem' }}>PENDIENTE</div>
+                  <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--warning-color)' }}>
+                    {isLoading ? '...' : `${currLabel} ${formatAmount(pending)}`}
+                  </div>
+                </div>
+              </div>
+            </>
+          );
+        })()}
+
+        <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginTop: '0.75rem', textAlign: 'center' }}>
           Toca para cambiar moneda
         </div>
       </div>

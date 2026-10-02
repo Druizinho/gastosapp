@@ -107,18 +107,14 @@ export const InstallPWA: React.FC = () => {
         <button className="install-banner__close" onClick={handleDismiss} aria-label="Cerrar">
           <X size={18} />
         </button>
-        <div className="install-banner__icon">
-          <Download size={24} />
-        </div>
         <div className="install-banner__content">
-          <strong>Instala GastosApp</strong>
+          <strong>Instala GastosApp en tu iPhone</strong>
           {isSafari ? (
-            <p>
-              Toca <Share size={14} className="install-banner__inline-icon" /> y luego{' '}
-              <span className="install-banner__step">
-                <Plus size={12} /> Agregar a inicio
-              </span>
-            </p>
+            <ol className="install-banner__ios-steps">
+              <li>Toca el botón Compartir <Share size={16} className="install-banner__inline-icon" /> en la barra inferior.</li>
+              <li>Desliza hacia abajo y selecciona <strong>Agregar a inicio</strong> <Plus size={14} className="install-banner__inline-icon" />.</li>
+              <li>Toca <strong>Agregar</strong> arriba a la derecha.</li>
+            </ol>
           ) : (
             <p>
               Abre esta página en <strong>Safari</strong> para instalar la app en tu iPhone.

@@ -208,6 +208,7 @@ export interface DebtPaymentCreate {
   payment_date?: string | null;
   note?: string;
   manual_rate?: number;
+  register_as_expense?: boolean;
 }
 
 export interface Debt {

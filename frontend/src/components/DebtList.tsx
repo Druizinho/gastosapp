@@ -4,6 +4,7 @@ import type { Debt, DebtCreate, DebtUpdate, DebtPaymentCreate, ExchangeRates } f
 import { getDebts, createDebt, updateDebt, addDebtPayment, deleteDebt, getRates, deleteDebtPayment } from '../api';
 import DebtForm from './DebtForm';
 import DebtPaymentForm from './DebtPaymentForm';
+import ConfirmModal from './ConfirmModal';
 
 const currencyLabels: Record<string, string> = {
   'USD_BCV': '$',
@@ -277,6 +278,7 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
               Registrar Abono - {selectedDebt?.concept}
             </h2>
             <DebtPaymentForm
+              type={type}
               debtCurrency={selectedDebt?.currency || 'USD_BCV'}
               debtTotalAmount={selectedDebt.total_amount}
               debtPaidAmount={paid}
@@ -591,6 +593,20 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
                 const paid = calculatePaid(debt);
                 const remaining = Math.max(debt.total_amount - paid, 0);
                 const progress = Math.min((paid / debt.total_amount) * 100, 100);
+                
+                let dueDateColor = 'var(--text-tertiary)';
+                let isOverdue = false;
+                if (debt.due_date && !debt.is_settled) {
+                  const due = new Date(debt.due_date + 'T12:00:00');
+                  const now = new Date();
+                  const diffDays = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+                  if (diffDays < 0) {
+                    dueDateColor = 'var(--expense-color)';
+                    isOverdue = true;
+                  } else if (diffDays <= 7) {
+                    dueDateColor = 'var(--warning-color)';
+                  }
+                }
 
                 return (
                   <div 
@@ -614,6 +630,11 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.7rem', fontWeight: 500, color: 'var(--income-color)', background: 'var(--surface-muted)', padding: '0.15rem 0.5rem', borderRadius: 'var(--radius-full)', marginTop: '0.25rem' }}>
                             <CheckCircle size={10} />
                             Liquidada
+                          </span>
+                        ) : isOverdue ? (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.7rem', fontWeight: 500, color: 'var(--expense-color)', background: 'rgba(239, 68, 68, 0.1)', padding: '0.15rem 0.5rem', borderRadius: 'var(--radius-full)', marginTop: '0.25rem', marginRight: '0.5rem' }}>
+                            <AlertCircle size={10} />
+                            Vencida
                           </span>
                         ) : (
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.7rem', fontWeight: 500, color: themeColor, background: 'var(--surface-muted)', padding: '0.15rem 0.5rem', borderRadius: 'var(--radius-full)', marginTop: '0.25rem' }}>
@@ -647,7 +668,7 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
                           {isOwed ? 'A:' : 'De:'} <span style={{ fontWeight: 600 }}>{debt.counterpart}</span>
                         </span>
                         {debt.due_date && (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', color: dueDateColor, fontWeight: isOverdue ? 600 : 400 }}>
                             <Calendar size={12} />
                             Vence: {formatDate(debt.due_date)}
                           </span>
@@ -721,68 +742,21 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
-      {confirmDelete.isOpen && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0, 0, 0, 0.4)', backdropFilter: 'blur(4px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 1000, padding: '1rem',
-          animation: 'fadeIn 0.2s ease'
-        }}>
-          <div className="soft-card" style={{
-            background: 'var(--surface-color)', width: '100%', maxWidth: '320px',
-            padding: '1.5rem', textAlign: 'center'
-          }}>
-            <div style={{
-              width: '48px', height: '48px', borderRadius: '50%', background: 'rgba(239, 68, 68, 0.1)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem',
-              color: 'var(--expense-color)'
-            }}>
-              <Trash2 size={24} />
-            </div>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
-              Confirmar Eliminación
-            </h3>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.5rem', lineHeight: 1.4 }}>
-              {confirmDelete.debtId 
-                ? '¿Estás seguro de que deseas eliminar esta deuda? Se borrará también su historial de pagos.'
-                : '¿Estás seguro de que deseas eliminar este abono?'}
-            </p>
-            <div style={{ display: 'flex', gap: '0.75rem' }}>
-              <button
-                onClick={() => setConfirmDelete({isOpen: false})}
-                disabled={submitting}
-                style={{
-                  flex: 1, padding: '0.75rem', borderRadius: 'var(--radius-md)',
-                  background: 'var(--surface-muted)', border: 'none', color: 'var(--text-primary)',
-                  fontWeight: 600, fontSize: '0.9rem', cursor: submitting ? 'not-allowed' : 'pointer'
-                }}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={() => {
-                  if (confirmDelete.debtId) {
-                    handleDeleteDebt(confirmDelete.debtId);
-                  } else if (confirmDelete.paymentId) {
-                    handleDeletePayment(confirmDelete.paymentId);
-                  }
-                }}
-                disabled={submitting}
-                style={{
-                  flex: 1, padding: '0.75rem', borderRadius: 'var(--radius-md)',
-                  background: 'var(--expense-color)', border: 'none', color: 'white',
-                  fontWeight: 600, fontSize: '0.9rem', cursor: submitting ? 'not-allowed' : 'pointer',
-                  opacity: submitting ? 0.7 : 1
-                }}
-              >
-                {submitting ? 'Eliminando...' : 'Eliminar'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmModal
+        isOpen={confirmDelete.isOpen}
+        title="Confirmar Eliminación"
+        message={confirmDelete.debtId 
+          ? '¿Estás seguro de que deseas eliminar esta deuda? Se borrará también su historial de pagos.'
+          : '¿Estás seguro de que deseas eliminar este abono?'}
+        onConfirm={() => {
+          if (confirmDelete.debtId) {
+            handleDeleteDebt(confirmDelete.debtId);
+          } else if (confirmDelete.paymentId) {
+            handleDeletePayment(confirmDelete.paymentId);
+          }
+        }}
+        onCancel={() => setConfirmDelete({isOpen: false})}
+      />
     </div>
   );
 };

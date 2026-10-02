@@ -1910,5 +1910,22 @@ body {
 /* iOS variant: slightly taller to fit instructions */
 .install-banner--ios {
   padding-right: 2.5rem; /* space for close button */
+  align-items: flex-start;
+}
+
+.install-banner__ios-steps {
+  margin: 0.5rem 0 0 0;
+  padding-left: 1.2rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.install-banner__ios-steps li {
+  margin-bottom: 0.4rem;
+}
+
+.install-banner__ios-steps li:last-child {
+  margin-bottom: 0;
 }
 

@@ -20,6 +20,7 @@ export default defineConfig({
         name: 'GastosApp',
         short_name: 'GastosApp',
         description: 'Aplicación para gestionar tus gastos e ingresos',
+        lang: 'es',
         theme_color: '#863bff',
         background_color: '#EDE9E3',
         display: 'standalone',

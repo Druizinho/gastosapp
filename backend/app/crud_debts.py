@@ -69,12 +69,31 @@ async def add_debt_payment(db: AsyncSession, debt_id: UUID, user_id: UUID, payme
     data = payment.model_dump(exclude_unset=True)
     if 'manual_rate' in data:
         del data['manual_rate']
+    register_as_expense = data.pop('register_as_expense', False)
     if extra_data:
         data.update(extra_data)
         
     db_payment = models.DebtPayment(**data, debt_id=debt_id)
     db.add(db_payment)
     db_debt.payments.append(db_payment)
+
+    if register_as_expense:
+        from datetime import date
+        expense_data = {
+            "amount": data["amount"],
+            "currency": data["currency"],
+            "description": f"Abono: {db_debt.concept} -> {db_debt.counterpart}",
+            "category": "Deudas",
+            "date": data.get("payment_date") or date.today(),
+            "user_id": user_id
+        }
+        for key in ["amount_usd", "amount_bs", "amount_eur", "amount_usdt", "rate_usd_bs", "rate_eur_bs", "rate_usdt_bs"]:
+            if key in extra_data:
+                expense_data[key] = extra_data[key]
+                
+        db_expense = models.Expense(**expense_data)
+        db.add(db_expense)
+
     await db.commit()
     
     # Reload debt with all payments to check settlement

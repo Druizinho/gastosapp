@@ -205,6 +205,7 @@ class DebtPaymentBase(BaseModel):
 
 class DebtPaymentCreate(DebtPaymentBase):
     manual_rate: Optional[Decimal] = Field(None, gt=0)
+    register_as_expense: bool = False
 
 class DebtPaymentResponse(DebtPaymentBase):
     id: UUID

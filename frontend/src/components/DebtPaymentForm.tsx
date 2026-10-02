@@ -3,6 +3,7 @@ import type { DebtPaymentCreate } from '../types';
 import ConfirmModal from './ConfirmModal';
 
 interface DebtPaymentFormProps {
+  type: 'owed' | 'receivable';
   debtCurrency: string;
   debtTotalAmount: number;
   debtPaidAmount: number;
@@ -19,13 +20,14 @@ const formatCurrency = (amount: number, currency: string) => {
   return `${currencyLabels[currency] || currency} ${Math.max(0, amount).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
-const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({ debtCurrency, debtTotalAmount, debtPaidAmount, onSubmit, onCancel, loading }) => {
+const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({ type, debtCurrency, debtTotalAmount, debtPaidAmount, onSubmit, onCancel, loading }) => {
   const remaining = Math.max(debtTotalAmount - debtPaidAmount, 0);
   const [formData, setFormData] = useState<DebtPaymentCreate>({
     amount: '' as any,
     currency: debtCurrency as any,
     payment_date: new Date().toISOString().split('T')[0],
-    note: ''
+    note: '',
+    register_as_expense: type === 'owed'
   });
   const [showConfirm, setShowConfirm] = useState(false);
 
@@ -35,11 +37,12 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({ debtCurrency, debtTot
   const isOverpaying = isSameCurrency && currentAmount > remaining && remaining > 0;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
+    const { name, value, type } = e.target as HTMLInputElement;
+    const checked = (e.target as HTMLInputElement).checked;
 
     setFormData(prev => ({
       ...prev,
-      [name]: value
+      [name]: type === 'checkbox' ? checked : value
     }));
   };
 
@@ -165,6 +168,22 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({ debtCurrency, debtTot
           placeholder="Ej: Transferencia Mercantil, Zelle de Pedro..."
         />
       </div>
+
+      {type === 'owed' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.5rem', background: 'var(--surface-muted)', padding: '0.75rem', borderRadius: 'var(--radius-md)' }}>
+          <input
+            type="checkbox"
+            id="register_as_expense"
+            name="register_as_expense"
+            checked={formData.register_as_expense}
+            onChange={handleChange}
+            style={{ width: '18px', height: '18px', accentColor: 'var(--expense-color)', cursor: 'pointer' }}
+          />
+          <label htmlFor="register_as_expense" style={{ fontSize: '0.85rem', color: 'var(--text-primary)', cursor: 'pointer', userSelect: 'none' }}>
+            Registrar como gasto del mes
+          </label>
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
         <button
