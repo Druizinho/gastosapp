@@ -3,14 +3,16 @@ import CategoryManager from './CategoryManager';
 import ProfileManager from './ProfileManager';
 import { NotificationSettings } from './NotificationSettings';
 
-import { LogOut, User, Folder, ChevronRight, ArrowLeft, Globe, Palette, Bell } from 'lucide-react';
+import { LogOut, User, Folder, ChevronRight, ArrowLeft, Globe, Palette, Bell, Users } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 type SettingsView = 'menu' | 'profile' | 'categories' | 'notifications';
 
 export const SettingsPage: React.FC = () => {
   const [currentView, setCurrentView] = useState<SettingsView>('menu');
   const { user, displayName, avatarUrl, signOut } = useAuth();
+  const navigate = useNavigate();
 
   const handleSignOut = async () => {
     await signOut();
@@ -127,6 +129,29 @@ export const SettingsPage: React.FC = () => {
                 <Folder size={18} />
               </div>
               Mis Categorías
+            </div>
+            <ChevronRight size={20} color="var(--text-tertiary)" />
+          </button>
+
+          <button 
+            onClick={() => navigate('/herramientas/conexiones')}
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '1.25rem 1.25rem', background: 'transparent', border: 'none', 
+              cursor: 'pointer', textAlign: 'left', transition: 'background 0.2s'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-hover)'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', color: 'var(--text-primary)', fontWeight: 600 }}>
+              <div style={{ 
+                width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(16, 185, 129, 0.05) 100%)', 
+                color: '#10B981', borderRadius: '12px'
+              }}>
+                <Users size={18} />
+              </div>
+              Conexiones Familiares
             </div>
             <ChevronRight size={20} color="var(--text-tertiary)" />
           </button>

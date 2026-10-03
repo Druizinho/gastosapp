@@ -196,3 +196,17 @@ class Notification(Base):
     type = Column(String, nullable=False)
     is_read = Column(Boolean, nullable=False, server_default='false')
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class Connection(Base):
+    __tablename__ = "connections"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    requester_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    receiver_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    status = Column(String(10), nullable=False, server_default='pending') # 'pending', 'accepted', 'rejected'
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint('requester_id', 'receiver_id', name='_connection_unique'),
+    )

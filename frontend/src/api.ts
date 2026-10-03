@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Expense, ExpenseCreate, ExpenseUpdate, SummaryResponse, ExchangeRates, RangeSummaryResponse, FixedExpense, FixedExpenseCreate, FixedExpenseUpdate, FixedExpenseSummary, FixedExpenseCheck, FixedExpenseCheckCreate, Debt, DebtCreate, DebtUpdate, DebtPaymentCreate, EstimatedIncome, EstimatedIncomeCreate, EstimatedIncomeUpdate, IncomeCheckCreate, IncomeCheck } from './types';
+import type { Expense, ExpenseCreate, ExpenseUpdate, SummaryResponse, ExchangeRates, RangeSummaryResponse, FixedExpense, FixedExpenseCreate, FixedExpenseUpdate, FixedExpenseSummary, FixedExpenseCheck, FixedExpenseCheckCreate, Debt, DebtCreate, DebtUpdate, DebtPaymentCreate, EstimatedIncome, EstimatedIncomeCreate, EstimatedIncomeUpdate, IncomeCheckCreate, IncomeCheck, Connection } from './types';
 import { supabase } from './supabaseClient';
 
 const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
@@ -234,4 +234,28 @@ export const getNotifications = async (unreadOnly: boolean = false): Promise<any
 
 export const markNotificationsAsRead = async (): Promise<void> => {
   await api.patch('/notifications/mark-read');
+};
+
+// Connections
+export const getConnections = async (): Promise<Connection[]> => {
+  const response = await api.get('/connections/');
+  return response.data;
+};
+
+export const requestConnection = async (email: string): Promise<Connection> => {
+  const response = await api.post('/connections/request', { email });
+  return response.data;
+};
+
+export const acceptConnection = async (connectionId: string): Promise<Connection> => {
+  const response = await api.put(`/connections/${connectionId}/accept`);
+  return response.data;
+};
+
+export const rejectConnection = async (connectionId: string): Promise<void> => {
+  await api.put(`/connections/${connectionId}/reject`);
+};
+
+export const deleteConnection = async (connectionId: string): Promise<void> => {
+  await api.delete(`/connections/${connectionId}`);
 };

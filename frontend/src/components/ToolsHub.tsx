@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Receipt, TrendingDown, TrendingUp, Wallet, ChevronRight, Lock } from 'lucide-react';
+import { Receipt, TrendingDown, TrendingUp, Wallet, ChevronRight, Lock, Users } from 'lucide-react';
 
 interface ToolCard {
   id: string;
@@ -52,6 +52,16 @@ const tools: ToolCard[] = [
     color: '#3B82F6',
     bgColor: 'rgba(59, 130, 246, 0.1)',
     path: '/herramientas/ingresos-estimados',
+    enabled: true,
+  },
+  {
+    id: 'connections',
+    title: 'Grupos Familiares',
+    description: 'Conecta con otros usuarios',
+    icon: <Users size={28} />,
+    color: '#8B5CF6',
+    bgColor: 'rgba(139, 92, 246, 0.1)',
+    path: '/herramientas/conexiones',
     enabled: true,
   },
 ];

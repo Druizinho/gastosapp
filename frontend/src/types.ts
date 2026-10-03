@@ -323,3 +323,25 @@ export interface Notification {
   is_read: boolean;
   created_at: string;
 }
+
+export interface UserSearchResult {
+  id: string;
+  display_name: string;
+  email: string;
+}
+
+export interface ConnectionRequest {
+  email: string;
+}
+
+export interface Connection {
+  id: string;
+  requester_id: string;
+  receiver_id: string;
+  status: 'pending' | 'accepted' | 'rejected';
+  created_at: string;
+  updated_at: string;
+  partner_id: string;
+  partner_name: string;
+  is_requester: boolean;
+}

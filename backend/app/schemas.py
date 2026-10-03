@@ -327,3 +327,27 @@ class NotificationResponse(BaseModel):
     created_at: datetime.datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+class UserSearchResult(BaseModel):
+    id: UUID
+    display_name: str
+    email: str
+
+class ConnectionRequest(BaseModel):
+    email: str
+
+class ConnectionResponse(BaseModel):
+    id: UUID
+    requester_id: UUID
+    receiver_id: UUID
+    status: str
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+    
+    # Extra fields populated for frontend
+    partner_id: UUID
+    partner_name: str
+    is_requester: bool
+
+    model_config = ConfigDict(from_attributes=True)
+

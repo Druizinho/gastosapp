@@ -19,7 +19,13 @@ const translateError = (msg: string): string => {
     'For security purposes, you can only request this once every 60 seconds': 'Por seguridad, solo puedes solicitar esto una vez cada 60 segundos.',
     'New password should be different from the old password.': 'La nueva contraseña debe ser diferente a la anterior.',
     'Auth session missing!': 'Sesión no encontrada. Por favor inicia sesión de nuevo.',
+    'Failed to fetch': 'Error de conexión. Verifica tu internet e intenta de nuevo.',
+    'NetworkError when attempting to fetch resource.': 'Error de conexión. Verifica tu internet e intenta de nuevo.',
   };
+  // Also catch partial matches for network errors
+  if (msg.toLowerCase().includes('failed to fetch') || msg.toLowerCase().includes('networkerror')) {
+    return 'Error de conexión. Verifica tu internet e intenta de nuevo.';
+  }
   return map[msg] || msg;
 };
 
@@ -154,8 +160,12 @@ export const Auth: React.FC = () => {
       const { error } = await supabase.auth.signUp({
         email,
         password,
-        phone: phone || undefined,
-        options: { data: { display_name: displayName.trim() || undefined } },
+        options: {
+          data: {
+            display_name: displayName.trim() || undefined,
+            phone: phone.trim() || undefined,
+          },
+        },
       });
       if (error) throw error;
       setMessage({ type: 'success', text: '¡Registro exitoso! Revisa tu correo electrónico para verificar tu cuenta.' });

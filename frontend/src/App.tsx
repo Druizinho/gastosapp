@@ -10,6 +10,7 @@ import DebtList from './components/DebtList';
 import EstimatedIncomeList from './components/EstimatedIncomeList.tsx';
 import { RatesPage } from './components/RatesPage';
 import { SettingsPage } from './components/SettingsPage';
+import { ConnectionsPage } from './pages/ConnectionsPage';
 import { BottomNav } from './components/BottomNav';
 import { InstallPWA } from './components/InstallPWA';
 import './index.css';
@@ -61,6 +62,7 @@ const AppRoutes = () => {
             <Route path="/herramientas/deudas-nuestras" element={<DebtList type="owed" onBack={() => navigate(-1)} />} />
             <Route path="/herramientas/deudas-por-cobrar" element={<DebtList type="receivable" onBack={() => navigate(-1)} />} />
             <Route path="/herramientas/ingresos-estimados" element={<EstimatedIncomeList onBack={() => navigate(-1)} />} />
+            <Route path="/herramientas/conexiones" element={<ConnectionsPage />} />
             <Route path="/tasas" element={<RatesPage />} />
             <Route path="/ajustes" element={<SettingsPage />} />
           </Route>
