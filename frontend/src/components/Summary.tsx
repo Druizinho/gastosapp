@@ -29,12 +29,16 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [] 
   const totalUsdt = Number(summary.total_usdt) || 0;
   const dailyAvg = Number(summary.daily_avg_usd) || 0;
 
+  const [showAllCategories, setShowAllCategories] = useState(false);
+
   // Calculate Top Categories (using USD for sorting)
-  const sortedCategories = [...(summary.by_category || [])].sort((a, b) => {
+  const allSortedCategories = [...(summary.by_category || [])].sort((a, b) => {
     const valA = Number(a.total_usd);
     const valB = Number(b.total_usd);
     return valB - valA;
-  }).slice(0, 3); // Top 3
+  });
+  
+  const displayedCategories = showAllCategories ? allSortedCategories : allSortedCategories.slice(0, 3);
 
   let dailyAvgText = 'Promedio Diario';
   if (dateFilter) {
@@ -131,16 +135,34 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [] 
       )}
 
       {/* Top Categories — Always visible */}
-      {sortedCategories.length > 0 && (
+      {allSortedCategories.length > 0 && (
         <div className="soft-card mt-4" style={{ padding: '1.25rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-            <PieChart size={18} color="var(--text-tertiary)" />
-            <h3 style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Top Categorías
-            </h3>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <PieChart size={18} color="var(--text-tertiary)" />
+              <h3 style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
+                Top Categorías
+              </h3>
+            </div>
+            {allSortedCategories.length > 3 && (
+              <button 
+                onClick={() => setShowAllCategories(!showAllCategories)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--accent-color)',
+                  fontSize: '0.85rem',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  padding: 0
+                }}
+              >
+                {showAllCategories ? 'Ver menos' : 'Ver todas'}
+              </button>
+            )}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            {sortedCategories.map(c => {
+            {displayedCategories.map(c => {
               const val = Number(c.total_usd);
               const percentage = totalUsd > 0 ? ((val / totalUsd) * 100).toFixed(1) : '0.0';
               

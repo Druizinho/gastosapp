@@ -66,12 +66,25 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ expenses, categories, onEdit,
     return { totalPeriod };
   }, [filteredExpenses, filterCurrency]);
 
+  const categoryStats = useMemo(() => {
+    if (filterCategory === 'All') return null;
+
+    let totalPeriodUsd = 0;
+    filteredExpenses.forEach(exp => {
+      const amountUsd = typeof exp.amount_usd === 'string' ? parseFloat(exp.amount_usd) : (exp.amount_usd || 0);
+      totalPeriodUsd += amountUsd;
+    });
+
+    return { totalPeriodUsd };
+  }, [filteredExpenses, filterCategory]);
+
   const getCurrencyLabel = (currency: string) => {
     switch (currency) {
-      case 'BS_USD': return 'Bs (Tasa USD)';
-      case 'BS_EUR': return 'Bs (Tasa EUR)';
-      case 'USDT': return 'USDT';
-      case 'USD_CASH': return 'Dólares Efectivo';
+      case 'USD_BCV': return 'Dólar BCV';
+      case 'EUR_BCV': return 'Euro BCV';
+      case 'BS': return 'Bolívares';
+      case 'USDT': return 'USDT (Binance)';
+      case 'USD_CASH': return 'Dólares en Efectivo';
       default: return currency;
     }
   };
@@ -218,23 +231,39 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ expenses, categories, onEdit,
               style={{...selectStyle, maxWidth: '100%'}}
             >
               <option value="All">Todas las Monedas</option>
-              <option value="BS_USD">BS (tasa dolar BCV)</option>
-              <option value="BS_EUR">BS (tasa euro BCV)</option>
-              <option value="USDT">USDT</option>
-              <option value="USD_CASH">Dólares (Efectivo)</option>
+              <option value="USD_BCV">Dólar BCV</option>
+              <option value="EUR_BCV">Euro BCV</option>
+              <option value="BS">Bolívares</option>
+              <option value="USDT">USDT (Binance)</option>
+              <option value="USD_CASH">Dólares en Efectivo</option>
             </select>
           </div>
         </div>
       )}
 
-      {filterCurrency !== 'All' && currencyStats && (
-        <div className="soft-card" style={{ marginBottom: '1.5rem', padding: '1.5rem', textAlign: 'center' }}>
-          <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--text-tertiary)', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Total del Período ({getCurrencyLabel(filterCurrency)})
-          </h4>
-          <p style={{ margin: 0, fontSize: '2rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>
-            {currencyStats.totalPeriod.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </p>
+      {(filterCurrency !== 'All' || filterCategory !== 'All') && (
+        <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+          {filterCategory !== 'All' && categoryStats && (
+            <div className="soft-card" style={{ flex: '1 1 200px', padding: '1.5rem', textAlign: 'center' }}>
+              <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--text-tertiary)', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Total de {filterCategory} (USD)
+              </h4>
+              <p style={{ margin: 0, fontSize: '2rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>
+                ${categoryStats.totalPeriodUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+            </div>
+          )}
+
+          {filterCurrency !== 'All' && currencyStats && (
+            <div className="soft-card" style={{ flex: '1 1 200px', padding: '1.5rem', textAlign: 'center' }}>
+              <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--text-tertiary)', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                {filterCategory !== 'All' ? `Total en ${filterCategory}` : 'Total del Período'} ({getCurrencyLabel(filterCurrency)})
+              </h4>
+              <p style={{ margin: 0, fontSize: '2rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>
+                {currencyStats.totalPeriod.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+            </div>
+          )}
         </div>
       )}
 
