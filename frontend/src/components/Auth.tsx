@@ -8,7 +8,8 @@ import {
 } from 'lucide-react';
 
 // ─── Utilidad: Traducir errores de Supabase al español ────────────────
-const translateError = (msg: string): string => {
+const translateError = (msg?: string): string => {
+  if (!msg) return 'Error desconocido. Intenta de nuevo.';
   const map: Record<string, string> = {
     'Invalid login credentials': 'Correo electrónico o contraseña incorrectos.',
     'Email not confirmed': 'Tu correo no ha sido verificado. Revisa tu bandeja de entrada.',
@@ -23,7 +24,7 @@ const translateError = (msg: string): string => {
     'NetworkError when attempting to fetch resource.': 'Error de conexión. Verifica tu internet e intenta de nuevo.',
   };
   // Also catch partial matches for network errors
-  if (msg.toLowerCase().includes('failed to fetch') || msg.toLowerCase().includes('networkerror')) {
+  if (msg.toLowerCase().includes('failed to fetch') || msg.toLowerCase().includes('networkerror') || msg.toLowerCase().includes('load failed')) {
     return 'Error de conexión. Verifica tu internet e intenta de nuevo.';
   }
   return map[msg] || msg;
@@ -162,16 +163,20 @@ export const Auth: React.FC = () => {
         password,
         options: {
           data: {
-            display_name: displayName.trim() || undefined,
-            phone: phone.trim() || undefined,
+            display_name: displayName ? displayName.trim() : undefined,
+            phone: phone ? phone.trim() : undefined,
           },
         },
       });
       if (error) throw error;
+      
+      // Do not use switchView('login') because it clears the message
+      setView('login');
+      setPassword('');
+      setConfirmPassword('');
       setMessage({ type: 'success', text: '¡Registro exitoso! Revisa tu correo electrónico para verificar tu cuenta.' });
-      switchView('login');
     } catch (error: any) {
-      setMessage({ type: 'error', text: translateError(error.message) });
+      setMessage({ type: 'error', text: translateError(error?.message) });
     } finally {
       setLoading(false);
     }
