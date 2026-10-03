@@ -2,7 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
-import { Auth } from './components/Auth';
+import { Auth, ResetPassword } from './components/Auth';
 import Dashboard from './components/Dashboard';
 import { ToolsHub } from './components/ToolsHub';
 import FixedExpenses from './components/FixedExpenses';
@@ -40,27 +40,31 @@ const AppLayout = () => {
 };
 
 const AppRoutes = () => {
-  const { session } = useAuth();
+  const { session, isRecovery } = useAuth();
   const navigate = useNavigate();
 
   return (
     <Routes>
       <Route 
         path="/login" 
-        element={session ? <Navigate to="/" replace /> : <Auth />} 
+        element={session && !isRecovery ? <Navigate to="/" replace /> : <Auth />} 
       />
       
       <Route element={<ProtectedRoute />}>
-        <Route element={<AppLayout />}>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/herramientas" element={<ToolsHub />} />
-          <Route path="/herramientas/gastos-fijos" element={<FixedExpenses />} />
-          <Route path="/herramientas/deudas-nuestras" element={<DebtList type="owed" onBack={() => navigate(-1)} />} />
-          <Route path="/herramientas/deudas-por-cobrar" element={<DebtList type="receivable" onBack={() => navigate(-1)} />} />
-          <Route path="/herramientas/ingresos-estimados" element={<EstimatedIncomeList onBack={() => navigate(-1)} />} />
-          <Route path="/tasas" element={<RatesPage />} />
-          <Route path="/ajustes" element={<SettingsPage />} />
-        </Route>
+        {isRecovery ? (
+          <Route path="*" element={<ResetPassword />} />
+        ) : (
+          <Route element={<AppLayout />}>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/herramientas" element={<ToolsHub />} />
+            <Route path="/herramientas/gastos-fijos" element={<FixedExpenses />} />
+            <Route path="/herramientas/deudas-nuestras" element={<DebtList type="owed" onBack={() => navigate(-1)} />} />
+            <Route path="/herramientas/deudas-por-cobrar" element={<DebtList type="receivable" onBack={() => navigate(-1)} />} />
+            <Route path="/herramientas/ingresos-estimados" element={<EstimatedIncomeList onBack={() => navigate(-1)} />} />
+            <Route path="/tasas" element={<RatesPage />} />
+            <Route path="/ajustes" element={<SettingsPage />} />
+          </Route>
+        )}
       </Route>
     </Routes>
   );

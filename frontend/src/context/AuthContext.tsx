@@ -11,6 +11,8 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   loading: boolean;
   refreshProfile: () => Promise<void>;
+  isRecovery: boolean;
+  clearRecovery: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -21,6 +23,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [displayName, setDisplayName] = useState<string>('');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isRecovery, setIsRecovery] = useState(false);
 
   const fetchProfile = async () => {
     try {
@@ -63,7 +66,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     });
 
     // Escuchar cambios de autenticación
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsRecovery(true);
+      }
       setSession(session);
       setUser(session?.user ?? null);
       deriveDisplayName(session?.user ?? null);
@@ -85,8 +91,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     await fetchProfile();
   };
 
+  const clearRecovery = () => {
+    setIsRecovery(false);
+  };
+
   return (
-    <AuthContext.Provider value={{ session, user, displayName, avatarUrl, signOut, loading, refreshProfile }}>
+    <AuthContext.Provider value={{ session, user, displayName, avatarUrl, signOut, loading, refreshProfile, isRecovery, clearRecovery }}>
       {children}
     </AuthContext.Provider>
   );
