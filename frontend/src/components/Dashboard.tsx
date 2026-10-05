@@ -106,10 +106,13 @@ const Dashboard: React.FC = () => {
       params.set('add', 'true');
     }
     
-    setSearchParams(params, { replace: true });
+    if (params.toString() !== searchParams.toString()) {
+      setSearchParams(params, { replace: true });
+    }
     
     fetchData();
-  }, [dateFilter, searchParams, setSearchParams]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateFilter]);
 
   // Handle 'add' URL param to open form
   useEffect(() => {
