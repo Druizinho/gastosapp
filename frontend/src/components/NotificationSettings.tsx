@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, AlertTriangle } from 'lucide-react';
+import { Bell, AlertTriangle, Send, CheckCircle } from 'lucide-react';
 import { 
   checkPushSubscriptionStatus, 
   enablePushNotifications, 
@@ -7,12 +7,14 @@ import {
   NotSupportedError,
   PermissionDeniedError
 } from '../pushManager';
-import { getProfile, updateProfile } from '../api';
+import { getProfile, updateProfile, sendTestPush } from '../api';
 
 export const NotificationSettings: React.FC = () => {
   const [isEnabled, setIsEnabled] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isTesting, setIsTesting] = useState(false);
+  const [testStatus, setTestStatus] = useState<string | null>(null);
   
   const [preferences, setPreferences] = useState({
     notify_fixed_expenses: true,
@@ -86,6 +88,21 @@ export const NotificationSettings: React.FC = () => {
       console.error("Error updating preference:", error);
       // Revert if failed
       setPreferences(prev => ({ ...prev, [key]: !newValue }));
+    }
+  };
+
+  const handleTestNotification = async () => {
+    setIsTesting(true);
+    setTestStatus(null);
+    setError(null);
+    try {
+      const res = await sendTestPush();
+      setTestStatus(res?.message || '¡Notificación enviada!');
+      setTimeout(() => setTestStatus(null), 5000);
+    } catch (err: any) {
+      setError('Error al enviar notificación de prueba: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setIsTesting(false);
     }
   };
 
@@ -197,6 +214,51 @@ const ToggleSwitch = ({ checked, onChange, disabled = false }: { checked: boolea
 
         </div>
       </div>
+
+      {isEnabled && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: '0.25rem' }}>
+          <button
+            onClick={handleTestNotification}
+            disabled={isTesting}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.6rem',
+              padding: '0.8rem 1.2rem',
+              borderRadius: '12px',
+              border: '1px solid rgba(236, 72, 153, 0.35)',
+              background: 'linear-gradient(135deg, rgba(236, 72, 153, 0.12) 0%, rgba(236, 72, 153, 0.04) 100%)',
+              color: '#EC4899',
+              fontWeight: 600,
+              fontSize: '0.88rem',
+              cursor: isTesting ? 'wait' : 'pointer',
+              transition: 'all 0.2s ease',
+              width: '100%'
+            }}
+          >
+            <Send size={16} />
+            {isTesting ? 'Enviando prueba...' : 'Enviar Notificación de Prueba 🚀'}
+          </button>
+          
+          {testStatus && (
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '0.5rem', 
+              color: '#10B981', 
+              fontSize: '0.82rem', 
+              justifyContent: 'center',
+              padding: '0.5rem',
+              background: 'rgba(16, 185, 129, 0.1)',
+              borderRadius: '8px'
+            }}>
+              <CheckCircle size={15} />
+              <span>{testStatus}</span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

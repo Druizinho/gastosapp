@@ -117,18 +117,27 @@ export const setupForegroundMessageListener = (callback?: ForegroundMessageCallb
   }
   
   try {
-    onMessage(messaging, (payload: any) => {
+    onMessage(messaging, async (payload: any) => {
       console.log('Mensaje recibido en primer plano:', payload);
       
-      const title = payload.notification?.title || 'GastosApp';
+      const title = payload.notification?.title || payload.data?.title || 'GastosApp';
       const options = {
-        body: payload.notification?.body,
+        body: payload.notification?.body || payload.data?.body,
         icon: '/pwa-192x192.png',
-        badge: '/favicon.svg'
+        badge: '/favicon.svg',
+        data: { url: payload.fcmOptions?.link || payload.data?.url || '/' },
       };
 
       if (Notification.permission === 'granted') {
-        new Notification(title, options);
+        // Use ServiceWorker.showNotification — works on Android Chrome AND iOS Safari PWA.
+        // new Notification() in the main thread fails silently on Android Chrome.
+        try {
+          const registration = await navigator.serviceWorker.ready;
+          registration.showNotification(title, options);
+        } catch {
+          // Fallback for desktop browsers that don't need the SW approach
+          new Notification(title, options);
+        }
       }
 
       listeners.forEach(cb => cb(payload));

@@ -226,6 +226,11 @@ export const unsubscribeFromPush = async (fcm_token: string): Promise<void> => {
   await api.post('/push/unsubscribe', null, { params: { fcm_token } });
 };
 
+export const sendTestPush = async (): Promise<any> => {
+  const response = await api.post('/push/test');
+  return response.data;
+};
+
 // Notifications
 export const getNotifications = async (unreadOnly: boolean = false): Promise<any[]> => {
   const response = await api.get('/notifications/', { params: { unread_only: unreadOnly } });

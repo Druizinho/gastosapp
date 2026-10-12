@@ -29,17 +29,43 @@ const firebaseConfig = {
 const messaging = (self as any).firebase.messaging();
 
 messaging.onBackgroundMessage((payload: any) => {
-  console.log('[sw.ts] Received background message ', payload);
-  // Do not call self.registration.showNotification here because Firebase Web SDK
-  // automatically displays a notification if the payload contains a 'notification' object.
+  console.log('[sw.ts] Received background message', payload);
+  
+  // On some Android devices, Firebase doesn't auto-show a notification
+  // when the payload has both `notification` and `data` fields.
+  // We manually show it to guarantee delivery.
+  const title = payload.notification?.title || payload.data?.title || 'GastosApp';
+  const body = payload.notification?.body || payload.data?.body || '';
+  const url = payload.fcmOptions?.link || payload.data?.url || '/';
+
+  self.registration.showNotification(title, {
+    body,
+    icon: '/pwa-192x192.png',
+    badge: '/favicon.svg',
+    data: { url },
+  });
 });
 
-self.addEventListener('notificationclick', (event) => {
+self.addEventListener('notificationclick', (event: any) => {
   event.notification.close();
-  if (event.notification.data) {
-    event.waitUntil(
-      self.clients.openWindow(event.notification.data)
-    );
-  }
+
+  // URL comes from the data object we set in showNotification above,
+  // or from FCM's fcm_options.link field on auto-displayed notifications.
+  const targetUrl = event.notification.data?.url || '/';
+
+  event.waitUntil(
+    (self as any).clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList: any[]) => {
+      // If there's already a window open with this app, focus it and navigate
+      for (const client of clientList) {
+        if ('focus' in client) {
+          client.focus();
+          if ('navigate' in client) client.navigate(targetUrl);
+          return;
+        }
+      }
+      // Otherwise open a new window
+      return (self as any).clients.openWindow(targetUrl);
+    })
+  );
 });
 

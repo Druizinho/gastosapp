@@ -39,7 +39,8 @@ def send_push_notification_to_token(fcm_token: str, title: str, body: str, url: 
             webpush=messaging.WebpushConfig(
                 notification=messaging.WebpushNotification(
                     icon='/pwa-192x192.png',
-                    badge='/favicon.svg'
+                    badge='/favicon.svg',
+                    data={"url": target_url}
                 ),
                 fcm_options=messaging.WebpushFCMOptions(
                     link=target_url

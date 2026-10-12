@@ -171,21 +171,33 @@ async def trigger_notifications(
     # ☀️ MORNING WINDOW (9:00 AM) - Due Today/Overdue
     # ==========================================
     if is_morning:
-        # 1. Fixed expenses due TODAY
+        # 1. Fixed expenses due TODAY (skip already-paid ones this month)
         stmt_fixed = select(models.FixedExpense).where(
             models.FixedExpense.is_active == True,
             models.FixedExpense.payment_day == today.day
         )
         for expense in (await db.execute(stmt_fixed)).scalars().all():
-            await send_to_user(expense.user_id, "Gasto Fijo Vence Hoy", f"{expense.name} ({expense.amount} {expense.currency})", "notify_fixed_expenses")
+            # Check if already marked as paid this month via FixedExpenseCheck
+            check_stmt = select(models.FixedExpenseCheck).where(
+                models.FixedExpenseCheck.fixed_expense_id == expense.id,
+                models.FixedExpenseCheck.month_year == current_month_str
+            )
+            already_paid = (await db.execute(check_stmt)).scalar() is not None
+            if not already_paid:
+                await send_to_user(expense.user_id, "Gasto Fijo Vence Hoy", f"{expense.name} ({expense.amount} {expense.currency})", "notify_fixed_expenses")
             
-        # 2. Fixed expenses due YESTERDAY (Day After Reminder)
+        # 2. Fixed expenses due YESTERDAY (Day After Reminder — only if not paid)
         stmt_fixed_yest = select(models.FixedExpense).where(
             models.FixedExpense.is_active == True,
             models.FixedExpense.payment_day == yesterday.day
         )
         for expense in (await db.execute(stmt_fixed_yest)).scalars().all():
-            if expense.last_paid_month != current_month_str:
+            check_stmt = select(models.FixedExpenseCheck).where(
+                models.FixedExpenseCheck.fixed_expense_id == expense.id,
+                models.FixedExpenseCheck.month_year == current_month_str
+            )
+            already_paid = (await db.execute(check_stmt)).scalar() is not None
+            if not already_paid:
                 await send_to_user(expense.user_id, "¿Pagaste tu gasto fijo?", f"Olvidaste avisarnos si pagaste '{expense.name}'.", "notify_fixed_expenses")
 
         # 3. Estimated Incomes due TODAY
@@ -194,7 +206,14 @@ async def trigger_notifications(
             models.EstimatedIncome.payment_day == today.day
         )
         for inc in (await db.execute(stmt_inc)).scalars().all():
-            await send_to_user(inc.user_id, "Ingreso Estimado Hoy", f"Hoy te toca recibir el pago de {inc.name}", "notify_incomes")
+            # Skip if already confirmed this month
+            check_stmt = select(models.IncomeCheck).where(
+                models.IncomeCheck.income_id == inc.id,
+                models.IncomeCheck.month_year == current_month_str
+            )
+            already_received = (await db.execute(check_stmt)).scalar() is not None
+            if not already_received:
+                await send_to_user(inc.user_id, "Ingreso Estimado Hoy", f"Hoy te toca recibir el pago de {inc.name}", "notify_incomes")
             
         # 4. Estimated Incomes due YESTERDAY (Day After Reminder)
         stmt_inc_yest = select(models.EstimatedIncome).where(
@@ -204,7 +223,7 @@ async def trigger_notifications(
         for inc in (await db.execute(stmt_inc_yest)).scalars().all():
             check_stmt = select(models.IncomeCheck).where(
                 models.IncomeCheck.income_id == inc.id,
-                models.IncomeCheck.month == current_month_str
+                models.IncomeCheck.month_year == current_month_str  # ← FIX: was .month (wrong field)
             )
             has_paid = (await db.execute(check_stmt)).scalar() is not None
             if not has_paid:
@@ -250,7 +269,7 @@ async def trigger_notifications(
             type_word = "Te deben" if debt.type == 'receivable' else "Debes"
             await send_to_user(debt.user_id, "Deuda Vence Mañana", f"{type_word} {debt.total_amount} {debt.currency} por '{debt.concept}'", "notify_debts")
 
-        # 4. Inactivity Reminder (Exactly 3 days without expenses)
+        # 4. Inactivity Reminder (3+ days without expenses)
         three_days_ago = today - datetime.timedelta(days=3)
         
         # Get all users who have subscriptions so we only check active users
@@ -261,8 +280,18 @@ async def trigger_notifications(
             last_exp_stmt = select(models.Expense.date).where(models.Expense.user_id == uid).order_by(models.Expense.date.desc()).limit(1)
             last_exp = (await db.execute(last_exp_stmt)).scalar()
             
-            if last_exp and last_exp == three_days_ago:
-                await send_to_user(uid, "Te hemos extrañado 👀", "Llevas 3 días sin registar gastos. Mantén tus finanzas al día, ¿registramos algo hoy?", "notify_inactivity")
+            # Notify if: no expenses ever, OR last expense was 3+ days ago
+            # Using <= instead of == so the reminder still fires even if cron missed a day
+            if last_exp is None or last_exp <= three_days_ago:
+                # Only send once — check that we haven't sent an inactivity notification in the last 24h
+                recent_notif_stmt = select(models.Notification).where(
+                    models.Notification.user_id == uid,
+                    models.Notification.type == 'inactivity',
+                    models.Notification.created_at >= datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=24)
+                )
+                already_notified = (await db.execute(recent_notif_stmt)).scalar() is not None
+                if not already_notified:
+                    await send_to_user(uid, "Te hemos extrañado 👀", "Llevas varios días sin registrar gastos. Mantén tus finanzas al día, ¿registramos algo hoy?", "notify_inactivity")
 
     # Clean up invalid tokens
     if tokens_to_delete:
