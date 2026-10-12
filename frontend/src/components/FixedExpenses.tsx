@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Receipt, Pause, Play, Trash2, Edit3, Calendar, CheckCircle2, Circle, Undo2 } from 'lucide-react';
+import { ArrowLeft, Plus, Receipt, Pause, Play, Trash2, Edit3, Calendar, CheckCircle2, Circle, Undo2, Users } from 'lucide-react';
 import { getFixedExpenses, getFixedExpenseSummary, createFixedExpense, updateFixedExpense, deleteFixedExpense, checkFixedExpense, uncheckFixedExpense } from '../api';
 import type { FixedExpense, FixedExpenseCreate, FixedExpenseUpdate, FixedExpenseSummary, FixedExpenseCheckCreate } from '../types';
 import FixedExpenseForm from './FixedExpenseForm';
@@ -189,15 +189,28 @@ const FixedExpenses: React.FC = () => {
             }}>
               {expense.name}
             </div>
-            {expense.category && (
-              <span style={{
-                display: 'inline-block', fontSize: '0.7rem', fontWeight: 500,
-                color: 'var(--text-secondary)', background: 'var(--surface-muted)',
-                padding: '0.15rem 0.5rem', borderRadius: 'var(--radius-full)', marginTop: '0.25rem',
-              }}>
-                {expense.category}
-              </span>
-            )}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', alignItems: 'center', marginTop: '0.25rem' }}>
+              {expense.category && (
+                <span style={{
+                  display: 'inline-block', fontSize: '0.7rem', fontWeight: 500,
+                  color: 'var(--text-secondary)', background: 'var(--surface-muted)',
+                  padding: '0.15rem 0.5rem', borderRadius: 'var(--radius-full)',
+                }}>
+                  {expense.category}
+                </span>
+              )}
+              {expense.is_shared && (
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
+                  fontSize: '0.7rem', fontWeight: 600,
+                  color: 'var(--accent-color)', background: 'rgba(59, 130, 246, 0.1)',
+                  padding: '0.15rem 0.5rem', borderRadius: 'var(--radius-full)',
+                }}>
+                  <Users size={12} />
+                  Compartido con {expense.shared_partner_name || 'Conexión'}
+                </span>
+              )}
+            </div>
           </div>
           <div style={{ textAlign: 'right', flexShrink: 0 }}>
             <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
@@ -225,7 +238,12 @@ const FixedExpenses: React.FC = () => {
             fontSize: '0.75rem', color: 'var(--income-color)', fontWeight: 500,
           }}>
             <CheckCircle2 size={13} />
-            Pagado {check.paid_date} — {currencyLabels[check.currency]} {formatAmount(check.paid_amount)}
+            <span>
+              Pagado {check.paid_date} — {currencyLabels[check.currency]} {formatAmount(check.paid_amount)}
+              {check.paid_by_name && (
+                <span style={{ opacity: 0.9, fontWeight: 600 }}> • Por {check.paid_by_name}</span>
+              )}
+            </span>
             {check.create_expense && (
               <span style={{
                 marginLeft: 'auto', fontSize: '0.65rem',
@@ -589,13 +607,20 @@ const FixedExpenses: React.FC = () => {
       )}
 
       {/* Confirm Delete Modal */}
-      <ConfirmModal
-        isOpen={confirmDelete.isOpen}
-        title="¿Eliminar gasto fijo?"
-        message="¿Seguro que quieres eliminar este gasto fijo? Esta acción no se puede deshacer."
-        onConfirm={handleConfirmDelete}
-        onCancel={() => setConfirmDelete({ isOpen: false, expenseId: '' })}
-      />
+      {(() => {
+        const toDelete = expenses.find(e => e.id === confirmDelete.expenseId);
+        return (
+          <ConfirmModal
+            isOpen={confirmDelete.isOpen}
+            title="¿Eliminar gasto fijo?"
+            message={toDelete?.is_shared
+              ? `Este gasto fijo está compartido con ${toDelete.shared_partner_name || 'tu conexión'}. Al eliminarlo, también se eliminará para esa persona. ¿Deseas continuar?`
+              : "¿Seguro que quieres eliminar este gasto fijo? Esta acción no se puede deshacer."}
+            onConfirm={handleConfirmDelete}
+            onCancel={() => setConfirmDelete({ isOpen: false, expenseId: '' })}
+          />
+        );
+      })()}
     </div>
   );
 };

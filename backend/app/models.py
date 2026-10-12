@@ -70,6 +70,11 @@ class FixedExpense(Base):
     notes = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    # Attributes populated dynamically for shared fixed expenses
+    is_shared = False
+    shared_partner_name = None
+    shared_by = None
+
     checks = relationship("FixedExpenseCheck", back_populates="fixed_expense", cascade="all, delete-orphan")
 
 
@@ -92,11 +97,24 @@ class FixedExpenseCheck(Base):
     create_expense = Column(Boolean, nullable=False, server_default='false')
     expense_id = Column(UUID(as_uuid=True), nullable=True)  # ref to Expense if created
     notes = Column(String, nullable=True)
+    paid_by_name = Column(String, nullable=True)
+    mirror_check_id = Column(UUID(as_uuid=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     fixed_expense = relationship("FixedExpense", back_populates="checks")
 
     __table_args__ = (UniqueConstraint('fixed_expense_id', 'month_year', name='_fixed_expense_month_uc'),)
+
+
+class SharedFixedExpense(Base):
+    __tablename__ = "shared_fixed_expenses"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    fixed_expense_id = Column(UUID(as_uuid=True), ForeignKey("fixed_expenses.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    owner_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    partner_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    mirror_expense_id = Column(UUID(as_uuid=True), ForeignKey("fixed_expenses.id", ondelete="CASCADE"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class Debt(Base):
     __tablename__ = "debts"

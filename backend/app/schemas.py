@@ -131,6 +131,7 @@ class FixedExpenseBase(BaseModel):
 
 class FixedExpenseCreate(FixedExpenseBase):
     manual_rate: Optional[Decimal] = Field(None, gt=0)
+    shared_with: Optional[UUID] = None
 
 class FixedExpenseUpdate(BaseModel):
     name: Optional[str] = None
@@ -141,6 +142,7 @@ class FixedExpenseUpdate(BaseModel):
     is_active: Optional[bool] = None
     notes: Optional[str] = None
     manual_rate: Optional[Decimal] = Field(None, gt=0)
+    shared_with: Optional[UUID] = None
 
 # Fixed Expense Check Schemas
 
@@ -154,6 +156,7 @@ class FixedExpenseCheckBase(BaseModel):
 
 class FixedExpenseCheckCreate(FixedExpenseCheckBase):
     manual_rate: Optional[Decimal] = Field(None, gt=0)
+    paid_by_name: Optional[str] = None
 
 class FixedExpenseCheckResponse(FixedExpenseCheckBase):
     id: UUID
@@ -167,6 +170,8 @@ class FixedExpenseCheckResponse(FixedExpenseCheckBase):
     rate_usd_bs: Optional[Decimal] = None
     rate_eur_bs: Optional[Decimal] = None
     rate_usdt_bs: Optional[Decimal] = None
+    paid_by_name: Optional[str] = None
+    mirror_check_id: Optional[UUID] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -182,6 +187,9 @@ class FixedExpenseResponse(FixedExpenseBase):
     rate_eur_bs: Optional[Decimal] = None
     rate_usdt_bs: Optional[Decimal] = None
     last_paid_month: Optional[str] = None
+    is_shared: bool = False
+    shared_partner_name: Optional[str] = None
+    shared_by: Optional[str] = None
     checks: List[FixedExpenseCheckResponse] = []
 
     model_config = ConfigDict(from_attributes=True)

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import type { FixedExpenseCreate, FixedExpenseUpdate, FixedExpense, CurrencyType, ExchangeRates, Category } from '../types';
-import { getRates, getCategories } from '../api';
-import { Info } from 'lucide-react';
+import type { FixedExpenseCreate, FixedExpenseUpdate, FixedExpense, CurrencyType, ExchangeRates, Category, Connection } from '../types';
+import { getRates, getCategories, getConnections } from '../api';
+import { Info, Users } from 'lucide-react';
 
 interface FixedExpenseFormProps {
   initialData?: FixedExpense | null;
@@ -17,6 +17,10 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
   const [paymentDay, setPaymentDay] = useState<string>(initialData?.payment_day?.toString() || '');
   const [notes, setNotes] = useState<string>(initialData?.notes || '');
   const [manualRate, setManualRate] = useState<string>('');
+
+  const [connections, setConnections] = useState<Connection[]>([]);
+  const [isSharedChecked, setIsSharedChecked] = useState(false);
+  const [selectedPartnerId, setSelectedPartnerId] = useState('');
 
   const [rates, setRates] = useState<ExchangeRates | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -39,6 +43,17 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
       } else if (initialData.rate_usd_bs) {
         setManualRate(initialData.rate_usd_bs.toString());
       }
+    }
+  }, [initialData]);
+
+  useEffect(() => {
+    if (!initialData?.is_shared) {
+      getConnections()
+        .then(data => {
+          const accepted = data.filter(c => c.status === 'accepted');
+          setConnections(accepted);
+        })
+        .catch(err => console.error('Error fetching connections:', err));
     }
   }, [initialData]);
 
@@ -71,12 +86,15 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
         payment_day: paymentDay ? parseInt(paymentDay) : null,
         notes: notes || undefined,
         manual_rate: manualRate ? parseFloat(manualRate.replace(',', '.')) : undefined,
+        shared_with: !initialData?.is_shared && isSharedChecked && selectedPartnerId ? selectedPartnerId : null,
       });
       if (!initialData) {
         setName('');
         setAmount('');
         setNotes('');
         setPaymentDay('');
+        setIsSharedChecked(false);
+        setSelectedPartnerId('');
       }
     } finally {
       setIsSubmitting(false);
@@ -89,6 +107,27 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
     <div className="modal-backdrop">
       <div className="expense-form-container">
         <h2>{initialData ? 'Editar Gasto Fijo' : 'Nuevo Gasto Fijo'}</h2>
+
+        {initialData?.is_shared && (
+          <div style={{
+            background: 'rgba(59, 130, 246, 0.08)',
+            border: '1px solid rgba(59, 130, 246, 0.2)',
+            borderRadius: 'var(--radius-md)',
+            padding: '0.875rem 1rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            marginBottom: '1rem',
+            color: 'var(--text-primary)',
+            fontSize: '0.875rem'
+          }}>
+            <Users size={18} style={{ color: 'var(--accent-color)', flexShrink: 0 }} />
+            <span>
+              Gasto fijo compartido con <strong>{initialData.shared_partner_name}</strong>. Las modificaciones y estados de pago se sincronizan en ambas cuentas.
+            </span>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit}>
 
           <div className="form-group">
@@ -186,6 +225,78 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
               placeholder="Notas adicionales..."
             />
           </div>
+
+          {!initialData?.is_shared && (
+            <div style={{
+              background: 'var(--surface-muted)',
+              padding: '0.875rem 1rem',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--accent-light)',
+              marginBottom: '1rem'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <input
+                  type="checkbox"
+                  id="share_fixed_expense"
+                  checked={isSharedChecked}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setIsSharedChecked(checked);
+                    if (!checked) {
+                      setSelectedPartnerId('');
+                    } else if (connections.length > 0) {
+                      setSelectedPartnerId(connections[0].partner_id);
+                    }
+                  }}
+                  style={{ width: '18px', height: '18px', accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+                />
+                <label htmlFor="share_fixed_expense" style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <Users size={16} /> Compartir con una conexión
+                </label>
+              </div>
+
+              {isSharedChecked && (
+                <div style={{ marginTop: '0.75rem' }}>
+                  {connections.length === 0 ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-tertiary)', fontSize: '0.8rem' }}>
+                      <Info size={14} />
+                      <span>
+                        No tienes conexiones aceptadas. Ve a <strong>Ajustes &gt; Mis Conexiones</strong> para conectar con otros perfiles.
+                      </span>
+                    </div>
+                  ) : (
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>
+                        Seleccionar conexión
+                      </label>
+                      <select
+                        value={selectedPartnerId}
+                        onChange={(e) => setSelectedPartnerId(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '0.6rem 0.75rem',
+                          borderRadius: 'var(--radius-md)',
+                          border: '1px solid var(--accent-light)',
+                          background: 'var(--surface-color)',
+                          color: 'var(--text-primary)',
+                          fontSize: '0.875rem'
+                        }}
+                      >
+                        {connections.map(c => (
+                          <option key={c.partner_id} value={c.partner_id}>
+                            👤 {c.partner_name}
+                          </option>
+                        ))}
+                      </select>
+                      <p style={{ margin: '0.4rem 0 0', fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                        Tu conexión podrá ver este gasto fijo y su estado de pago mensual sincronizado.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="form-actions">
             <button

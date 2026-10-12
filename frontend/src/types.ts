@@ -117,6 +117,8 @@ export interface FixedExpenseCheck {
   rate_usd_bs?: number | null;
   rate_eur_bs?: number | null;
   rate_usdt_bs?: number | null;
+  paid_by_name?: string | null;
+  mirror_check_id?: string | null;
 }
 
 export interface FixedExpenseCheckCreate {
@@ -148,6 +150,9 @@ export interface FixedExpense {
   rate_usd_bs?: number | null;
   rate_eur_bs?: number | null;
   rate_usdt_bs?: number | null;
+  is_shared?: boolean;
+  shared_partner_name?: string | null;
+  shared_by?: string | null;
   checks: FixedExpenseCheck[];
 }
 
@@ -160,6 +165,7 @@ export interface FixedExpenseCreate {
   is_active?: boolean;
   notes?: string;
   manual_rate?: number;
+  shared_with?: string | null;
 }
 
 export interface FixedExpenseUpdate {
@@ -171,6 +177,7 @@ export interface FixedExpenseUpdate {
   is_active?: boolean;
   notes?: string;
   manual_rate?: number;
+  shared_with?: string | null;
 }
 
 export interface FixedExpenseSummary {

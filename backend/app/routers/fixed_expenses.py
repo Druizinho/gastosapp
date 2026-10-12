@@ -151,6 +151,7 @@ async def check_fixed_expense(
         return await crud_fixed_expenses.check_fixed_expense(
             db, fixed_expense_id=expense_id, check_data=check_data,
             extra_data=equivalents, expense_id=created_expense_id,
+            user_id=user_id
         )
     except Exception as e:
         if "unique" in str(e).lower() or "duplicate" in str(e).lower():
