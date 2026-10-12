@@ -17,7 +17,7 @@ const tools: ToolCard[] = [
   {
     id: 'fixed-expenses',
     title: 'Gastos Fijos',
-    description: 'Gastos recurrentes mensuales',
+    description: 'Gastos recurrentes cada mes',
     icon: <Receipt size={28} />,
     color: '#F59E0B',
     bgColor: 'rgba(245, 158, 11, 0.1)',
@@ -56,7 +56,7 @@ const tools: ToolCard[] = [
   },
   {
     id: 'connections',
-    title: 'Grupos Familiares',
+    title: 'Panas',
     description: 'Conecta con otros usuarios',
     icon: <Users size={28} />,
     color: '#8B5CF6',
@@ -73,17 +73,17 @@ export const ToolsHub: React.FC = () => {
     <div style={{ padding: '1rem', paddingBottom: '6rem', maxWidth: '600px', margin: '0 auto' }}>
       {/* Header */}
       <header style={{ marginBottom: '2rem', paddingTop: '1rem' }}>
-        <h1 style={{ 
-          fontSize: '1.75rem', 
-          fontWeight: 800, 
-          color: 'var(--text-primary)', 
+        <h1 style={{
+          fontSize: '1.75rem',
+          fontWeight: 800,
+          color: 'var(--text-primary)',
           marginBottom: '0.25rem',
           letterSpacing: '-0.02em'
         }}>
           Herramientas
         </h1>
-        <p style={{ 
-          fontSize: '0.95rem', 
+        <p style={{
+          fontSize: '0.95rem',
           color: 'var(--text-secondary)',
           lineHeight: 1.5
         }}>
@@ -136,16 +136,16 @@ export const ToolsHub: React.FC = () => {
 
             {/* Text */}
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ 
-                fontSize: '1.05rem', 
-                fontWeight: 650, 
+              <div style={{
+                fontSize: '1.05rem',
+                fontWeight: 650,
                 color: 'var(--text-primary)',
                 marginBottom: '0.15rem'
               }}>
                 {tool.title}
               </div>
-              <div style={{ 
-                fontSize: '0.85rem', 
+              <div style={{
+                fontSize: '0.85rem',
                 color: 'var(--text-secondary)',
                 lineHeight: 1.4
               }}>

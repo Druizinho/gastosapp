@@ -218,6 +218,7 @@ class DebtPaymentResponse(DebtPaymentBase):
     rate_usd_bs: Optional[Decimal] = None
     rate_eur_bs: Optional[Decimal] = None
     rate_usdt_bs: Optional[Decimal] = None
+    paid_by_name: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -233,7 +234,7 @@ class DebtBase(BaseModel):
     notes: Optional[str] = None
 
 class DebtCreate(DebtBase):
-    pass
+    shared_with: Optional[UUID] = None
 
 class DebtUpdate(BaseModel):
     counterpart: Optional[str] = None
@@ -249,6 +250,9 @@ class DebtResponse(DebtBase):
     user_id: UUID
     created_at: datetime.datetime
     payments: List[DebtPaymentResponse] = []
+    is_shared: bool = False
+    shared_partner_name: Optional[str] = None
+    shared_by: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

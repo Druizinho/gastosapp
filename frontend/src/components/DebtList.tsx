@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Edit3, ArrowLeft, Wallet, Calendar, AlertCircle, CheckCircle } from 'lucide-react';
+import { Plus, Trash2, Edit3, ArrowLeft, Wallet, Calendar, AlertCircle, CheckCircle, Users } from 'lucide-react';
 import type { Debt, DebtCreate, DebtUpdate, DebtPaymentCreate, ExchangeRates } from '../types';
 import { getDebts, createDebt, updateDebt, addDebtPayment, deleteDebt, getRates, deleteDebtPayment } from '../api';
 import DebtForm from './DebtForm';
@@ -285,12 +285,26 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
               onSubmit={handleAddPayment}
               onCancel={() => setShowPaymentForm(false)}
               loading={submitting}
+              isShared={selectedDebt.is_shared}
+              sharedPartnerName={selectedDebt.shared_partner_name}
             />
           </div>
         ) : (
           <div className="soft-card" style={{ padding: '1rem 1.25rem' }}>
             {/* Header */}
             <div style={{ marginBottom: '1.25rem' }}>
+              {selectedDebt.is_shared && (
+                <div style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
+                  background: 'rgba(59, 130, 246, 0.1)', color: '#3B82F6',
+                  padding: '0.25rem 0.65rem', borderRadius: 'var(--radius-full)',
+                  fontSize: '0.75rem', fontWeight: 600, marginBottom: '0.75rem',
+                  border: '1px solid rgba(59, 130, 246, 0.2)'
+                }}>
+                  <Users size={13} />
+                  Compartida con {selectedDebt.shared_partner_name}
+                </div>
+              )}
               <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                 {isOwed ? 'A:' : 'De:'} <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{selectedDebt.counterpart}</span>
                 {selectedDebt.start_date && (
@@ -426,6 +440,16 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
                           {formatDate(payment.payment_date)}
                         </p>
                         {payment.note && <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{payment.note}</p>}
+                        {payment.paid_by_name && (
+                          <span style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
+                            fontSize: '0.7rem', color: '#3B82F6', background: 'rgba(59, 130, 246, 0.1)',
+                            padding: '0.1rem 0.45rem', borderRadius: 'var(--radius-full)', marginTop: '0.2rem',
+                            fontWeight: 600
+                          }}>
+                            ✨ Pagado por {payment.paid_by_name}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
@@ -640,6 +664,17 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.7rem', fontWeight: 500, color: themeColor, background: 'var(--surface-muted)', padding: '0.15rem 0.5rem', borderRadius: 'var(--radius-full)', marginTop: '0.25rem' }}>
                             <AlertCircle size={10} />
                             Activa
+                          </span>
+                        )}
+                        {debt.is_shared && (
+                          <span style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
+                            fontSize: '0.7rem', fontWeight: 600, color: '#3B82F6',
+                            background: 'rgba(59, 130, 246, 0.1)', padding: '0.15rem 0.5rem',
+                            borderRadius: 'var(--radius-full)', marginTop: '0.25rem', marginLeft: '0.35rem'
+                          }}>
+                            <Users size={10} />
+                            {debt.shared_partner_name}
                           </span>
                         )}
                       </div>

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Users } from 'lucide-react';
 import type { DebtPaymentCreate } from '../types';
 import ConfirmModal from './ConfirmModal';
 
@@ -10,6 +11,8 @@ interface DebtPaymentFormProps {
   onSubmit: (data: DebtPaymentCreate) => void;
   onCancel: () => void;
   loading: boolean;
+  isShared?: boolean;
+  sharedPartnerName?: string | null;
 }
 
 const currencyLabels: Record<string, string> = {
@@ -20,7 +23,17 @@ const formatCurrency = (amount: number, currency: string) => {
   return `${currencyLabels[currency] || currency} ${Math.max(0, amount).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
-const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({ type, debtCurrency, debtTotalAmount, debtPaidAmount, onSubmit, onCancel, loading }) => {
+const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({ 
+  type, 
+  debtCurrency, 
+  debtTotalAmount, 
+  debtPaidAmount, 
+  onSubmit, 
+  onCancel, 
+  loading,
+  isShared = false,
+  sharedPartnerName = null
+}) => {
   const remaining = Math.max(debtTotalAmount - debtPaidAmount, 0);
   const [formData, setFormData] = useState<DebtPaymentCreate>({
     amount: '' as any,
@@ -80,6 +93,20 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({ type, debtCurrency, d
 
   return (
     <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      {isShared && (
+        <div style={{
+          background: 'rgba(59, 130, 246, 0.1)', color: '#3B82F6',
+          padding: '0.875rem 1rem', borderRadius: 'var(--radius-md)', fontSize: '0.85rem',
+          display: 'flex', alignItems: 'center', gap: '0.6rem',
+          border: '1px solid rgba(59, 130, 246, 0.2)'
+        }}>
+          <Users size={18} style={{ flexShrink: 0 }} />
+          <span>
+            Este abono se sincronizará automáticamente con la cuenta de <strong>{sharedPartnerName || 'tu conexión'}</strong>.
+          </span>
+        </div>
+      )}
+
       <div style={{
         background: 'var(--info-bg)', color: 'var(--info-color)',
         padding: '1rem', borderRadius: 'var(--radius-md)', fontSize: '0.85rem',

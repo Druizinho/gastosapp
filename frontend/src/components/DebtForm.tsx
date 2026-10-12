@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import type { Debt, DebtCreate, DebtUpdate } from '../types';
+import { Users, Info } from 'lucide-react';
+import type { Debt, DebtCreate, DebtUpdate, Connection } from '../types';
+import { getConnections } from '../api';
 
 interface DebtFormProps {
   initialData?: Debt;
@@ -11,6 +13,12 @@ interface DebtFormProps {
 
 const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCancel, loading }) => {
   const isEditing = !!initialData;
+  const isSharedDebt = isEditing && !!initialData?.is_shared;
+
+  const [connections, setConnections] = useState<Connection[]>([]);
+  const [isSharedChecked, setIsSharedChecked] = useState(false);
+  const [selectedPartnerId, setSelectedPartnerId] = useState('');
+
   const [formData, setFormData] = useState<DebtCreate>({
     type,
     counterpart: '',
@@ -20,7 +28,8 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
     start_date: new Date().toISOString().split('T')[0],
     due_date: '',
     is_settled: false,
-    notes: ''
+    notes: '',
+    shared_with: null
   });
 
   useEffect(() => {
@@ -28,8 +37,17 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
       setFormData({
         ...initialData,
         due_date: initialData.due_date || '',
-        notes: initialData.notes || ''
+        notes: initialData.notes || '',
+        shared_with: null
       });
+    } else {
+      // Load connections for sharing
+      getConnections()
+        .then(data => {
+          const accepted = data.filter(c => c.status === 'accepted');
+          setConnections(accepted);
+        })
+        .catch(err => console.error('Error fetching connections:', err));
     }
   }, [initialData]);
 
@@ -47,6 +65,7 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
     const submitData = { ...formData };
     submitData.total_amount = Number(submitData.total_amount);
     if (!submitData.due_date) submitData.due_date = null;
+    if (!isSharedChecked) submitData.shared_with = null;
     onSubmit(submitData);
   };
 
@@ -64,6 +83,20 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
 
   return (
     <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      {isSharedDebt && (
+        <div style={{
+          background: 'rgba(59, 130, 246, 0.1)', color: '#3B82F6',
+          padding: '0.875rem 1rem', borderRadius: 'var(--radius-md)',
+          fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.6rem',
+          border: '1px solid rgba(59, 130, 246, 0.2)'
+        }}>
+          <Users size={18} style={{ flexShrink: 0 }} />
+          <span>
+            Deuda compartida con <strong>{initialData.shared_partner_name}</strong>. El monto, concepto y contraparte están sincronizados y no se pueden modificar.
+          </span>
+        </div>
+      )}
+
       <div>
         <label style={labelStyle}>
           {type === 'owed' ? '¿A quién le debemos?' : '¿Quién nos debe?'}
@@ -72,9 +105,10 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
           type="text"
           name="counterpart"
           required
+          disabled={isSharedDebt}
           value={formData.counterpart}
           onChange={handleChange}
-          style={inputStyle}
+          style={{ ...inputStyle, ...(isSharedDebt ? { opacity: 0.65, cursor: 'not-allowed' } : {}) }}
           placeholder="Ej: Banco, María, Empresa XYZ..."
         />
       </div>
@@ -85,9 +119,10 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
           type="text"
           name="concept"
           required
+          disabled={isSharedDebt}
           value={formData.concept}
           onChange={handleChange}
-          style={inputStyle}
+          style={{ ...inputStyle, ...(isSharedDebt ? { opacity: 0.65, cursor: 'not-allowed' } : {}) }}
           placeholder="Ej: Préstamo personal, Compra de equipos..."
         />
       </div>
@@ -101,9 +136,10 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
             required
             min="0.01"
             step="0.01"
+            disabled={isSharedDebt}
             value={formData.total_amount || ''}
             onChange={handleChange}
-            style={inputStyle}
+            style={{ ...inputStyle, ...(isSharedDebt ? { opacity: 0.65, cursor: 'not-allowed' } : {}) }}
           />
         </div>
 
@@ -111,9 +147,10 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
           <label style={labelStyle}>Moneda</label>
           <select
             name="currency"
+            disabled={isSharedDebt}
             value={formData.currency}
             onChange={handleChange}
-            style={inputStyle}
+            style={{ ...inputStyle, ...(isSharedDebt ? { opacity: 0.65, cursor: 'not-allowed' } : {}) }}
           >
             <option value="BS">BS</option>
             <option value="USD_BCV">USD (BCV)</option>
@@ -123,6 +160,82 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
           </select>
         </div>
       </div>
+
+      {!isEditing && (
+        <div style={{
+          background: 'var(--surface-muted)',
+          padding: '0.875rem 1rem',
+          borderRadius: 'var(--radius-md)',
+          border: '1px solid var(--accent-light)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <input
+              type="checkbox"
+              id="share_debt"
+              checked={isSharedChecked}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                setIsSharedChecked(checked);
+                if (!checked) {
+                  setSelectedPartnerId('');
+                  setFormData(prev => ({ ...prev, shared_with: null }));
+                } else if (connections.length > 0) {
+                  const first = connections[0];
+                  setSelectedPartnerId(first.partner_id);
+                  setFormData(prev => ({
+                    ...prev,
+                    shared_with: first.partner_id
+                  }));
+                }
+              }}
+              style={{ width: '18px', height: '18px', accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+            />
+            <label htmlFor="share_debt" style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <Users size={16} /> Compartir con una conexión
+            </label>
+          </div>
+
+          {isSharedChecked && (
+            <div style={{ marginTop: '0.75rem' }}>
+              {connections.length === 0 ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-tertiary)', fontSize: '0.8rem' }}>
+                  <Info size={14} />
+                  <span>
+                    No tienes conexiones aceptadas. Ve a <strong>Ajustes &gt; Mis Conexiones</strong> para conectar con otros perfiles.
+                  </span>
+                </div>
+              ) : (
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>
+                    Seleccionar conexión
+                  </label>
+                  <select
+                    value={selectedPartnerId}
+                    onChange={(e) => {
+                      const partnerId = e.target.value;
+                      setSelectedPartnerId(partnerId);
+                      setFormData(prev => ({
+                        ...prev,
+                        shared_with: partnerId
+                      }));
+                    }}
+                    style={inputStyle}
+                  >
+                    {connections.map(c => (
+                      <option key={c.id} value={c.partner_id}>
+                        👤 {c.partner_name}
+                      </option>
+                    ))}
+                  </select>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '0.35rem', marginBottom: 0 }}>
+                    Ambos compartirán la misma deuda frente a la contraparte ({type === 'owed' ? 'ambos la deben' : 'a ambos les deben'}). Los abonos de cualquiera reducirán el saldo pendiente.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: '1rem' }}>
         <div style={{ flex: 1 }}>

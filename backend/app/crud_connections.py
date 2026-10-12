@@ -6,32 +6,7 @@ from typing import List, Optional
 from datetime import datetime, timezone
 
 from . import models, schemas
-from .push_service import send_push_notification
-
-async def send_notification_to_user(db: AsyncSession, user_id: UUID, title: str, body: str, type: str):
-    """Envía push + guarda notificación en DB para un user_id específico."""
-    notification = models.Notification(
-        user_id=user_id, title=title, body=body, type=type
-    )
-    db.add(notification)
-    
-    subs = await db.execute(
-        select(models.PushSubscription).where(models.PushSubscription.user_id == user_id)
-    )
-    
-    tokens_to_delete = []
-    for sub in subs.scalars().all():
-        success = send_push_notification(sub.fcm_token, title, body)
-        if not success:
-            tokens_to_delete.append(sub.fcm_token)
-    
-    if tokens_to_delete:
-        await db.execute(
-            delete(models.PushSubscription).where(
-                models.PushSubscription.fcm_token.in_(tokens_to_delete)
-            )
-        )
-    # We don't commit here so the caller can commit the whole transaction
+from .push_service import send_push_notification, send_notification_to_user
 
 async def find_user_by_email(db: AsyncSession, email: str) -> Optional[schemas.UserSearchResult]:
     result = await db.execute(

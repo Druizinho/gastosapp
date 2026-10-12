@@ -11,7 +11,8 @@ import {
 const translateError = (msg?: string): string => {
   if (!msg) return 'Error desconocido. Intenta de nuevo.';
   const map: Record<string, string> = {
-    'Invalid login credentials': 'Correo electrónico o contraseña incorrectos.',
+    'Invalid login credentials': 'Correo o contraseña incorrectos, o tu cuenta aún no ha sido verificada.',
+    'invalid_credentials': 'Correo o contraseña incorrectos, o tu cuenta aún no ha sido verificada.',
     'Email not confirmed': 'Tu correo no ha sido verificado. Revisa tu bandeja de entrada.',
     'User already registered': 'Ya existe una cuenta con este correo electrónico.',
     'Password should be at least 6 characters': 'La contraseña debe tener al menos 6 caracteres.',

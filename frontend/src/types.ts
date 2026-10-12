@@ -199,6 +199,8 @@ export interface DebtPayment {
   rate_usdt_bs?: number | null;
   payment_date: string;
   note: string | null;
+  paid_by_name?: string | null;
+  mirror_payment_id?: string | null;
   created_at: string;
 }
 
@@ -225,6 +227,9 @@ export interface Debt {
   notes: string | null;
   created_at: string;
   payments: DebtPayment[];
+  is_shared?: boolean;
+  shared_partner_name?: string | null;
+  shared_by?: string | null;
 }
 
 export interface DebtCreate {
@@ -237,6 +242,7 @@ export interface DebtCreate {
   due_date?: string | null;
   is_settled?: boolean;
   notes?: string;
+  shared_with?: string | null;
 }
 
 export interface DebtUpdate {

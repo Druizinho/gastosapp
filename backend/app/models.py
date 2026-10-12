@@ -114,6 +114,11 @@ class Debt(Base):
     notes = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
+    # Attributes populated dynamically for shared debts
+    is_shared = False
+    shared_partner_name = None
+    shared_by = None
+
     payments = relationship("DebtPayment", back_populates="debt", cascade="all, delete-orphan")
 
 
@@ -133,9 +138,22 @@ class DebtPayment(Base):
     rate_usdt_bs = Column(Numeric(12, 4), nullable=True)
     payment_date = Column(Date, nullable=False, server_default=func.current_date())
     note = Column(String, nullable=True)
+    paid_by_name = Column(String, nullable=True)
+    mirror_payment_id = Column(UUID(as_uuid=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     debt = relationship("Debt", back_populates="payments")
+
+
+class SharedDebt(Base):
+    __tablename__ = "shared_debts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    debt_id = Column(UUID(as_uuid=True), ForeignKey("debts.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    owner_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    partner_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    mirror_debt_id = Column(UUID(as_uuid=True), ForeignKey("debts.id", ondelete="CASCADE"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
 class EstimatedIncome(Base):
