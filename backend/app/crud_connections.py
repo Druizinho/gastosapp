@@ -109,7 +109,7 @@ async def create_connection_request(db: AsyncSession, requester_id: UUID, target
     req_name = requester_profile.display_name if requester_profile and requester_profile.display_name else "Alguien"
     
     await send_notification_to_user(
-        db, target.id, "Nueva solicitud de conexión", f"{req_name} quiere conectar contigo", "connection_request"
+        db, target.id, "Nueva solicitud de conexión", f"{req_name} quiere conectar contigo", "connection_request", url="/conexiones"
     )
     
     await db.commit()
@@ -139,7 +139,7 @@ async def accept_connection(db: AsyncSession, connection_id: UUID, user_id: UUID
     rec_name = receiver_profile.display_name if receiver_profile and receiver_profile.display_name else "Alguien"
     
     await send_notification_to_user(
-        db, conn.requester_id, "Solicitud aceptada", f"{rec_name} aceptó tu solicitud", "connection_accepted"
+        db, conn.requester_id, "Solicitud aceptada", f"{rec_name} aceptó tu solicitud de conexión", "connection_accepted", url="/conexiones"
     )
     
     await db.commit()

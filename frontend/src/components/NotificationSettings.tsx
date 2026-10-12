@@ -166,7 +166,7 @@ const ToggleSwitch = ({ checked, onChange, disabled = false }: { checked: boolea
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: isEnabled ? 1 : 0.5 }}>
             <div style={{ paddingRight: '1rem' }}>
               <span style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 500, display: 'block' }}>Gastos Fijos</span>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Avisos el día antes y el mismo día que vencen.</span>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Avisos de vencimiento y pagos de gastos compartidos.</span>
             </div>
             <ToggleSwitch checked={preferences.notify_fixed_expenses} onChange={() => handleTogglePreference('notify_fixed_expenses')} disabled={!isEnabled} />
           </div>
@@ -174,7 +174,7 @@ const ToggleSwitch = ({ checked, onChange, disabled = false }: { checked: boolea
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: isEnabled ? 1 : 0.5 }}>
             <div style={{ paddingRight: '1rem' }}>
               <span style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 500, display: 'block' }}>Deudas</span>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Recordatorios de deudas por cobrar o pagar.</span>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Recordatorios de deudas y abonos en deudas compartidas.</span>
             </div>
             <ToggleSwitch checked={preferences.notify_debts} onChange={() => handleTogglePreference('notify_debts')} disabled={!isEnabled} />
           </div>

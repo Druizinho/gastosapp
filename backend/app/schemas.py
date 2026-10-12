@@ -244,6 +244,7 @@ class DebtUpdate(BaseModel):
     due_date: Optional[datetime.date] = None
     is_settled: Optional[bool] = None
     notes: Optional[str] = None
+    shared_with: Optional[UUID] = None
 
 class DebtResponse(DebtBase):
     id: UUID

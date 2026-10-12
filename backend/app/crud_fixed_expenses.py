@@ -7,6 +7,7 @@ from uuid import UUID
 from . import models, schemas
 from decimal import Decimal
 from datetime import datetime
+from .push_service import send_notification_to_user
 
 
 async def create_fixed_expense(db: AsyncSession, expense: schemas.FixedExpenseCreate, user_id: UUID, extra_data: dict = None):
@@ -196,3 +197,38 @@ async def get_monthly_fixed_expenses(db: AsyncSession, user_id: UUID, month_year
     )
     result = await db.execute(query)
     return result.scalars().unique().all()
+
+
+async def notify_shared_fixed_expense_check(
+    db: AsyncSession,
+    partner_id: UUID,
+    payer_name: str,
+    expense_name: str,
+    month_year: str
+):
+    """Notifica al partner que se ha marcado como pagado un gasto fijo compartido."""
+    await send_notification_to_user(
+        db=db,
+        user_id=partner_id,
+        title="Gasto fijo pagado",
+        body=f"{payer_name} pagó '{expense_name}' de {month_year}",
+        type="shared_fe_paid",
+        url="/gastos-fijos"
+    )
+
+
+async def notify_shared_fixed_expense_created(
+    db: AsyncSession,
+    partner_id: UUID,
+    creator_name: str,
+    expense_name: str
+):
+    """Notifica al partner que se ha creado/compartido un gasto fijo con él."""
+    await send_notification_to_user(
+        db=db,
+        user_id=partner_id,
+        title="Nuevo gasto fijo compartido",
+        body=f"{creator_name} compartió un gasto fijo contigo: {expense_name}",
+        type="shared_fe_created",
+        url="/gastos-fijos"
+    )

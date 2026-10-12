@@ -33,6 +33,16 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
   });
 
   useEffect(() => {
+    if (!initialData?.is_shared) {
+      // Load connections for sharing if debt is not already shared
+      getConnections()
+        .then(data => {
+          const accepted = data.filter(c => c.status === 'accepted');
+          setConnections(accepted);
+        })
+        .catch(err => console.error('Error fetching connections:', err));
+    }
+
     if (initialData) {
       setFormData({
         ...initialData,
@@ -40,14 +50,6 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
         notes: initialData.notes || '',
         shared_with: null
       });
-    } else {
-      // Load connections for sharing
-      getConnections()
-        .then(data => {
-          const accepted = data.filter(c => c.status === 'accepted');
-          setConnections(accepted);
-        })
-        .catch(err => console.error('Error fetching connections:', err));
     }
   }, [initialData]);
 
@@ -161,7 +163,7 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
         </div>
       </div>
 
-      {!isEditing && (
+      {!isSharedDebt && (
         <div style={{
           background: 'var(--surface-muted)',
           padding: '0.875rem 1rem',

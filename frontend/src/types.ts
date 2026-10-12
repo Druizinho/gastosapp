@@ -253,6 +253,7 @@ export interface DebtUpdate {
   due_date?: string | null;
   is_settled?: boolean;
   notes?: string;
+  shared_with?: string | null;
 }
 
 // Estimated Income Types

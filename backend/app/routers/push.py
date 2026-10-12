@@ -10,7 +10,7 @@ from uuid import UUID
 
 from .. import schemas, models, auth
 from ..database import get_db
-from ..push_service import send_push_notification
+from ..push_service import send_push_notification, send_push_notification_to_token
 
 router = APIRouter(
     prefix="/api/push",
@@ -157,12 +157,13 @@ async def trigger_notifications(
         sub_result = await db.execute(sub_stmt)
         subscriptions = sub_result.scalars().all()
         for sub in subscriptions:
-            success = send_push_notification(fcm_token=sub.fcm_token, title=title, body=body)
+            success, is_unregistered = send_push_notification_to_token(sub.fcm_token, title=title, body=body)
             if success:
                 sent_count += 1
             else:
                 failed_count += 1
-                tokens_to_delete.append(sub.fcm_token)
+                if is_unregistered:
+                    tokens_to_delete.append(sub.fcm_token)
             # Add a 2 second delay to avoid vibrating the phone simultaneously for multiple notifications
             await asyncio.sleep(2)
 

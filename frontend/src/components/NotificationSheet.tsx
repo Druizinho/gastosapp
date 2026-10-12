@@ -1,7 +1,19 @@
 import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import { useNotifications } from '../context/NotificationContext';
-import { Bell, CreditCard, DollarSign, Activity, Calendar } from 'lucide-react';
+import { 
+  Bell, 
+  CreditCard, 
+  DollarSign, 
+  Activity, 
+  Calendar, 
+  UserPlus, 
+  Users, 
+  CheckCircle2, 
+  AlertCircle,
+  ChevronRight 
+} from 'lucide-react';
 import type { Notification } from '../types';
 
 interface NotificationSheetProps {
@@ -9,13 +21,56 @@ interface NotificationSheetProps {
   onClose: () => void;
 }
 
+const getTargetRouteForType = (type: string) => {
+  switch (type) {
+    case 'connection_request':
+    case 'connection_accepted':
+      return '/conexiones';
+    case 'shared_debt_created':
+    case 'shared_debt_payment':
+    case 'shared_debt_settled':
+    case 'shared_debt_deleted':
+    case 'debts':
+      return '/deudas';
+    case 'shared_fe_created':
+    case 'shared_fe_paid':
+    case 'fixed_expenses':
+      return '/gastos-fijos';
+    case 'incomes':
+      return '/ingresos-estimados';
+    default:
+      return null;
+  }
+};
+
 const getIconForType = (type: string) => {
   switch (type) {
-    case 'fixed_expenses': return <Calendar size={20} style={{ color: 'var(--info-color)' }} />;
-    case 'debts': return <CreditCard size={20} style={{ color: 'var(--expense-color)' }} />;
-    case 'incomes': return <DollarSign size={20} style={{ color: 'var(--income-color)' }} />;
-    case 'inactivity': return <Activity size={20} style={{ color: 'var(--warning-color)' }} />;
-    default: return <Bell size={20} style={{ color: 'var(--text-secondary)' }} />;
+    case 'connection_request':
+      return <UserPlus size={20} style={{ color: 'var(--primary-color)' }} />;
+    case 'connection_accepted':
+      return <Users size={20} style={{ color: '#10B981' }} />;
+    case 'shared_debt_created':
+      return <Users size={20} style={{ color: 'var(--expense-color)' }} />;
+    case 'shared_debt_payment':
+      return <CreditCard size={20} style={{ color: '#10B981' }} />;
+    case 'shared_debt_settled':
+      return <CheckCircle2 size={20} style={{ color: '#10B981' }} />;
+    case 'shared_debt_deleted':
+      return <AlertCircle size={20} style={{ color: 'var(--text-tertiary)' }} />;
+    case 'shared_fe_created':
+      return <Calendar size={20} style={{ color: 'var(--info-color)' }} />;
+    case 'shared_fe_paid':
+      return <CheckCircle2 size={20} style={{ color: '#10B981' }} />;
+    case 'fixed_expenses': 
+      return <Calendar size={20} style={{ color: 'var(--info-color)' }} />;
+    case 'debts': 
+      return <CreditCard size={20} style={{ color: 'var(--expense-color)' }} />;
+    case 'incomes': 
+      return <DollarSign size={20} style={{ color: 'var(--income-color)' }} />;
+    case 'inactivity': 
+      return <Activity size={20} style={{ color: 'var(--warning-color)' }} />;
+    default: 
+      return <Bell size={20} style={{ color: 'var(--text-secondary)' }} />;
   }
 };
 
@@ -25,6 +80,7 @@ const formatDate = (dateStr: string) => {
 };
 
 export const NotificationSheet = ({ isOpen, onClose }: NotificationSheetProps) => {
+  const navigate = useNavigate();
   const { notifications, markAsRead, fetchNotifications } = useNotifications();
 
   useEffect(() => {
@@ -36,6 +92,14 @@ export const NotificationSheet = ({ isOpen, onClose }: NotificationSheetProps) =
   }, [isOpen, markAsRead, fetchNotifications]);
 
   if (!isOpen) return null;
+
+  const handleItemClick = (type: string) => {
+    const route = getTargetRouteForType(type);
+    if (route) {
+      navigate(route);
+      onClose();
+    }
+  };
 
   return createPortal(
     <div className="bottom-sheet-overlay" onClick={onClose}>
@@ -56,39 +120,70 @@ export const NotificationSheet = ({ isOpen, onClose }: NotificationSheetProps) =
               <p>No tienes notificaciones</p>
             </div>
           ) : (
-            notifications.map((n: Notification) => (
-              <div 
-                key={n.id} 
-                style={{
-                  display: 'flex',
-                  gap: '1rem',
-                  padding: '1rem',
-                  background: !n.is_read ? 'var(--surface-hover)' : 'var(--surface-color)',
-                  border: `1px solid ${!n.is_read ? 'var(--info-bg)' : 'var(--accent-light)'}`,
-                  borderRadius: 'var(--radius-md)',
-                  transition: 'background var(--transition-base)'
-                }}
-              >
-                <div style={{
-                  width: '40px',
-                  height: '40px',
-                  borderRadius: '50%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                  background: 'var(--surface-muted)'
-                }}>
-                  {getIconForType(n.type)}
+            notifications.map((n: Notification) => {
+              const targetRoute = getTargetRouteForType(n.type);
+              const isClickable = !!targetRoute;
+
+              return (
+                <div 
+                  key={n.id} 
+                  onClick={() => isClickable && handleItemClick(n.type)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '1rem',
+                    padding: '1rem',
+                    background: !n.is_read ? 'var(--surface-hover)' : 'var(--surface-color)',
+                    border: `1px solid ${!n.is_read ? 'var(--info-bg)' : 'var(--accent-light)'}`,
+                    borderRadius: 'var(--radius-md)',
+                    cursor: isClickable ? 'pointer' : 'default',
+                    transition: 'all var(--transition-base)',
+                    boxShadow: !n.is_read ? '0 2px 8px rgba(0,0,0,0.04)' : 'none'
+                  }}
+                >
+                  <div style={{
+                    width: '42px',
+                    height: '42px',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    background: 'var(--surface-muted)'
+                  }}>
+                    {getIconForType(n.type)}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <h3 style={{ 
+                      fontSize: '0.95rem', 
+                      fontWeight: 600, 
+                      color: 'var(--text-primary)', 
+                      marginBottom: '0.25rem', 
+                      opacity: n.is_read ? 0.8 : 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem'
+                    }}>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.title}</span>
+                    </h3>
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.4, wordBreak: 'break-word' }}>{n.body}</p>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '0.4rem', display: 'block' }}>{formatDate(n.created_at)}</span>
+                  </div>
+                  {!n.is_read && (
+                    <div style={{ 
+                      width: '8px', 
+                      height: '8px', 
+                      background: 'var(--info-color)', 
+                      borderRadius: '50%', 
+                      flexShrink: 0 
+                    }} />
+                  )}
+                  {isClickable && (
+                    <ChevronRight size={18} style={{ color: 'var(--text-tertiary)', flexShrink: 0, opacity: 0.6 }} />
+                  )}
                 </div>
-                <div style={{ flex: 1 }}>
-                  <h3 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.25rem', opacity: n.is_read ? 0.7 : 1 }}>{n.title}</h3>
-                  <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>{n.body}</p>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '0.5rem', display: 'block' }}>{formatDate(n.created_at)}</span>
-                </div>
-                {!n.is_read && <div style={{ width: '8px', height: '8px', background: 'var(--info-color)', borderRadius: '50%', marginTop: '0.5rem', flexShrink: 0 }} />}
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>
@@ -96,3 +191,4 @@ export const NotificationSheet = ({ isOpen, onClose }: NotificationSheetProps) =
     document.body
   );
 };
+
