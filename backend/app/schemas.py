@@ -179,6 +179,7 @@ class FixedExpenseResponse(FixedExpenseBase):
     id: UUID
     user_id: UUID
     created_at: datetime.datetime
+    deactivated_at: Optional[datetime.datetime] = None
     amount_usd: Optional[Decimal] = None
     amount_bs: Optional[Decimal] = None
     amount_eur: Optional[Decimal] = None

@@ -4,6 +4,8 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy import func
 from typing import List, Optional
 from uuid import UUID
+from datetime import datetime, timezone, timedelta
+import calendar
 from . import models, schemas
 from decimal import Decimal
 
@@ -53,20 +55,37 @@ async def update_estimated_income(db: AsyncSession, income_id: UUID, income: sch
     return await get_estimated_income(db, income_id, user_id)
 
 
-async def delete_estimated_income(db: AsyncSession, income_id: UUID, user_id: UUID):
+async def delete_estimated_income(db: AsyncSession, income_id: UUID, user_id: UUID, month_year: Optional[str] = None):
     db_income = await get_estimated_income(db, income_id, user_id)
     if not db_income:
         return False
-    
-    db_income.is_active = False
-    db_income.deactivated_at = func.now()
-    await db.commit()
-    return True
+
+    checks = db_income.checks or []
+    if not month_year:
+        month_year = datetime.now(timezone.utc).strftime("%Y-%m")
+
+    year, month = map(int, month_year.split('-'))
+    start_of_target_month = datetime(year, month, 1, 0, 0, 0, tzinfo=timezone.utc)
+    end_of_prev_month = start_of_target_month - timedelta(microseconds=1)
+
+    prior_checks = [c for c in checks if c.month_year < month_year]
+    checks_to_remove = [c for c in checks if c.month_year >= month_year]
+
+    for c in checks_to_remove:
+        await db.delete(c)
+
+    if not prior_checks:
+        await db.delete(db_income)
+        await db.commit()
+        return True
+    else:
+        db_income.is_active = False
+        db_income.deactivated_at = end_of_prev_month
+        await db.commit()
+        return True
 
 
 from sqlalchemy.orm.attributes import set_committed_value
-import calendar
-from datetime import datetime, timezone
 
 async def get_monthly_incomes(db: AsyncSession, user_id: UUID, month_year: str):
     """

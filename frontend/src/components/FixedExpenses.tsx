@@ -71,12 +71,28 @@ const FixedExpenses: React.FC = () => {
     const pending: FixedExpense[] = [];
     const paused: FixedExpense[] = [];
 
+    const [y, m] = currentMonth.split('-').map(Number);
+    const startOfCurrentMonth = new Date(Date.UTC(y, m - 1, 1));
+    const endOfCurrentMonth = new Date(Date.UTC(y, m, 0, 23, 59, 59, 999));
+
     expenses.forEach(exp => {
+      const hasCheck = exp.checks?.some(c => c.month_year === currentMonth);
+
+      // If created after this month and no check in this month, skip
+      if (exp.created_at && new Date(exp.created_at) > endOfCurrentMonth && !hasCheck) {
+        return;
+      }
+
+      // If deactivated before this month and no check in this month, skip
+      if (exp.deactivated_at && new Date(exp.deactivated_at) < startOfCurrentMonth && !hasCheck) {
+        return;
+      }
+
       if (!exp.is_active) {
         paused.push(exp);
         return;
       }
-      const hasCheck = exp.checks?.some(c => c.month_year === currentMonth);
+
       if (hasCheck) {
         paid.push(exp);
       } else {
@@ -144,12 +160,12 @@ const FixedExpenses: React.FC = () => {
 
   const handleConfirmDelete = async () => {
     try {
-      await deleteFixedExpense(confirmDelete.expenseId);
+      await deleteFixedExpense(confirmDelete.expenseId, currentMonth);
       setConfirmDelete({ isOpen: false, expenseId: '' });
       await fetchData();
     } catch (error) {
       console.error('Error deleting:', error);
-      alert('Error al eliminar');
+      alert('Error al dar de baja el gasto fijo');
     }
   };
 
@@ -612,10 +628,10 @@ const FixedExpenses: React.FC = () => {
         return (
           <ConfirmModal
             isOpen={confirmDelete.isOpen}
-            title="¿Eliminar gasto fijo?"
+            title="Dar de baja / Eliminar gasto fijo"
             message={toDelete?.is_shared
-              ? `Este gasto fijo está compartido con ${toDelete.shared_partner_name || 'tu conexión'}. Al eliminarlo, también se eliminará para esa persona. ¿Deseas continuar?`
-              : "¿Seguro que quieres eliminar este gasto fijo? Esta acción no se puede deshacer."}
+              ? `Este gasto fijo está compartido con ${toDelete.shared_partner_name || 'tu conexión'}. A partir de este mes dejará de aparecer para ambos. Si registraste pagos en meses anteriores, se mantendrán en el historial. ¿Deseas continuar?`
+              : "¿Estás seguro de que quieres dar de baja este gasto fijo? A partir de este mes dejará de aparecer. Si registraste pagos en meses anteriores, se mantendrán protegidos en tu historial."}
             onConfirm={handleConfirmDelete}
             onCancel={() => setConfirmDelete({ isOpen: false, expenseId: '' })}
           />

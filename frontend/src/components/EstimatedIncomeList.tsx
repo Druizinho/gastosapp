@@ -164,10 +164,11 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
 
   const handleDelete = async () => {
     try {
-      await deleteEstimatedIncome(confirmDelete.incomeId);
-      setIncomes(incomes.filter(i => i.id !== confirmDelete.incomeId));
+      await deleteEstimatedIncome(confirmDelete.incomeId, currentMonthYear);
+      await fetchData();
     } catch (error) {
       console.error('Error deleting income:', error);
+      alert('Error al dar de baja el ingreso');
     } finally {
       setConfirmDelete({ isOpen: false, incomeId: '' });
     }
@@ -198,6 +199,7 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
   const totalExpectedCount = incomes.length;
   const confirmedIncomes = incomes.filter(i => i.checks && i.checks.length > 0);
   const confirmedCount = confirmedIncomes.length;
+  const progressPercent = totalExpectedCount > 0 ? (confirmedCount / totalExpectedCount) * 100 : 0;
 
   const renderIncomeCard = (income: EstimatedIncome) => {
     const check = income.checks && income.checks.length > 0 ? income.checks[0] : null;
@@ -484,6 +486,31 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
                   </div>
                 </div>
               </div>
+
+              {/* Progress bar */}
+              <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-color)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                    Progreso de cobro
+                  </span>
+                  <span style={{ fontSize: '0.75rem', color: progressPercent === 100 ? 'var(--income-color)' : '#3B82F6', fontWeight: 600 }}>
+                    {Math.round(progressPercent)}% ({confirmedCount}/{totalExpectedCount})
+                  </span>
+                </div>
+                <div style={{
+                  height: '8px', borderRadius: 'var(--radius-full)',
+                  background: 'var(--surface-muted)', overflow: 'hidden',
+                }}>
+                  <div style={{
+                    height: '100%', borderRadius: 'var(--radius-full)',
+                    background: progressPercent === 100
+                      ? 'linear-gradient(90deg, var(--income-color), #34D399)'
+                      : 'linear-gradient(90deg, #3B82F6, #60A5FA)',
+                    width: `${progressPercent}%`,
+                    transition: 'width 0.4s ease-out',
+                  }} />
+                </div>
+              </div>
             </>
           );
         })()}
@@ -545,6 +572,19 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
               Confirmados ({paidIncomesList.length})
             </button>
           </div>
+
+          {/* All collected celebration */}
+          {confirmedCount === totalExpectedCount && totalExpectedCount > 0 && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '0.75rem',
+              padding: '0.875rem 1rem', borderRadius: 'var(--radius-md)',
+              background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.25)',
+              color: 'var(--income-color)', fontSize: '0.85rem', fontWeight: 600,
+            }}>
+              <CheckCircle size={20} />
+              <span>¡Excelente! Has cobrado todos tus ingresos estimados de este mes.</span>
+            </div>
+          )}
 
           {/* Pending section */}
           {activeTab === 'pending' && (
@@ -610,8 +650,8 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
 
       <ConfirmModal
         isOpen={confirmDelete.isOpen}
-        title="Eliminar Ingreso"
-        message="¿Estás seguro de que quieres eliminar este ingreso estimado? Esta acción no se puede deshacer y borrará también su historial."
+        title="Dar de baja / Eliminar Ingreso"
+        message="¿Estás seguro de que quieres dar de baja este ingreso? A partir de este mes dejará de aparecer. Si registraste cobros en meses anteriores, se mantendrán protegidos en tu historial."
         onConfirm={handleDelete}
         onCancel={() => setConfirmDelete({ isOpen: false, incomeId: '' })}
       />

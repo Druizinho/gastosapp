@@ -125,8 +125,8 @@ export const updateFixedExpense = async (id: string, expense: FixedExpenseUpdate
   return response.data;
 };
 
-export const deleteFixedExpense = async (id: string): Promise<void> => {
-  await api.delete(`/fixed-expenses/${id}`);
+export const deleteFixedExpense = async (id: string, month_year?: string): Promise<void> => {
+  await api.delete(`/fixed-expenses/${id}`, { params: month_year ? { month_year } : {} });
 };
 
 export const checkFixedExpense = async (id: string, data: FixedExpenseCheckCreate): Promise<FixedExpenseCheck> => {
@@ -203,8 +203,8 @@ export const updateEstimatedIncome = async (incomeId: string, income: EstimatedI
   return response.data;
 };
 
-export const deleteEstimatedIncome = async (incomeId: string): Promise<void> => {
-  await api.delete(`/incomes/${incomeId}`);
+export const deleteEstimatedIncome = async (incomeId: string, month_year?: string): Promise<void> => {
+  await api.delete(`/incomes/${incomeId}`, { params: month_year ? { month_year } : {} });
 };
 
 export const checkIncome = async (incomeId: string, check: IncomeCheckCreate): Promise<IncomeCheck> => {

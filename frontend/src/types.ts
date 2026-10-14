@@ -143,6 +143,7 @@ export interface FixedExpense {
   notes: string | null;
   last_paid_month?: string | null;
   created_at: string;
+  deactivated_at?: string | null;
   amount_usd?: number | null;
   amount_bs?: number | null;
   amount_eur?: number | null;
@@ -295,6 +296,7 @@ export interface EstimatedIncome {
   is_active: boolean;
   notes: string | null;
   created_at: string;
+  deactivated_at?: string | null;
   checks: IncomeCheck[];
 }
 

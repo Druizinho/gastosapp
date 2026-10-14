@@ -69,6 +69,7 @@ class FixedExpense(Base):
     last_paid_month = Column(String(7), nullable=True)  # YYYY-MM (legacy, kept for compat)
     notes = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    deactivated_at = Column(DateTime(timezone=True), nullable=True)
 
     # Attributes populated dynamically for shared fixed expenses
     is_shared = False

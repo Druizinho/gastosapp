@@ -100,10 +100,11 @@ async def update_fixed_expense(
 @router.delete("/{expense_id}")
 async def delete_fixed_expense(
     expense_id: UUID,
+    month_year: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     user_id: UUID = Depends(get_current_user)
 ):
-    success = await crud_fixed_expenses.delete_fixed_expense(db, expense_id=expense_id, user_id=user_id)
+    success = await crud_fixed_expenses.delete_fixed_expense(db, expense_id=expense_id, user_id=user_id, month_year=month_year)
     if not success:
         raise HTTPException(status_code=404, detail="Fixed expense not found")
     return {"message": "Fixed expense deleted successfully"}

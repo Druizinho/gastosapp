@@ -62,10 +62,11 @@ async def update_estimated_income(
 @router.delete("/{income_id}")
 async def delete_estimated_income(
     income_id: UUID,
+    month_year: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     user_id: UUID = Depends(get_current_user)
 ):
-    success = await crud_incomes.delete_estimated_income(db, income_id=income_id, user_id=user_id)
+    success = await crud_incomes.delete_estimated_income(db, income_id=income_id, user_id=user_id, month_year=month_year)
     if not success:
         raise HTTPException(status_code=404, detail="Estimated income not found")
     return {"ok": True}
