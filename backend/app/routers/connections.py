@@ -18,6 +18,24 @@ async def get_my_connections(
 ):
     return await crud_connections.get_connections(db, user_id)
 
+@router.get("/overview", response_model=schemas.PanasGlobalOverview)
+async def get_panas_overview(
+    db: AsyncSession = Depends(get_db),
+    user_id: UUID = Depends(auth.get_current_user)
+):
+    return await crud_connections.get_panas_overview(db, user_id)
+
+@router.get("/partner/{partner_id}/details", response_model=schemas.PanaDetail)
+async def get_pana_details(
+    partner_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user_id: UUID = Depends(auth.get_current_user)
+):
+    detail = await crud_connections.get_pana_details(db, user_id, partner_id)
+    if not detail:
+        raise HTTPException(status_code=404, detail="Pana no encontrado o no conectado")
+    return detail
+
 @router.post("/request", response_model=schemas.ConnectionResponse)
 async def request_connection(
     req: schemas.ConnectionRequest,

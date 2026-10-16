@@ -251,7 +251,7 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
                   style={{ width: '18px', height: '18px', accentColor: 'var(--accent-color)', cursor: 'pointer' }}
                 />
                 <label htmlFor="share_fixed_expense" style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <Users size={16} /> Compartir con una conexión
+                  <Users size={16} /> Compartir con un Pana
                 </label>
               </div>
 
@@ -261,13 +261,13 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-tertiary)', fontSize: '0.8rem' }}>
                       <Info size={14} />
                       <span>
-                        No tienes conexiones aceptadas. Ve a <strong>Ajustes &gt; Mis Conexiones</strong> para conectar con otros perfiles.
+                        No tienes panas conectados. Ve a <strong>Herramientas &gt; Panas</strong> para conectar con otros perfiles.
                       </span>
                     </div>
                   ) : (
                     <div>
                       <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>
-                        Seleccionar conexión
+                        Seleccionar Pana
                       </label>
                       <select
                         value={selectedPartnerId}
@@ -289,7 +289,7 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
                         ))}
                       </select>
                       <p style={{ margin: '0.4rem 0 0', fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-                        Tu conexión podrá ver este gasto fijo y su estado de pago mensual sincronizado.
+                        Tu pana podrá ver este gasto fijo y su estado de pago mensual sincronizado.
                       </p>
                     </div>
                   )}

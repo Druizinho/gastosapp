@@ -42,7 +42,7 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
   const [editingDebt, setEditingDebt] = useState<Debt | undefined>(undefined);
   
   const [selectedDebt, setSelectedDebt] = useState<Debt | null>(null);
-  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [payingDebt, setPayingDebt] = useState<Debt | null>(null);
 
   const [confirmDelete, setConfirmDelete] = useState<{isOpen: boolean; debtId?: string; paymentId?: string}>({isOpen: false});
 
@@ -102,12 +102,15 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
   };
 
   const handleAddPayment = async (data: DebtPaymentCreate) => {
-    if (!selectedDebt) return;
+    const debtToPay = payingDebt || selectedDebt;
+    if (!debtToPay) return;
     try {
       setSubmitting(true);
-      const updatedDebt = await addDebtPayment(selectedDebt.id, data);
-      setSelectedDebt(updatedDebt);
-      setShowPaymentForm(false);
+      const updatedDebt = await addDebtPayment(debtToPay.id, data);
+      if (selectedDebt && selectedDebt.id === debtToPay.id) {
+        setSelectedDebt(updatedDebt);
+      }
+      setPayingDebt(null);
       await fetchDebts();
       
       if (updatedDebt.is_settled) {
@@ -192,15 +195,15 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
       amount_usd = amount_bs / usd_bs;
       amount_usdt = amount_bs / usdt_bs;
     } else if (currency === 'BS') {
-        amount_bs = amount;
-        amount_usd = amount / usd_bs;
-        amount_eur = amount / eur_bs;
-        amount_usdt = amount / usdt_bs;
+      amount_bs = amount;
+      amount_usd = amount / usd_bs;
+      amount_eur = amount / eur_bs;
+      amount_usdt = amount / usdt_bs;
     } else if (currency === 'USDT') {
-        amount_usdt = amount;
-        amount_bs = amount * usdt_bs;
-        amount_usd = amount_bs / usd_bs;
-        amount_eur = amount_bs / eur_bs;
+      amount_usdt = amount;
+      amount_bs = amount * usdt_bs;
+      amount_usd = amount_bs / usd_bs;
+      amount_eur = amount_bs / eur_bs;
     }
     
     return { usd: amount_usd, bs: amount_bs, eur: amount_eur, usdt: amount_usdt };
@@ -240,7 +243,7 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
   };
 
   // VISTA: Detalle de Deuda
-  if (selectedDebt && !showForm) {
+  if (selectedDebt) {
     const paid = calculatePaid(selectedDebt);
     const remaining = Math.max(selectedDebt.total_amount - paid, 0);
     const progress = Math.min((paid / selectedDebt.total_amount) * 100, 100);
@@ -249,10 +252,7 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
       <div style={{ padding: '1rem', paddingBottom: '6rem', maxWidth: '600px', margin: '0 auto' }}>
         <header style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', paddingTop: '0.5rem' }}>
           <button 
-            onClick={() => {
-              if (showPaymentForm) setShowPaymentForm(false);
-              else setSelectedDebt(null);
-            }}
+            onClick={() => setSelectedDebt(null)}
             style={{
               width: '40px', height: '40px', borderRadius: 'var(--radius-full)',
               background: 'var(--surface-color)', border: 'none', display: 'flex',
@@ -264,7 +264,7 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
           </button>
           <div>
             <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
-              {showPaymentForm ? 'Registrar Abono' : 'Detalle de Deuda'}
+              Detalle de Deuda
             </h1>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0 }}>
               {selectedDebt.concept}
@@ -272,217 +272,263 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
           </div>
         </header>
 
-        {showPaymentForm ? (
-          <div className="soft-card" style={{ padding: '1.5rem' }}>
-            <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1.5rem', color: 'var(--text-primary)' }}>
-              Registrar Abono - {selectedDebt?.concept}
-            </h2>
-            <DebtPaymentForm
-              type={type}
-              debtCurrency={selectedDebt?.currency || 'USD_BCV'}
-              debtTotalAmount={selectedDebt.total_amount}
-              debtPaidAmount={paid}
-              onSubmit={handleAddPayment}
-              onCancel={() => setShowPaymentForm(false)}
-              loading={submitting}
-              isShared={selectedDebt.is_shared}
-              sharedPartnerName={selectedDebt.shared_partner_name}
-            />
-          </div>
-        ) : (
-          <div className="soft-card" style={{ padding: '1rem 1.25rem' }}>
-            {/* Header */}
-            <div style={{ marginBottom: '1.25rem' }}>
-              {selectedDebt.is_shared && (
-                <div style={{
-                  display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
-                  background: 'rgba(59, 130, 246, 0.1)', color: '#3B82F6',
-                  padding: '0.25rem 0.65rem', borderRadius: 'var(--radius-full)',
-                  fontSize: '0.75rem', fontWeight: 600, marginBottom: '0.75rem',
-                  border: '1px solid rgba(59, 130, 246, 0.2)'
-                }}>
-                  <Users size={13} />
-                  Compartida con {selectedDebt.shared_partner_name}
-                </div>
-              )}
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                {isOwed ? 'A:' : 'De:'} <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{selectedDebt.counterpart}</span>
-                {selectedDebt.start_date && (
-                  <span style={{ marginLeft: '0.75rem', color: 'var(--text-tertiary)' }}>
-                    · Desde {formatDate(selectedDebt.start_date)}
-                  </span>
-                )}
-              </p>
-            </div>
-
-            {/* Resumen numérico */}
-            <div style={{ 
-              display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', 
-              marginBottom: '1rem' 
-            }}>
-              <div style={{ textAlign: 'center', padding: '0.75rem', background: 'var(--surface-muted)', borderRadius: 'var(--radius-md)' }}>
-                <p style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Total</p>
-                <p style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                  {formatCurrency(selectedDebt.total_amount, selectedDebt.currency)}
-                </p>
-              </div>
-              <div style={{ textAlign: 'center', padding: '0.75rem', background: 'var(--income-bg)', borderRadius: 'var(--radius-md)' }}>
-                <p style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Abonado</p>
-                <p style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--income-color)' }}>
-                  {formatCurrency(paid, selectedDebt.currency)}
-                </p>
-              </div>
-              <div style={{ textAlign: 'center', padding: '0.75rem', background: remaining > 0 ? 'var(--expense-bg)' : 'var(--income-bg)', borderRadius: 'var(--radius-md)' }}>
-                <p style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Restante</p>
-                <p style={{ fontSize: '0.9rem', fontWeight: 700, color: remaining > 0 ? themeColor : 'var(--income-color)' }}>
-                  {formatCurrency(remaining, selectedDebt.currency)}
-                </p>
-              </div>
-            </div>
-
-            {/* Barra de progreso */}
-            <div style={{ marginBottom: '1.25rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Progreso</span>
-                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{Math.round(progress)}%</span>
-              </div>
-              <div style={{ width: '100%', background: 'var(--surface-muted)', borderRadius: 'var(--radius-full)', height: '4px', overflow: 'hidden' }}>
-                <div style={{ 
-                  height: '100%', 
-                  background: (remaining <= 0 || selectedDebt.is_settled) ? 'var(--income-color)' : themeColor, 
-                  width: `${progress}%`,
-                  borderRadius: 'var(--radius-full)',
-                  transition: 'width 0.5s ease'
-                }}></div>
-              </div>
-            </div>
-            
-            {(remaining <= 0 || selectedDebt.is_settled) && (
+        <div className="soft-card" style={{ padding: '1rem 1.25rem' }}>
+          {/* Header */}
+          <div style={{ marginBottom: '1.25rem' }}>
+            {selectedDebt.is_shared && (
               <div style={{
-                background: 'rgba(16, 185, 129, 0.1)', color: '#10B981',
-                padding: '0.75rem 1rem', borderRadius: 'var(--radius-md)',
-                fontSize: '0.9rem', fontWeight: 600, textAlign: 'center',
-                marginBottom: '1rem', display: 'flex', alignItems: 'center',
-                justifyContent: 'center', gap: '0.5rem'
+                display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
+                background: 'rgba(59, 130, 246, 0.1)', color: '#3B82F6',
+                padding: '0.25rem 0.65rem', borderRadius: 'var(--radius-full)',
+                fontSize: '0.75rem', fontWeight: 600, marginBottom: '0.75rem',
+                border: '1px solid rgba(59, 130, 246, 0.2)'
               }}>
-                ✅ ¡Deuda completamente liquidada!
+                <Users size={13} />
+                Compartida con tu pana {selectedDebt.shared_partner_name}
               </div>
             )}
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+              {isOwed ? 'A:' : 'De:'} <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{selectedDebt.counterpart}</span>
+              {selectedDebt.start_date && (
+                <span style={{ marginLeft: '0.75rem', color: 'var(--text-tertiary)' }}>
+                  · Desde {formatDate(selectedDebt.start_date)}
+                </span>
+              )}
+            </p>
+          </div>
 
-            {/* Botones de acción rápida */}
-            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-              <button
-                onClick={() => setShowPaymentForm(true)}
-                disabled={remaining <= 0 || selectedDebt.is_settled}
-                style={{
-                  flex: 1, padding: '0.6rem', borderRadius: 'var(--radius-md)',
-                  background: (remaining <= 0 || selectedDebt.is_settled) ? 'var(--surface-muted)' : themeColor, 
-                  color: (remaining <= 0 || selectedDebt.is_settled) ? 'var(--text-tertiary)' : 'white',
-                  border: 'none', fontWeight: 600, fontSize: '0.85rem', 
-                  cursor: (remaining <= 0 || selectedDebt.is_settled) ? 'not-allowed' : 'pointer'
-                }}
-              >
-                Registrar Abono
-              </button>
-              <button
-                onClick={() => { setEditingDebt(selectedDebt); setShowForm(true); }}
-                style={{
-                  width: '40px', padding: '0', borderRadius: 'var(--radius-md)',
-                  background: 'none', color: 'var(--text-secondary)',
-                  border: '1px solid var(--accent-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
-                }}
-              >
-                <Edit3 size={16} />
-              </button>
-              <button
-                onClick={() => setConfirmDelete({isOpen: true, debtId: selectedDebt.id})}
-                style={{
-                  width: '40px', padding: '0', borderRadius: 'var(--radius-md)',
-                  background: 'none', color: 'var(--expense-color)',
-                  border: '1px solid var(--expense-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
-                }}
-              >
-                <Trash2 size={16} />
-              </button>
-            </div>
-
-            {/* Separador visual */}
-            <div style={{ height: '1px', background: 'var(--accent-light)', marginBottom: '1.25rem' }}></div>
-
-            <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '1rem' }}>
-              Historial de Pagos ({selectedDebt.payments.length})
-            </h3>
-            
-            {selectedDebt.payments.length === 0 ? (
-              <p style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: '2rem 0', fontSize: '0.9rem' }}>
-                No se han registrado abonos aún.
+          {/* Resumen numérico */}
+          <div style={{ 
+            display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', 
+            marginBottom: '1rem' 
+          }}>
+            <div style={{ textAlign: 'center', padding: '0.75rem', background: 'var(--surface-muted)', borderRadius: 'var(--radius-md)' }}>
+              <p style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Total</p>
+              <p style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                {formatCurrency(selectedDebt.total_amount, selectedDebt.currency)}
               </p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {[...selectedDebt.payments]
-                  .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-                  .map(payment => (
-                  <div key={payment.id} style={{
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    padding: '0.875rem 1rem', background: 'var(--surface-muted)', borderRadius: 'var(--radius-md)'
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                      <div style={{
-                        width: '36px', height: '36px', borderRadius: 'var(--radius-full)',
-                        background: 'var(--income-bg)', color: 'var(--income-color)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: '0.9rem', flexShrink: 0
-                      }}>
-                        💰
-                      </div>
-                      <div>
-                        <p style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.1rem' }}>
-                          {formatDate(payment.payment_date)}
-                        </p>
-                        {payment.note && <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{payment.note}</p>}
-                        {payment.paid_by_name && (
-                          <span style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
-                            fontSize: '0.7rem', color: '#3B82F6', background: 'rgba(59, 130, 246, 0.1)',
-                            padding: '0.1rem 0.45rem', borderRadius: 'var(--radius-full)', marginTop: '0.2rem',
-                            fontWeight: 600
-                          }}>
-                            ✨ Pagado por {payment.paid_by_name}
-                          </span>
-                        )}
-                      </div>
+            </div>
+            <div style={{ textAlign: 'center', padding: '0.75rem', background: 'var(--income-bg)', borderRadius: 'var(--radius-md)' }}>
+              <p style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Abonado</p>
+              <p style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--income-color)' }}>
+                {formatCurrency(paid, selectedDebt.currency)}
+              </p>
+            </div>
+            <div style={{ textAlign: 'center', padding: '0.75rem', background: remaining > 0 ? 'var(--expense-bg)' : 'var(--income-bg)', borderRadius: 'var(--radius-md)' }}>
+              <p style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Restante</p>
+              <p style={{ fontSize: '0.9rem', fontWeight: 700, color: remaining > 0 ? themeColor : 'var(--income-color)' }}>
+                {formatCurrency(remaining, selectedDebt.currency)}
+              </p>
+            </div>
+          </div>
+
+          {/* Barra de progreso */}
+          <div style={{ marginBottom: '1.25rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Progreso</span>
+              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{Math.round(progress)}%</span>
+            </div>
+            <div style={{ width: '100%', background: 'var(--surface-muted)', borderRadius: 'var(--radius-full)', height: '4px', overflow: 'hidden' }}>
+              <div style={{ 
+                height: '100%', 
+                background: (remaining <= 0 || selectedDebt.is_settled) ? 'var(--income-color)' : themeColor, 
+                width: `${progress}%`,
+                borderRadius: 'var(--radius-full)',
+                transition: 'width 0.5s ease'
+              }}></div>
+            </div>
+          </div>
+          
+          {(remaining <= 0 || selectedDebt.is_settled) && (
+            <div style={{
+              background: 'rgba(16, 185, 129, 0.1)', color: '#10B981',
+              padding: '0.75rem 1rem', borderRadius: 'var(--radius-md)',
+              fontSize: '0.9rem', fontWeight: 600, textAlign: 'center',
+              marginBottom: '1rem', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', gap: '0.5rem'
+            }}>
+              ✅ ¡Deuda completamente liquidada!
+            </div>
+          )}
+
+          {/* Botones de acción rápida */}
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+            <button
+              onClick={() => setPayingDebt(selectedDebt)}
+              disabled={remaining <= 0 || selectedDebt.is_settled}
+              style={{
+                flex: 1, padding: '0.6rem', borderRadius: 'var(--radius-md)',
+                background: (remaining <= 0 || selectedDebt.is_settled) ? 'var(--surface-muted)' : themeColor, 
+                color: (remaining <= 0 || selectedDebt.is_settled) ? 'var(--text-tertiary)' : 'white',
+                border: 'none', fontWeight: 600, fontSize: '0.85rem', 
+                cursor: (remaining <= 0 || selectedDebt.is_settled) ? 'not-allowed' : 'pointer'
+              }}
+            >
+              Registrar Abono
+            </button>
+            <button
+              onClick={() => { setEditingDebt(selectedDebt); setShowForm(true); }}
+              style={{
+                width: '40px', padding: '0', borderRadius: 'var(--radius-md)',
+                background: 'none', color: 'var(--text-secondary)',
+                border: '1px solid var(--accent-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
+              }}
+              title="Editar deuda"
+            >
+              <Edit3 size={16} />
+            </button>
+            <button
+              onClick={() => setConfirmDelete({isOpen: true, debtId: selectedDebt.id})}
+              style={{
+                width: '40px', padding: '0', borderRadius: 'var(--radius-md)',
+                background: 'none', color: 'var(--expense-color)',
+                border: '1px solid var(--expense-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
+              }}
+              title="Eliminar deuda"
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
+
+          {/* Separador visual */}
+          <div style={{ height: '1px', background: 'var(--accent-light)', marginBottom: '1.25rem' }}></div>
+
+          <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '1rem' }}>
+            Historial de Pagos ({selectedDebt.payments.length})
+          </h3>
+          
+          {selectedDebt.payments.length === 0 ? (
+            <p style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: '2rem 0', fontSize: '0.9rem' }}>
+              No se han registrado abonos aún.
+            </p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {[...selectedDebt.payments]
+                .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                .map(payment => (
+                <div key={payment.id} style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '0.875rem 1rem', background: 'var(--surface-muted)', borderRadius: 'var(--radius-md)'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <div style={{
+                      width: '36px', height: '36px', borderRadius: 'var(--radius-full)',
+                      background: 'var(--income-bg)', color: 'var(--income-color)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '0.9rem', flexShrink: 0
+                    }}>
+                      💰
                     </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <p style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--income-color)' }}>
-                        +{formatCurrency(payment.amount, payment.currency)}
+                    <div>
+                      <p style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.1rem' }}>
+                        {formatDate(payment.payment_date)}
                       </p>
-                      {payment.currency !== selectedDebt.currency && (
-                        <p style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
-                          ≈ {formatCurrency((() => {
-                            const payInBs = convertCurrencyAmount(Number(payment.amount), payment.currency, rates).bs;
-                            const debtOneUnitInBs = convertCurrencyAmount(1, selectedDebt.currency, rates).bs;
-                            return debtOneUnitInBs > 0 ? payInBs / debtOneUnitInBs : 0;
-                          })(), selectedDebt.currency)}
-                        </p>
+                      {payment.note && <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{payment.note}</p>}
+                      {payment.paid_by_name && (
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
+                          fontSize: '0.7rem', color: '#3B82F6', background: 'rgba(59, 130, 246, 0.1)',
+                          padding: '0.1rem 0.45rem', borderRadius: 'var(--radius-full)', marginTop: '0.2rem',
+                          fontWeight: 600
+                        }}>
+                          ✨ Pagado por {payment.paid_by_name}
+                        </span>
                       )}
                     </div>
-                    <button
-                      onClick={() => setConfirmDelete({isOpen: true, paymentId: payment.id})}
-                      style={{
-                        background: 'transparent', border: 'none', color: 'var(--expense-color)',
-                        cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0.25rem',
-                        marginLeft: '0.5rem'
-                      }}
-                      title="Eliminar abono"
-                    >
-                      <Trash2 size={14} />
-                    </button>
                   </div>
-                ))}
-              </div>
-            )}
+                  <div style={{ textAlign: 'right' }}>
+                    <p style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--income-color)' }}>
+                      +{formatCurrency(payment.amount, payment.currency)}
+                    </p>
+                    {payment.currency !== selectedDebt.currency && (
+                      <p style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
+                        ≈ {formatCurrency((() => {
+                          const payInBs = convertCurrencyAmount(Number(payment.amount), payment.currency, rates).bs;
+                          const debtOneUnitInBs = convertCurrencyAmount(1, selectedDebt.currency, rates).bs;
+                          return debtOneUnitInBs > 0 ? payInBs / debtOneUnitInBs : 0;
+                        })(), selectedDebt.currency)}
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setConfirmDelete({isOpen: true, paymentId: payment.id})}
+                    style={{
+                      background: 'transparent', border: 'none', color: 'var(--expense-color)',
+                      cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0.25rem',
+                      marginLeft: '0.5rem'
+                    }}
+                    title="Eliminar abono"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Modal: Editar Deuda desde Detalle */}
+        {showForm && (
+          <DebtForm
+            type={type}
+            initialData={editingDebt}
+            onSubmit={handleCreateOrUpdate}
+            onCancel={() => { setShowForm(false); setEditingDebt(undefined); }}
+            loading={submitting}
+          />
+        )}
+
+        {/* Modal: Registrar Abono */}
+        {payingDebt && (
+          <DebtPaymentForm
+            debtConcept={payingDebt.concept}
+            type={type}
+            debtCurrency={payingDebt.currency || 'USD_BCV'}
+            debtTotalAmount={payingDebt.total_amount}
+            debtPaidAmount={calculatePaid(payingDebt)}
+            onSubmit={handleAddPayment}
+            onCancel={() => setPayingDebt(null)}
+            loading={submitting}
+            isShared={payingDebt.is_shared}
+            sharedPartnerName={payingDebt.shared_partner_name}
+          />
+        )}
+
+        {toastMessage && (
+          <div style={{
+            position: 'fixed',
+            bottom: '80px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'var(--text-primary)',
+            color: 'var(--surface-color)',
+            padding: '0.75rem 1.5rem',
+            borderRadius: 'var(--radius-full)',
+            fontSize: '0.9rem',
+            fontWeight: 600,
+            boxShadow: 'var(--shadow-lg)',
+            zIndex: 1000,
+            animation: 'toastSlideUp 0.3s ease'
+          }}>
+            {toastMessage}
           </div>
         )}
+
+        <ConfirmModal
+          isOpen={confirmDelete.isOpen}
+          title="Confirmar Eliminación"
+          message={confirmDelete.debtId 
+            ? '¿Estás seguro de que deseas eliminar esta deuda? Se borrará también su historial de pagos.'
+            : '¿Estás seguro de que deseas eliminar este abono?'}
+          onConfirm={() => {
+            if (confirmDelete.debtId) {
+              handleDeleteDebt(confirmDelete.debtId);
+            } else if (confirmDelete.paymentId) {
+              handleDeletePayment(confirmDelete.paymentId);
+            }
+          }}
+          onCancel={() => setConfirmDelete({isOpen: false})}
+        />
       </div>
     );
   }
@@ -490,27 +536,51 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
   // VISTA: Lista de Deudas (Main)
   return (
     <div style={{ padding: '1rem', paddingBottom: '6rem', maxWidth: '600px', margin: '0 auto' }}>
-      <header style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', paddingTop: '0.5rem' }}>
-        <button 
-          onClick={onBack}
+      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', paddingTop: '0.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <button 
+            onClick={onBack}
+            style={{
+              width: '40px', height: '40px', borderRadius: 'var(--radius-full)',
+              background: 'var(--surface-color)', border: 'none', display: 'flex',
+              alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+              boxShadow: 'var(--shadow-sm)', color: 'var(--text-primary)', flexShrink: 0
+            }}
+          >
+            <ArrowLeft size={20} />
+          </button>
+
+          <div>
+            <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: themeColor, margin: 0 }}>
+              {title}
+            </h1>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0 }}>
+              {isOwed ? 'A quién le debes' : 'Quién te debe'}
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={() => { setEditingDebt(undefined); setShowForm(true); }}
           style={{
-            width: '40px', height: '40px', borderRadius: 'var(--radius-full)',
-            background: 'var(--surface-color)', border: 'none', display: 'flex',
-            alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-            boxShadow: 'var(--shadow-sm)', color: 'var(--text-primary)', flexShrink: 0
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.4rem',
+            padding: '0.6rem 0.9rem',
+            background: themeColor,
+            color: 'white',
+            border: 'none',
+            borderRadius: 'var(--radius-md)',
+            fontWeight: 700,
+            fontSize: '0.85rem',
+            cursor: 'pointer',
+            boxShadow: isOwed ? '0 4px 14px rgba(239, 68, 68, 0.3)' : '0 4px 14px rgba(16, 185, 129, 0.3)',
+            transition: 'transform 0.15s ease',
           }}
         >
-          <ArrowLeft size={20} />
+          <Plus size={18} />
+          <span>Nueva Deuda</span>
         </button>
-
-        <div>
-          <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: themeColor, margin: 0 }}>
-            {title}
-          </h1>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0 }}>
-            {isOwed ? 'A quién le debes' : 'Quién te debe'}
-          </p>
-        </div>
       </header>
 
       {/* Summary card */}
@@ -544,217 +614,229 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
         </div>
       </div>
 
-      {showForm ? (
-        <div className="soft-card" style={{ padding: '1.5rem' }}>
-          <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1.5rem', color: 'var(--text-primary)' }}>
-            {editingDebt ? 'Editar Deuda' : 'Nueva Deuda'}
-          </h2>
-          <DebtForm
-            type={type}
-            initialData={editingDebt}
-            onSubmit={handleCreateOrUpdate}
-            onCancel={() => { setShowForm(false); setEditingDebt(undefined); }}
-            loading={submitting}
-          />
+      {/* Tabs */}
+      <div style={{ display: 'flex', background: 'var(--surface-muted)', borderRadius: 'var(--radius-full)', padding: '0.25rem', marginBottom: '1.5rem' }}>
+        <button
+          onClick={() => setFilterSettled(false)}
+          style={{
+            flex: 1, padding: '0.6rem', border: 'none', borderRadius: 'var(--radius-full)',
+            fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
+            background: !filterSettled ? 'var(--surface-color)' : 'transparent',
+            color: !filterSettled ? themeColor : 'var(--text-secondary)',
+            boxShadow: !filterSettled ? 'var(--shadow-sm)' : 'none'
+          }}
+        >
+          Activas
+        </button>
+        <button
+          onClick={() => setFilterSettled(true)}
+          style={{
+            flex: 1, padding: '0.6rem', border: 'none', borderRadius: 'var(--radius-full)',
+            fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
+            background: filterSettled ? 'var(--surface-color)' : 'transparent',
+            color: filterSettled ? themeColor : 'var(--text-secondary)',
+            boxShadow: filterSettled ? 'var(--shadow-sm)' : 'none'
+          }}
+        >
+          Liquidadas
+        </button>
+      </div>
+
+      <button
+        onClick={() => { setEditingDebt(undefined); setShowForm(true); }}
+        style={{
+          width: '100%', padding: '0.875rem', marginBottom: '1.25rem',
+          background: 'var(--surface-color)', border: '2px dashed var(--accent-light)',
+          borderRadius: 'var(--radius-md)', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
+          color: 'var(--text-secondary)', fontFamily: 'inherit', fontSize: '0.9rem', fontWeight: 600,
+          transition: 'all 0.2s ease',
+        }}
+      >
+        <Plus size={18} /> Añadir deuda
+      </button>
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-tertiary)' }}>Cargando...</div>
+      ) : debts.length === 0 ? (
+        <div className="empty-state">
+          <p style={{ fontSize: '1rem', fontWeight: 500, marginBottom: '0.5rem' }}>
+            No hay deudas {filterSettled ? 'pagadas' : 'activas'}
+          </p>
         </div>
       ) : (
-        <>
-          {/* Tabs */}
-          <div style={{ display: 'flex', background: 'var(--surface-muted)', borderRadius: 'var(--radius-full)', padding: '0.25rem', marginBottom: '1.5rem' }}>
-            <button
-              onClick={() => setFilterSettled(false)}
-              style={{
-                flex: 1, padding: '0.6rem', border: 'none', borderRadius: 'var(--radius-full)',
-                fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
-                background: !filterSettled ? 'var(--surface-color)' : 'transparent',
-                color: !filterSettled ? themeColor : 'var(--text-secondary)',
-                boxShadow: !filterSettled ? 'var(--shadow-sm)' : 'none'
-              }}
-            >
-              Activas
-            </button>
-            <button
-              onClick={() => setFilterSettled(true)}
-              style={{
-                flex: 1, padding: '0.6rem', border: 'none', borderRadius: 'var(--radius-full)',
-                fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
-                background: filterSettled ? 'var(--surface-color)' : 'transparent',
-                color: filterSettled ? themeColor : 'var(--text-secondary)',
-                boxShadow: filterSettled ? 'var(--shadow-sm)' : 'none'
-              }}
-            >
-              Liquidadas
-            </button>
-          </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {debts.map(debt => {
+            const paid = calculatePaid(debt);
+            const remaining = Math.max(debt.total_amount - paid, 0);
+            const progress = Math.min((paid / debt.total_amount) * 100, 100);
+            
+            let dueDateColor = 'var(--text-tertiary)';
+            let isOverdue = false;
+            if (debt.due_date && !debt.is_settled) {
+              const due = new Date(debt.due_date + 'T12:00:00');
+              const now = new Date();
+              const diffDays = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+              if (diffDays < 0) {
+                dueDateColor = 'var(--expense-color)';
+                isOverdue = true;
+              } else if (diffDays <= 7) {
+                dueDateColor = 'var(--warning-color)';
+              }
+            }
 
-          {!showForm && (
-            <button
-              onClick={() => { setEditingDebt(undefined); setShowForm(true); }}
-              style={{
-                width: '100%', padding: '0.875rem', marginBottom: '1.25rem',
-                background: 'var(--surface-color)', border: '2px dashed var(--accent-light)',
-                borderRadius: 'var(--radius-md)', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
-                color: 'var(--text-secondary)', fontFamily: 'inherit', fontSize: '0.9rem', fontWeight: 600,
-                transition: 'all 0.2s ease',
-              }}
-            >
-              <Plus size={18} /> Añadir deuda
-            </button>
-          )}
-
-          {loading ? (
-            <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-tertiary)' }}>Cargando...</div>
-          ) : debts.length === 0 ? (
-            <div className="empty-state">
-              <p style={{ fontSize: '1rem', fontWeight: 500, marginBottom: '0.5rem' }}>
-                No hay deudas {filterSettled ? 'pagadas' : 'activas'}
-              </p>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              {debts.map(debt => {
-                const paid = calculatePaid(debt);
-                const remaining = Math.max(debt.total_amount - paid, 0);
-                const progress = Math.min((paid / debt.total_amount) * 100, 100);
-                
-                let dueDateColor = 'var(--text-tertiary)';
-                let isOverdue = false;
-                if (debt.due_date && !debt.is_settled) {
-                  const due = new Date(debt.due_date + 'T12:00:00');
-                  const now = new Date();
-                  const diffDays = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-                  if (diffDays < 0) {
-                    dueDateColor = 'var(--expense-color)';
-                    isOverdue = true;
-                  } else if (diffDays <= 7) {
-                    dueDateColor = 'var(--warning-color)';
-                  }
-                }
-
-                return (
-                  <div 
-                    key={debt.id} 
-                    className="soft-card"
-                    style={{ 
-                      padding: '1rem 1.25rem', cursor: 'pointer',
-                      borderLeft: debt.is_settled ? '3px solid var(--income-color)' : `3px solid ${themeColor}`,
-                    }}
-                    onClick={() => {
-                      const freshDebt = debts.find(d => d.id === debt.id) || debt;
-                      setSelectedDebt(freshDebt);
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.35rem' }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                          {debt.concept}
-                        </div>
-                        {debt.is_settled ? (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.7rem', fontWeight: 500, color: 'var(--income-color)', background: 'var(--surface-muted)', padding: '0.15rem 0.5rem', borderRadius: 'var(--radius-full)', marginTop: '0.25rem' }}>
-                            <CheckCircle size={10} />
-                            Liquidada
-                          </span>
-                        ) : isOverdue ? (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.7rem', fontWeight: 500, color: 'var(--expense-color)', background: 'rgba(239, 68, 68, 0.1)', padding: '0.15rem 0.5rem', borderRadius: 'var(--radius-full)', marginTop: '0.25rem', marginRight: '0.5rem' }}>
-                            <AlertCircle size={10} />
-                            Vencida
-                          </span>
-                        ) : (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.7rem', fontWeight: 500, color: themeColor, background: 'var(--surface-muted)', padding: '0.15rem 0.5rem', borderRadius: 'var(--radius-full)', marginTop: '0.25rem' }}>
-                            <AlertCircle size={10} />
-                            Activa
-                          </span>
-                        )}
-                        {debt.is_shared && (
-                          <span style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
-                            fontSize: '0.7rem', fontWeight: 600, color: '#3B82F6',
-                            background: 'rgba(59, 130, 246, 0.1)', padding: '0.15rem 0.5rem',
-                            borderRadius: 'var(--radius-full)', marginTop: '0.25rem', marginLeft: '0.35rem'
-                          }}>
-                            <Users size={10} />
-                            {debt.shared_partner_name}
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                        <div style={{ fontSize: '1.05rem', fontWeight: 700, color: debt.is_settled ? 'var(--income-color)' : themeColor }}>
-                          {formatCurrency(remaining, debt.currency)}
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                          Total: {formatCurrency(debt.total_amount, debt.currency)}
-                        </div>
-                      </div>
+            return (
+              <div 
+                key={debt.id} 
+                className="soft-card"
+                style={{ 
+                  padding: '1rem 1.25rem', cursor: 'pointer',
+                  borderLeft: debt.is_settled ? '3px solid var(--income-color)' : `3px solid ${themeColor}`,
+                }}
+                onClick={() => {
+                  const freshDebt = debts.find(d => d.id === debt.id) || debt;
+                  setSelectedDebt(freshDebt);
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.35rem' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                      {debt.concept}
                     </div>
-                    
-                    <div style={{ width: '100%', background: 'var(--surface-muted)', borderRadius: 'var(--radius-full)', height: '4px', marginBottom: '0.5rem', marginTop: '0.5rem' }}>
-                      <div style={{ 
-                        height: '4px', 
-                        background: debt.is_settled ? 'var(--income-color)' : themeColor, 
-                        width: `${progress}%`,
-                        borderRadius: 'var(--radius-full)'
-                      }}></div>
+                    {debt.is_settled ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.7rem', fontWeight: 500, color: 'var(--income-color)', background: 'var(--surface-muted)', padding: '0.15rem 0.5rem', borderRadius: 'var(--radius-full)', marginTop: '0.25rem' }}>
+                        <CheckCircle size={10} />
+                        Liquidada
+                      </span>
+                    ) : isOverdue ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.7rem', fontWeight: 500, color: 'var(--expense-color)', background: 'rgba(239, 68, 68, 0.1)', padding: '0.15rem 0.5rem', borderRadius: 'var(--radius-full)', marginTop: '0.25rem', marginRight: '0.5rem' }}>
+                        <AlertCircle size={10} />
+                        Vencida
+                      </span>
+                    ) : (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.7rem', fontWeight: 500, color: themeColor, background: 'var(--surface-muted)', padding: '0.15rem 0.5rem', borderRadius: 'var(--radius-full)', marginTop: '0.25rem' }}>
+                        <AlertCircle size={10} />
+                        Activa
+                      </span>
+                    )}
+                    {debt.is_shared && (
+                      <span style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
+                        fontSize: '0.7rem', fontWeight: 600, color: '#3B82F6',
+                        background: 'rgba(59, 130, 246, 0.1)', padding: '0.15rem 0.5rem',
+                        borderRadius: 'var(--radius-full)', marginTop: '0.25rem', marginLeft: '0.35rem'
+                      }}>
+                        <Users size={10} />
+                        Pana: {debt.shared_partner_name}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ fontSize: '1.05rem', fontWeight: 700, color: debt.is_settled ? 'var(--income-color)' : themeColor }}>
+                      {formatCurrency(remaining, debt.currency)}
                     </div>
-                    
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                          {isOwed ? 'A:' : 'De:'} <span style={{ fontWeight: 600 }}>{debt.counterpart}</span>
-                        </span>
-                        {debt.due_date && (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', color: dueDateColor, fontWeight: isOverdue ? 600 : 400 }}>
-                            <Calendar size={12} />
-                            Vence: {formatDate(debt.due_date)}
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ display: 'flex', gap: '0.25rem' }}>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); const freshDebt = debts.find(d => d.id === debt.id) || debt; setSelectedDebt(freshDebt); setShowPaymentForm(true); }} 
-                          title="Registrar abono" 
-                          disabled={debt.is_settled}
-                          style={{
-                            width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
-                            background: debt.is_settled ? 'var(--surface-muted)' : 'rgba(59, 130, 246, 0.1)', border: 'none', display: 'flex',
-                            alignItems: 'center', justifyContent: 'center', cursor: debt.is_settled ? 'not-allowed' : 'pointer',
-                            color: debt.is_settled ? 'var(--text-tertiary)' : '#3B82F6', transition: 'all 0.15s ease',
-                          }}
-                        >
-                          <Plus size={16} />
-                        </button>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); setEditingDebt(debt); setShowForm(true); }} 
-                          title="Editar" 
-                          style={{
-                            width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
-                            background: 'var(--surface-muted)', border: 'none', display: 'flex',
-                            alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                            color: 'var(--text-secondary)', transition: 'all 0.15s ease',
-                          }}
-                        >
-                          <Edit3 size={14} />
-                        </button>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); setConfirmDelete({isOpen: true, debtId: debt.id}); }} 
-                          title="Eliminar" 
-                          style={{
-                            width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
-                            background: 'var(--surface-muted)', border: 'none', display: 'flex',
-                            alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                            color: 'var(--expense-color)', transition: 'all 0.15s ease',
-                          }}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                      Total: {formatCurrency(debt.total_amount, debt.currency)}
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </>
+                </div>
+                
+                <div style={{ width: '100%', background: 'var(--surface-muted)', borderRadius: 'var(--radius-full)', height: '4px', marginBottom: '0.5rem', marginTop: '0.5rem' }}>
+                  <div style={{ 
+                    height: '4px', 
+                    background: debt.is_settled ? 'var(--income-color)' : themeColor, 
+                    width: `${progress}%`,
+                    borderRadius: 'var(--radius-full)'
+                  }}></div>
+                </div>
+                
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                      {isOwed ? 'A:' : 'De:'} <span style={{ fontWeight: 600 }}>{debt.counterpart}</span>
+                    </span>
+                    {debt.due_date && (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', color: dueDateColor, fontWeight: isOverdue ? 600 : 400 }}>
+                        <Calendar size={12} />
+                        Vence: {formatDate(debt.due_date)}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.25rem' }}>
+                    <button 
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        const freshDebt = debts.find(d => d.id === debt.id) || debt; 
+                        setPayingDebt(freshDebt); 
+                      }} 
+                      title="Registrar abono" 
+                      disabled={debt.is_settled}
+                      style={{
+                        width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
+                        background: debt.is_settled ? 'var(--surface-muted)' : 'rgba(59, 130, 246, 0.1)', border: 'none', display: 'flex',
+                        alignItems: 'center', justifyContent: 'center', cursor: debt.is_settled ? 'not-allowed' : 'pointer',
+                        color: debt.is_settled ? 'var(--text-tertiary)' : '#3B82F6', transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <Plus size={16} />
+                    </button>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); setEditingDebt(debt); setShowForm(true); }} 
+                      title="Editar" 
+                      style={{
+                        width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
+                        background: 'var(--surface-muted)', border: 'none', display: 'flex',
+                        alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                        color: 'var(--text-secondary)', transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <Edit3 size={14} />
+                    </button>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); setConfirmDelete({isOpen: true, debtId: debt.id}); }} 
+                      title="Eliminar" 
+                      style={{
+                        width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
+                        background: 'var(--surface-muted)', border: 'none', display: 'flex',
+                        alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                        color: 'var(--expense-color)', transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Modal: Crear / Editar Deuda */}
+      {showForm && (
+        <DebtForm
+          type={type}
+          initialData={editingDebt}
+          onSubmit={handleCreateOrUpdate}
+          onCancel={() => { setShowForm(false); setEditingDebt(undefined); }}
+          loading={submitting}
+        />
+      )}
+
+      {/* Modal: Registrar Abono */}
+      {payingDebt && (
+        <DebtPaymentForm
+          debtConcept={payingDebt.concept}
+          type={type}
+          debtCurrency={payingDebt.currency || 'USD_BCV'}
+          debtTotalAmount={payingDebt.total_amount}
+          debtPaidAmount={calculatePaid(payingDebt)}
+          onSubmit={handleAddPayment}
+          onCancel={() => setPayingDebt(null)}
+          loading={submitting}
+          isShared={payingDebt.is_shared}
+          sharedPartnerName={payingDebt.shared_partner_name}
+        />
       )}
 
       {toastMessage && (

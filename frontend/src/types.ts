@@ -361,3 +361,180 @@ export interface Connection {
   partner_name: string;
   is_requester: boolean;
 }
+
+// Panas Types
+export interface SharedFixedExpenseBrief {
+  id: string;
+  name: string;
+  amount: number;
+  currency: string;
+  category: string | null;
+  payment_day: number | null;
+  is_active: boolean;
+  is_paid_this_month: boolean;
+  paid_by_name: string | null;
+  paid_date: string | null;
+}
+
+export interface SharedDebtBrief {
+  id: string;
+  concept: string;
+  counterpart: string;
+  total_amount: number;
+  remaining_amount: number;
+  currency: string;
+  type: string;
+  is_settled: boolean;
+  paid_percentage: number;
+  last_payment_by: string | null;
+  last_payment_date: string | null;
+}
+
+export interface SharedSavingGoalBrief {
+  id: string;
+  name: string;
+  target_amount: number;
+  current_amount: number;
+  currency: string;
+  category: string | null;
+  color: string | null;
+  icon: string | null;
+  is_completed: boolean;
+  progress_percentage: number;
+  last_deposit_by: string | null;
+  last_deposit_amount: number | null;
+  last_deposit_date: string | null;
+}
+
+export interface PanaSummary {
+  id: string;
+  partner_id: string;
+  partner_name: string;
+  partner_email: string | null;
+  status: string;
+  created_at: string;
+  shared_fixed_expenses_count: number;
+  pending_fixed_expenses_this_month: number;
+  shared_debts_count: number;
+  total_debts_remaining: number;
+  debts_currency_summary: Record<string, number>;
+  shared_saving_goals_count: number;
+}
+
+export interface PanasGlobalOverview {
+  panas: PanaSummary[];
+  total_active_panas: number;
+  total_shared_fixed_expenses: number;
+  pending_shared_fixed_expenses_this_month: number;
+  total_shared_debts: number;
+  shared_debts_remaining_by_currency: Record<string, number>;
+  total_shared_saving_goals: number;
+}
+
+export interface PanaDetail {
+  connection_id: string;
+  partner_id: string;
+  partner_name: string;
+  partner_email: string | null;
+  shared_fixed_expenses: SharedFixedExpenseBrief[];
+  shared_debts: SharedDebtBrief[];
+  shared_saving_goals: SharedSavingGoalBrief[];
+}
+
+
+// Saving Goals
+export interface SavingDeposit {
+  id: string;
+  goal_id: string;
+  amount: number;
+  currency: CurrencyType;
+  deposit_date: string;
+  note: string | null;
+  create_expense: boolean;
+  expense_id: string | null;
+  created_at: string;
+  amount_usd?: number | null;
+  amount_bs?: number | null;
+  amount_eur?: number | null;
+  amount_usdt?: number | null;
+  rate_usd_bs?: number | null;
+  rate_eur_bs?: number | null;
+  rate_usdt_bs?: number | null;
+  paid_by_name?: string | null;
+  mirror_deposit_id?: string | null;
+}
+
+export interface SavingDepositCreate {
+  amount: number;
+  currency?: CurrencyType;
+  deposit_date?: string;
+  note?: string;
+  manual_rate?: number;
+  register_as_expense?: boolean;
+}
+
+export interface SavingGoal {
+  id: string;
+  user_id: string;
+  name: string;
+  target_amount: number;
+  currency: CurrencyType;
+  target_date: string | null;
+  category: string | null;
+  color: string;
+  icon: string;
+  is_completed: boolean;
+  completed_at: string | null;
+  is_active: boolean;
+  notes: string | null;
+  created_at: string;
+  amount_usd?: number | null;
+  amount_bs?: number | null;
+  amount_eur?: number | null;
+  amount_usdt?: number | null;
+  rate_usd_bs?: number | null;
+  rate_eur_bs?: number | null;
+  rate_usdt_bs?: number | null;
+  deposits: SavingDeposit[];
+  is_shared?: boolean;
+  shared_partner_name?: string | null;
+  shared_by?: string | null;
+}
+
+export interface SavingGoalCreate {
+  name: string;
+  target_amount: number;
+  currency?: CurrencyType;
+  target_date?: string | null;
+  category?: string;
+  color?: string;
+  icon?: string;
+  notes?: string;
+  manual_rate?: number;
+  shared_with?: string | null;
+}
+
+export interface SavingGoalUpdate {
+  name?: string;
+  target_amount?: number;
+  currency?: CurrencyType;
+  target_date?: string | null;
+  category?: string;
+  color?: string;
+  icon?: string;
+  is_completed?: boolean;
+  is_active?: boolean;
+  notes?: string;
+  manual_rate?: number;
+  shared_with?: string | null;
+}
+
+export interface SavingSummaryResponse {
+  total_goals: number;
+  active_goals: number;
+  completed_goals: number;
+  total_saved_bs: number;
+  total_saved_usd: number;
+  total_saved_eur: number;
+  total_saved_usdt: number;
+}

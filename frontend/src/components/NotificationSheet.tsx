@@ -25,7 +25,7 @@ const getTargetRouteForType = (type: string) => {
   switch (type) {
     case 'connection_request':
     case 'connection_accepted':
-      return '/conexiones';
+      return '/herramientas/panas';
     case 'shared_debt_created':
     case 'shared_debt_payment':
     case 'shared_debt_settled':

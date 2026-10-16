@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Receipt, TrendingDown, TrendingUp, Wallet, ChevronRight, Lock, Users } from 'lucide-react';
+import { Receipt, TrendingDown, TrendingUp, Wallet, ChevronRight, Lock, Users, PiggyBank } from 'lucide-react';
 
 interface ToolCard {
   id: string;
@@ -55,13 +55,23 @@ const tools: ToolCard[] = [
     enabled: true,
   },
   {
+    id: 'savings',
+    title: 'Ahorros',
+    description: 'Fondos de reserva y objetivos de ahorro',
+    icon: <PiggyBank size={28} />,
+    color: '#10B981',
+    bgColor: 'rgba(16, 185, 129, 0.1)',
+    path: '/herramientas/ahorros',
+    enabled: true,
+  },
+  {
     id: 'connections',
     title: 'Panas',
-    description: 'Conecta con otros usuarios',
+    description: 'Gastos fijos y deudas compartidas',
     icon: <Users size={28} />,
     color: '#8B5CF6',
     bgColor: 'rgba(139, 92, 246, 0.1)',
-    path: '/herramientas/conexiones',
+    path: '/herramientas/panas',
     enabled: true,
   },
 ];

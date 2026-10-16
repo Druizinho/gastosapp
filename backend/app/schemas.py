@@ -365,3 +365,170 @@ class ConnectionResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+
+class SharedFixedExpenseBrief(BaseModel):
+    id: UUID
+    name: str
+    amount: Decimal
+    currency: str
+    category: Optional[str] = None
+    payment_day: Optional[int] = None
+    is_active: bool = True
+    is_paid_this_month: bool = False
+    paid_by_name: Optional[str] = None
+    paid_date: Optional[datetime.date] = None
+
+
+class SharedDebtBrief(BaseModel):
+    id: UUID
+    concept: str
+    counterpart: str
+    total_amount: Decimal
+    remaining_amount: Decimal
+    currency: str
+    type: str
+    is_settled: bool
+    paid_percentage: float
+    last_payment_by: Optional[str] = None
+    last_payment_date: Optional[datetime.date] = None
+
+
+class SharedSavingGoalBrief(BaseModel):
+    id: UUID
+    name: str
+    target_amount: Decimal
+    current_amount: Decimal
+    currency: str
+    category: Optional[str] = None
+    color: Optional[str] = '#10B981'
+    icon: Optional[str] = 'piggy-bank'
+    is_completed: bool
+    progress_percentage: float
+    last_deposit_by: Optional[str] = None
+    last_deposit_amount: Optional[Decimal] = None
+    last_deposit_date: Optional[datetime.date] = None
+
+
+class PanaSummary(BaseModel):
+    id: UUID
+    partner_id: UUID
+    partner_name: str
+    partner_email: Optional[str] = None
+    status: str
+    created_at: datetime.datetime
+    shared_fixed_expenses_count: int = 0
+    pending_fixed_expenses_this_month: int = 0
+    shared_debts_count: int = 0
+    total_debts_remaining: Decimal = Decimal(0)
+    debts_currency_summary: dict = {}
+    shared_saving_goals_count: int = 0
+
+
+class PanasGlobalOverview(BaseModel):
+    panas: List[PanaSummary]
+    total_active_panas: int
+    total_shared_fixed_expenses: int
+    pending_shared_fixed_expenses_this_month: int
+    total_shared_debts: int
+    shared_debts_remaining_by_currency: dict
+    total_shared_saving_goals: int = 0
+
+
+class PanaDetail(BaseModel):
+    connection_id: UUID
+    partner_id: UUID
+    partner_name: str
+    partner_email: Optional[str] = None
+    shared_fixed_expenses: List[SharedFixedExpenseBrief]
+    shared_debts: List[SharedDebtBrief]
+    shared_saving_goals: List[SharedSavingGoalBrief] = []
+
+
+# Saving Goals Schemas
+
+class SavingDepositBase(BaseModel):
+    amount: Decimal = Field(..., gt=0)
+    currency: CurrencyType = Field(default=CurrencyType.BS)
+    deposit_date: Optional[datetime.date] = None
+    note: Optional[str] = None
+
+class SavingDepositCreate(SavingDepositBase):
+    manual_rate: Optional[Decimal] = Field(None, gt=0)
+    register_as_expense: bool = False
+
+class SavingDepositResponse(SavingDepositBase):
+    id: UUID
+    goal_id: UUID
+    created_at: datetime.datetime
+    amount_usd: Optional[Decimal] = None
+    amount_bs: Optional[Decimal] = None
+    amount_eur: Optional[Decimal] = None
+    amount_usdt: Optional[Decimal] = None
+    rate_usd_bs: Optional[Decimal] = None
+    rate_eur_bs: Optional[Decimal] = None
+    rate_usdt_bs: Optional[Decimal] = None
+    create_expense: bool = False
+    expense_id: Optional[UUID] = None
+    paid_by_name: Optional[str] = None
+    mirror_deposit_id: Optional[UUID] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+class SavingGoalBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    target_amount: Decimal = Field(..., gt=0)
+    currency: CurrencyType = Field(default=CurrencyType.BS)
+    target_date: Optional[datetime.date] = None
+    category: Optional[str] = None
+    color: Optional[str] = '#10B981'
+    icon: Optional[str] = 'piggy-bank'
+    notes: Optional[str] = None
+
+class SavingGoalCreate(SavingGoalBase):
+    manual_rate: Optional[Decimal] = Field(None, gt=0)
+    shared_with: Optional[UUID] = None
+
+class SavingGoalUpdate(BaseModel):
+    name: Optional[str] = None
+    target_amount: Optional[Decimal] = Field(None, gt=0)
+    currency: Optional[CurrencyType] = None
+    target_date: Optional[datetime.date] = None
+    category: Optional[str] = None
+    color: Optional[str] = None
+    icon: Optional[str] = None
+    is_completed: Optional[bool] = None
+    is_active: Optional[bool] = None
+    notes: Optional[str] = None
+    manual_rate: Optional[Decimal] = Field(None, gt=0)
+    shared_with: Optional[UUID] = None
+
+class SavingGoalResponse(SavingGoalBase):
+    id: UUID
+    user_id: UUID
+    is_completed: bool = False
+    completed_at: Optional[datetime.datetime] = None
+    is_active: bool = True
+    created_at: datetime.datetime
+    amount_usd: Optional[Decimal] = None
+    amount_bs: Optional[Decimal] = None
+    amount_eur: Optional[Decimal] = None
+    amount_usdt: Optional[Decimal] = None
+    rate_usd_bs: Optional[Decimal] = None
+    rate_eur_bs: Optional[Decimal] = None
+    rate_usdt_bs: Optional[Decimal] = None
+    deposits: List[SavingDepositResponse] = []
+    is_shared: bool = False
+    shared_partner_name: Optional[str] = None
+    shared_by: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+class SavingSummaryResponse(BaseModel):
+    total_goals: int
+    active_goals: int
+    completed_goals: int
+    total_saved_bs: Decimal
+    total_saved_usd: Decimal
+    total_saved_eur: Decimal
+    total_saved_usdt: Decimal
+

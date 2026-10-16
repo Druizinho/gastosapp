@@ -46,6 +46,7 @@ Construida con **FastAPI (Python)**, **React 19 (TypeScript + Vite)**, **Supabas
    - **Deudas Nuestras (Owed):** Seguimiento de lo que debes a terceros con control de abonos progresivos y liquidación total.
    - **Deudas por Cobrar (Receivable):** Registro de préstamos realizados a terceros con registro de cobros parciales.
    - **Ingresos Estimados:** Planificación de ingresos mensuales esperados vs. montos reales cobrados (pagos totales o parciales pendientes).
+   - **Metas de Ahorro:** Creación de metas con monto objetivo, fecha límite y categoría personalizada, registro de aportes progresivos con opción de vincular como gasto en el Dashboard, cálculo de porcentaje alcanzado y completado automático con notificación festiva.
 
 3. **Panas (Finanzas Colaborativas):**
    - Sistema de conexión entre usuarios registrados por correo electrónico.
@@ -110,6 +111,7 @@ Construida con **FastAPI (Python)**, **React 19 (TypeScript + Vite)**, **Supabas
 | `migrate_profiles.sql` | Crea la tabla `profiles`, políticas RLS y el trigger para crearlo automáticamente al registrarse en Supabase Auth. |
 | `migrate_shared_debts.sql` | Crea la tabla `shared_debts` y columnas para deudas compartidas y pagos sincronizados. |
 | `migrate_shared_fixed_expenses.sql`| Crea la tabla `shared_fixed_expenses` para gastos fijos compartidos. |
+| `migrate_savings.sql` | Crea las tablas `saving_goals` y `saving_deposits` para metas y aportes de ahorro con políticas RLS. |
 | `migrate_tools.sql` | Crea la tabla original de `fixed_expenses`. |
 | `rls_connections.sql` | Políticas de Row Level Security (RLS) para proteger las conexiones de usuarios. |
 | `rls_policies.sql` | Políticas RLS generales para tablas de gastos y categorías. |
@@ -135,9 +137,10 @@ backend/
 │   ├── crud_debts.py             # Lógica de deudas, abonos, liquidación y deudas espejo compartidas
 │   ├── crud_fixed_expenses.py    # Lógica de gastos fijos, checks mensuales y sincronización compartida
 │   ├── crud_incomes.py           # Lógica de ingresos proyectados y confirmaciones reales
+│   ├── crud_savings.py           # Lógica de metas de ahorro, depósitos y autocompletado
 │   ├── database.py               # Motor asyncpg, SessionLocal y dependencia get_db
 │   ├── main.py                   # Entrada FastAPI, lifespan, self-ping y registro de routers
-│   ├── models.py                 # Modelos ORM SQLAlchemy (Profile, Expense, Debt, etc.)
+│   ├── models.py                 # Modelos ORM SQLAlchemy (Profile, Expense, Debt, SavingGoal, etc.)
 │   ├── push_service.py           # Envío de notificaciones FCM y guardado en historial in-app
 │   ├── schemas.py                # Esquemas y validadores Pydantic v2 (Input/Output DTOs)
 │   └── routers/
@@ -150,7 +153,8 @@ backend/
 │       ├── incomes.py            # Endpoints de ingresos estimados y checks mensuales
 │       ├── notifications.py      # Endpoints para consultar y marcar leídas las notificaciones in-app
 │       ├── profiles.py           # Endpoints para consultar y actualizar el perfil del usuario
-│       └── push.py               # Endpoints de suscripción push, test y webhook /cron
+│       ├── push.py               # Endpoints de suscripción push, test y webhook /cron
+│       └── savings.py            # Endpoints para metas de ahorro y depósitos/aportes
 ├── create_tables.py              # Script para generar las tablas en la BD si no existen
 ├── check_notifs.py               # Script CLI de diagnóstico para verificar notificaciones en BD
 ├── insert_notification.py        # Script CLI para insertar una notificación de prueba en BD
@@ -223,6 +227,9 @@ frontend/
 │       ├── PeriodSelector.tsx    # Selector de navegación por meses (anterior / siguiente)
 │       ├── ProfileManager.tsx    # Modal para actualizar el nombre visible del usuario
 │       ├── RatesPage.tsx         # Página de tasas en tiempo real (BCV y Binance) + calculadora
+│       ├── SavingDepositForm.tsx # Formulario modal para registrar un aporte a una meta de ahorro
+│       ├── SavingGoalForm.tsx    # Formulario modal para crear o editar una meta de ahorro
+│       ├── SavingGoals.tsx       # Vista integral de metas de ahorro, porcentaje alcanzado e historial
 │       ├── SettingsPage.tsx      # Menú de configuración general de la cuenta y la app
 │       ├── Summary.tsx           # Tarjeta de resumen de montos gastados por divisa y categoría
 │       ├── ToolsHub.tsx          # Hub principal de acceso a las herramientas financieras
@@ -463,4 +470,4 @@ git push origin main
 
 ---
 
-*Desarrollado con ❤️ para simplificar tus finanzas y las de tus panas.*
+*Desarrollado para simplificar tus finanzas y las de tus panas.*

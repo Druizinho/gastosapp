@@ -8,9 +8,10 @@ import { ToolsHub } from './components/ToolsHub';
 import FixedExpenses from './components/FixedExpenses';
 import DebtList from './components/DebtList';
 import EstimatedIncomeList from './components/EstimatedIncomeList.tsx';
+import SavingGoals from './components/SavingGoals';
 import { RatesPage } from './components/RatesPage';
 import { SettingsPage } from './components/SettingsPage';
-import { ConnectionsPage } from './pages/ConnectionsPage';
+import { PanasPage } from './pages/PanasPage';
 import { BottomNav } from './components/BottomNav';
 import { InstallPWA } from './components/InstallPWA';
 import './index.css';
@@ -62,7 +63,10 @@ const AppRoutes = () => {
             <Route path="/herramientas/deudas-nuestras" element={<DebtList type="owed" onBack={() => navigate(-1)} />} />
             <Route path="/herramientas/deudas-por-cobrar" element={<DebtList type="receivable" onBack={() => navigate(-1)} />} />
             <Route path="/herramientas/ingresos-estimados" element={<EstimatedIncomeList onBack={() => navigate(-1)} />} />
-            <Route path="/herramientas/conexiones" element={<ConnectionsPage />} />
+            <Route path="/herramientas/ahorros" element={<SavingGoals onBack={() => navigate(-1)} />} />
+            <Route path="/herramientas/panas" element={<PanasPage />} />
+            <Route path="/herramientas/conexiones" element={<Navigate to="/herramientas/panas" replace />} />
+            <Route path="/conexiones" element={<Navigate to="/herramientas/panas" replace />} />
             <Route path="/tasas" element={<RatesPage />} />
             <Route path="/ajustes" element={<SettingsPage />} />
           </Route>

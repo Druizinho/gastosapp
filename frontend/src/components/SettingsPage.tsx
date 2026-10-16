@@ -134,7 +134,7 @@ export const SettingsPage: React.FC = () => {
           </button>
 
           <button 
-            onClick={() => navigate('/herramientas/conexiones')}
+            onClick={() => navigate('/herramientas/panas')}
             style={{
               width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               padding: '1.25rem 1.25rem', background: 'transparent', border: 'none', 
@@ -151,7 +151,7 @@ export const SettingsPage: React.FC = () => {
               }}>
                 <Users size={18} />
               </div>
-              Conexiones Familiares
+              Mis Panas
             </div>
             <ChevronRight size={20} color="var(--text-tertiary)" />
           </button>

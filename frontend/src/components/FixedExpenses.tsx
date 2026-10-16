@@ -223,7 +223,7 @@ const FixedExpenses: React.FC = () => {
                   padding: '0.15rem 0.5rem', borderRadius: 'var(--radius-full)',
                 }}>
                   <Users size={12} />
-                  Compartido con {expense.shared_partner_name || 'Conexión'}
+                  Compartido con {expense.shared_partner_name ? `tu pana ${expense.shared_partner_name}` : 'tu pana'}
                 </span>
               )}
             </div>
@@ -630,7 +630,7 @@ const FixedExpenses: React.FC = () => {
             isOpen={confirmDelete.isOpen}
             title="Dar de baja / Eliminar gasto fijo"
             message={toDelete?.is_shared
-              ? `Este gasto fijo está compartido con ${toDelete.shared_partner_name || 'tu conexión'}. A partir de este mes dejará de aparecer para ambos. Si registraste pagos en meses anteriores, se mantendrán en el historial. ¿Deseas continuar?`
+              ? `Este gasto fijo está compartido con ${toDelete.shared_partner_name ? `tu pana ${toDelete.shared_partner_name}` : 'tu pana'}. A partir de este mes dejará de aparecer para ambos. Si registraste pagos en meses anteriores, se mantendrán en el historial. ¿Deseas continuar?`
               : "¿Estás seguro de que quieres dar de baja este gasto fijo? A partir de este mes dejará de aparecer. Si registraste pagos en meses anteriores, se mantendrán protegidos en tu historial."}
             onConfirm={handleConfirmDelete}
             onCancel={() => setConfirmDelete({ isOpen: false, expenseId: '' })}

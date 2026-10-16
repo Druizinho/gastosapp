@@ -247,3 +247,72 @@ class Connection(Base):
     __table_args__ = (
         UniqueConstraint('requester_id', 'receiver_id', name='_connection_unique'),
     )
+
+
+class SavingGoal(Base):
+    __tablename__ = "saving_goals"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    target_amount = Column(Numeric(12, 4), nullable=False)
+    currency = Column(String(10), nullable=False, default='BS')
+    amount_usd = Column(Numeric(12, 4), nullable=True)
+    amount_bs = Column(Numeric(12, 4), nullable=True)
+    amount_eur = Column(Numeric(12, 4), nullable=True)
+    amount_usdt = Column(Numeric(12, 4), nullable=True)
+    rate_usd_bs = Column(Numeric(12, 4), nullable=True)
+    rate_eur_bs = Column(Numeric(12, 4), nullable=True)
+    rate_usdt_bs = Column(Numeric(12, 4), nullable=True)
+    target_date = Column(Date, nullable=True)
+    category = Column(String(100), nullable=True)
+    color = Column(String(20), default='#10B981')
+    icon = Column(String(50), default='piggy-bank')
+    is_completed = Column(Boolean, nullable=False, server_default='false')
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    is_active = Column(Boolean, nullable=False, server_default='true')
+    notes = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Attributes populated dynamically for shared saving goals
+    is_shared = False
+    shared_partner_name = None
+    shared_by = None
+
+    deposits = relationship("SavingDeposit", back_populates="goal", cascade="all, delete-orphan")
+
+
+class SavingDeposit(Base):
+    __tablename__ = "saving_deposits"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    goal_id = Column(UUID(as_uuid=True), ForeignKey("saving_goals.id", ondelete="CASCADE"), nullable=False, index=True)
+    amount = Column(Numeric(12, 4), nullable=False)
+    currency = Column(String(10), nullable=False, default='BS')
+    amount_usd = Column(Numeric(12, 4), nullable=True)
+    amount_bs = Column(Numeric(12, 4), nullable=True)
+    amount_eur = Column(Numeric(12, 4), nullable=True)
+    amount_usdt = Column(Numeric(12, 4), nullable=True)
+    rate_usd_bs = Column(Numeric(12, 4), nullable=True)
+    rate_eur_bs = Column(Numeric(12, 4), nullable=True)
+    rate_usdt_bs = Column(Numeric(12, 4), nullable=True)
+    deposit_date = Column(Date, nullable=False, server_default=func.current_date())
+    note = Column(String, nullable=True)
+    create_expense = Column(Boolean, nullable=False, server_default='false')
+    expense_id = Column(UUID(as_uuid=True), ForeignKey("expenses.id", ondelete="SET NULL"), nullable=True)
+    paid_by_name = Column(String, nullable=True)
+    mirror_deposit_id = Column(UUID(as_uuid=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    goal = relationship("SavingGoal", back_populates="deposits")
+
+
+class SharedSavingGoal(Base):
+    __tablename__ = "shared_saving_goals"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    goal_id = Column(UUID(as_uuid=True), ForeignKey("saving_goals.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    owner_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    partner_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    mirror_goal_id = Column(UUID(as_uuid=True), ForeignKey("saving_goals.id", ondelete="CASCADE"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

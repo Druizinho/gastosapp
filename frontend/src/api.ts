@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Expense, ExpenseCreate, ExpenseUpdate, SummaryResponse, ExchangeRates, RangeSummaryResponse, FixedExpense, FixedExpenseCreate, FixedExpenseUpdate, FixedExpenseSummary, FixedExpenseCheck, FixedExpenseCheckCreate, Debt, DebtCreate, DebtUpdate, DebtPaymentCreate, EstimatedIncome, EstimatedIncomeCreate, EstimatedIncomeUpdate, IncomeCheckCreate, IncomeCheck, Connection } from './types';
+import type { Expense, ExpenseCreate, ExpenseUpdate, SummaryResponse, ExchangeRates, RangeSummaryResponse, FixedExpense, FixedExpenseCreate, FixedExpenseUpdate, FixedExpenseSummary, FixedExpenseCheck, FixedExpenseCheckCreate, Debt, DebtCreate, DebtUpdate, DebtPaymentCreate, EstimatedIncome, EstimatedIncomeCreate, EstimatedIncomeUpdate, IncomeCheckCreate, IncomeCheck, Connection, SavingGoal, SavingGoalCreate, SavingGoalUpdate, SavingDepositCreate, SavingSummaryResponse, PanasGlobalOverview, PanaDetail } from './types';
 import { supabase } from './supabaseClient';
 
 const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
@@ -264,3 +264,57 @@ export const rejectConnection = async (connectionId: string): Promise<void> => {
 export const deleteConnection = async (connectionId: string): Promise<void> => {
   await api.delete(`/connections/${connectionId}`);
 };
+
+export const getPanasOverview = async (): Promise<PanasGlobalOverview> => {
+  const response = await api.get('/connections/overview');
+  return response.data;
+};
+
+export const getPanaDetails = async (partnerId: string): Promise<PanaDetail> => {
+  const response = await api.get(`/connections/partner/${partnerId}/details`);
+  return response.data;
+};
+
+// Saving Goals
+export const getSavingGoals = async (isCompleted?: boolean, isActive?: boolean): Promise<SavingGoal[]> => {
+  const params: any = {};
+  if (isCompleted !== undefined) params.is_completed = isCompleted;
+  if (isActive !== undefined) params.is_active = isActive;
+  const response = await api.get('/savings/', { params });
+  return response.data;
+};
+
+export const getSavingGoal = async (id: string): Promise<SavingGoal> => {
+  const response = await api.get(`/savings/${id}`);
+  return response.data;
+};
+
+export const getSavingsSummary = async (): Promise<SavingSummaryResponse> => {
+  const response = await api.get('/savings/summary');
+  return response.data;
+};
+
+export const createSavingGoal = async (goal: SavingGoalCreate): Promise<SavingGoal> => {
+  const response = await api.post('/savings/', goal);
+  return response.data;
+};
+
+export const updateSavingGoal = async (id: string, goal: SavingGoalUpdate): Promise<SavingGoal> => {
+  const response = await api.put(`/savings/${id}`, goal);
+  return response.data;
+};
+
+export const deleteSavingGoal = async (id: string): Promise<void> => {
+  await api.delete(`/savings/${id}`);
+};
+
+export const addSavingDeposit = async (goalId: string, deposit: SavingDepositCreate): Promise<SavingGoal> => {
+  const response = await api.post(`/savings/${goalId}/deposits`, deposit);
+  return response.data;
+};
+
+export const deleteSavingDeposit = async (depositId: string): Promise<SavingGoal> => {
+  const response = await api.delete(`/savings/deposits/${depositId}`);
+  return response.data;
+};
+
