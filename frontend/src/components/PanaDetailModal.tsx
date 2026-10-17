@@ -272,7 +272,7 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
                     type="button"
                     onClick={() => {
                       onClose();
-                      navigate('/gastos-fijos');
+                      navigate('/herramientas/gastos-fijos');
                     }}
                     style={{
                       padding: '0.5rem 1rem',
@@ -309,7 +309,7 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                         <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
                             <span style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
                               {expense.name}
                             </span>
@@ -322,6 +322,21 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
                                 color: 'var(--primary-color)'
                               }}>
                                 {expense.category}
+                              </span>
+                            )}
+                            {(expense.members_count || 2) > 2 && (
+                              <span
+                                title={expense.member_names?.join(', ')}
+                                style={{
+                                  fontSize: '0.68rem',
+                                  padding: '0.12rem 0.45rem',
+                                  borderRadius: 'var(--radius-full)',
+                                  background: 'rgba(59, 130, 246, 0.12)',
+                                  color: '#3B82F6',
+                                  fontWeight: 600
+                                }}
+                              >
+                                Compartido entre {expense.members_count}
                               </span>
                             )}
                           </div>
@@ -415,7 +430,7 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
                     type="button"
                     onClick={() => {
                       onClose();
-                      navigate('/deudas');
+                      navigate('/herramientas/deudas-nuestras');
                     }}
                     style={{
                       padding: '0.5rem 1rem',
@@ -452,11 +467,28 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                         <div>
-                          <span style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
-                            {debt.concept}
-                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                            <span style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+                              {debt.concept}
+                            </span>
+                            {(debt.members_count || 2) > 2 && (
+                              <span
+                                title={debt.member_names?.join(', ')}
+                                style={{
+                                  fontSize: '0.68rem',
+                                  padding: '0.12rem 0.45rem',
+                                  borderRadius: 'var(--radius-full)',
+                                  background: 'rgba(59, 130, 246, 0.12)',
+                                  color: '#3B82F6',
+                                  fontWeight: 600
+                                }}
+                              >
+                                Compartido entre {debt.members_count}
+                              </span>
+                            )}
+                          </div>
                           <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-                            Acreedor: <strong>{debt.counterpart}</strong>
+                            {debt.type === 'receivable' ? 'Deudor:' : 'Acreedor:'} <strong>{debt.counterpart}</strong>
                           </p>
                         </div>
                         <div style={{ textAlign: 'right' }}>
@@ -511,7 +543,7 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
                           type="button"
                           onClick={() => {
                             onClose();
-                            navigate('/deudas');
+                            navigate(debt.type === 'receivable' ? '/herramientas/deudas-por-cobrar' : '/herramientas/deudas-nuestras');
                           }}
                           style={{
                             padding: '0.3rem 0.75rem',
@@ -593,7 +625,7 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                           <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
                               <span style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
                                 {goal.name}
                               </span>
@@ -606,6 +638,21 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
                                   color: color
                                 }}>
                                   {goal.category}
+                                </span>
+                              )}
+                              {(goal.members_count || 2) > 2 && (
+                                <span
+                                  title={goal.member_names?.join(', ')}
+                                  style={{
+                                    fontSize: '0.68rem',
+                                    padding: '0.12rem 0.45rem',
+                                    borderRadius: 'var(--radius-full)',
+                                    background: 'rgba(59, 130, 246, 0.12)',
+                                    color: '#3B82F6',
+                                    fontWeight: 600
+                                  }}
+                                >
+                                  Compartido entre {goal.members_count}
                                 </span>
                               )}
                             </div>

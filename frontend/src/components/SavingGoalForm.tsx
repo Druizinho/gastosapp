@@ -109,7 +109,7 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
       delete submitData.manual_rate;
     }
 
-    if (!isEditing && isSharedChecked && selectedPartnerIds.length > 0) {
+    if (!initialData?.is_shared && isSharedChecked && selectedPartnerIds.length > 0) {
       submitData.shared_with_ids = selectedPartnerIds;
       submitData.admin_ids = adminPartnerIds;
       submitData.shared_with = selectedPartnerIds[0];
@@ -343,8 +343,8 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
             />
           </div>
 
-          {/* Compartir con un Pana (solo al crear) */}
-          {!isEditing && (
+          {/* Compartir con un Pana (si aún no está compartido) */}
+          {!initialData?.is_shared && (
             <div style={{
               background: 'var(--surface-muted)',
               padding: '0.65rem 0.85rem',

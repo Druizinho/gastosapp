@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Edit3, ArrowLeft, Wallet, Calendar, AlertCircle, CheckCircle } from 'lucide-react';
-import type { Debt, DebtCreate, DebtUpdate, DebtPaymentCreate, ExchangeRates } from '../types';
-import { getDebts, createDebt, updateDebt, addDebtPayment, deleteDebt, getRates, deleteDebtPayment } from '../api';
+import type { Debt, DebtCreate, DebtUpdate, DebtPayment, DebtPaymentCreate, DebtPaymentUpdate, ExchangeRates } from '../types';
+import { getDebts, createDebt, updateDebt, addDebtPayment, updateDebtPayment, deleteDebt, getRates, deleteDebtPayment } from '../api';
 import DebtForm from './DebtForm';
 import DebtPaymentForm from './DebtPaymentForm';
 import ConfirmModal from './ConfirmModal';
@@ -44,6 +44,7 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
   
   const [selectedDebt, setSelectedDebt] = useState<Debt | null>(null);
   const [payingDebt, setPayingDebt] = useState<Debt | null>(null);
+  const [editingPayment, setEditingPayment] = useState<DebtPayment | undefined>(undefined);
 
   const [confirmDelete, setConfirmDelete] = useState<{isOpen: boolean; debtId?: string; paymentId?: string}>({isOpen: false});
   const [activeShareModalItem, setActiveShareModalItem] = useState<{ id: string; name: string } | null>(null);
@@ -100,32 +101,44 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
       
       await fetchDebts();
       showToast('Guardado exitosamente');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving debt:', error);
+      const detail = error?.response?.data?.detail;
+      showToast(typeof detail === 'string' ? detail : 'Error al guardar la deuda');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleAddPayment = async (data: DebtPaymentCreate) => {
+  const handleAddOrUpdatePayment = async (data: DebtPaymentCreate | DebtPaymentUpdate) => {
     const debtToPay = payingDebt || selectedDebt;
     if (!debtToPay) return;
     try {
       setSubmitting(true);
-      const updatedDebt = await addDebtPayment(debtToPay.id, data);
+      let updatedDebt: Debt;
+      if (editingPayment) {
+        updatedDebt = await updateDebtPayment(editingPayment.id, data as DebtPaymentUpdate);
+      } else {
+        updatedDebt = await addDebtPayment(debtToPay.id, data as DebtPaymentCreate);
+      }
       if (selectedDebt && selectedDebt.id === debtToPay.id) {
         setSelectedDebt(updatedDebt);
       }
       setPayingDebt(null);
+      setEditingPayment(undefined);
       await fetchDebts();
       
-      if (updatedDebt.is_settled) {
+      if (editingPayment) {
+        showToast('Abono actualizado');
+      } else if (updatedDebt.is_settled) {
         showToast('🎉 ¡Deuda completamente pagada!');
       } else {
         showToast('Abono registrado');
       }
-    } catch (error) {
-      console.error('Error adding payment:', error);
+    } catch (error: any) {
+      console.error('Error saving payment:', error);
+      const detail = error?.response?.data?.detail;
+      showToast(typeof detail === 'string' ? detail : 'Error al guardar el abono');
     } finally {
       setSubmitting(false);
     }
@@ -138,8 +151,10 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
       if (selectedDebt?.id === id) setSelectedDebt(null);
       await fetchDebts();
       showToast('Deuda eliminada');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting debt:', error);
+      const detail = error?.response?.data?.detail;
+      showToast(typeof detail === 'string' ? detail : 'Error al eliminar la deuda');
     } finally {
       setSubmitting(false);
       setConfirmDelete({isOpen: false});
@@ -153,22 +168,29 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
       setSelectedDebt(updatedDebt);
       await fetchDebts();
       showToast('Abono eliminado');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting payment:', error);
+      const detail = error?.response?.data?.detail;
+      showToast(typeof detail === 'string' ? detail : 'Error al eliminar el abono');
     } finally {
       setSubmitting(false);
       setConfirmDelete({isOpen: false});
     }
   };
 
+  const getPaymentAmountInDebtCurrency = (pay: DebtPayment, debtCurrency: string) => {
+    if (pay.currency === debtCurrency) return Number(pay.amount);
+    if ((debtCurrency === 'USD_BCV' || debtCurrency === 'USD_CASH') && pay.amount_usd != null) return Number(pay.amount_usd);
+    if (debtCurrency === 'BS' && pay.amount_bs != null) return Number(pay.amount_bs);
+    if (debtCurrency === 'EUR_BCV' && pay.amount_eur != null) return Number(pay.amount_eur);
+    if (debtCurrency === 'USDT' && pay.amount_usdt != null) return Number(pay.amount_usdt);
+    const payInBs = convertCurrencyAmount(Number(pay.amount), pay.currency, rates).bs;
+    const debtOneUnitInBs = convertCurrencyAmount(1, debtCurrency, rates).bs;
+    return debtOneUnitInBs > 0 ? payInBs / debtOneUnitInBs : 0;
+  };
+
   const calculatePaid = (debt: Debt) => {
-    return debt.payments.reduce((acc, pay) => {
-      if (pay.currency === debt.currency) return acc + Number(pay.amount);
-      const payInBs = convertCurrencyAmount(Number(pay.amount), pay.currency, rates).bs;
-      const debtOneUnitInBs = convertCurrencyAmount(1, debt.currency, rates).bs;
-      const converted = debtOneUnitInBs > 0 ? payInBs / debtOneUnitInBs : 0;
-      return acc + converted;
-    }, 0);
+    return debt.payments.reduce((acc, pay) => acc + getPaymentAmountInDebtCurrency(pay, debt.currency), 0);
   };
 
   const convertCurrencyAmount = (amount: number, currency: string, rates: ExchangeRates | null) => {
@@ -459,26 +481,36 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
                     </p>
                     {payment.currency !== selectedDebt.currency && (
                       <p style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
-                        ≈ {formatCurrency((() => {
-                          const payInBs = convertCurrencyAmount(Number(payment.amount), payment.currency, rates).bs;
-                          const debtOneUnitInBs = convertCurrencyAmount(1, selectedDebt.currency, rates).bs;
-                          return debtOneUnitInBs > 0 ? payInBs / debtOneUnitInBs : 0;
-                        })(), selectedDebt.currency)}
+                        ≈ {formatCurrency(getPaymentAmountInDebtCurrency(payment, selectedDebt.currency), selectedDebt.currency)}
                       </p>
                     )}
                   </div>
                   {payment.can_edit !== false && (
-                    <button
-                      onClick={() => setConfirmDelete({isOpen: true, paymentId: payment.id})}
-                      style={{
-                        background: 'transparent', border: 'none', color: 'var(--expense-color)',
-                        cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0.25rem',
-                        marginLeft: '0.5rem'
-                      }}
-                      title="Eliminar abono"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', marginLeft: '0.5rem' }}>
+                      <button
+                        onClick={() => {
+                          setEditingPayment(payment);
+                          setPayingDebt(selectedDebt);
+                        }}
+                        style={{
+                          background: 'transparent', border: 'none', color: 'var(--text-secondary)',
+                          cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0.25rem'
+                        }}
+                        title="Editar abono"
+                      >
+                        <Edit3 size={14} />
+                      </button>
+                      <button
+                        onClick={() => setConfirmDelete({isOpen: true, paymentId: payment.id})}
+                        style={{
+                          background: 'transparent', border: 'none', color: 'var(--expense-color)',
+                          cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0.25rem'
+                        }}
+                        title="Eliminar abono"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   )}
                 </div>
               ))}
@@ -497,16 +529,17 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
           />
         )}
 
-        {/* Modal: Registrar Abono */}
+        {/* Modal: Registrar / Editar Abono */}
         {payingDebt && (
           <DebtPaymentForm
+            initialData={editingPayment}
             debtConcept={payingDebt.concept}
             type={type}
             debtCurrency={payingDebt.currency || 'USD_BCV'}
             debtTotalAmount={payingDebt.total_amount}
             debtPaidAmount={calculatePaid(payingDebt)}
-            onSubmit={handleAddPayment}
-            onCancel={() => setPayingDebt(null)}
+            onSubmit={handleAddOrUpdatePayment}
+            onCancel={() => { setPayingDebt(null); setEditingPayment(undefined); }}
             loading={submitting}
             isShared={payingDebt.is_shared}
             sharedPartnerName={payingDebt.shared_partner_name}
@@ -803,6 +836,7 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
                       onClick={(e) => { 
                         e.stopPropagation(); 
                         const freshDebt = debts.find(d => d.id === debt.id) || debt; 
+                        setEditingPayment(undefined);
                         setPayingDebt(freshDebt); 
                       }} 
                       title="Registrar abono" 
@@ -818,24 +852,32 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
                     </button>
                     <button 
                       onClick={(e) => { e.stopPropagation(); setEditingDebt(debt); setShowForm(true); }} 
-                      title="Editar" 
+                      disabled={debt.is_shared && debt.my_role === 'member'}
+                      title={debt.is_shared && debt.my_role === 'member' ? "Solo administradores pueden editar la deuda" : "Editar"} 
                       style={{
                         width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
                         background: 'var(--surface-muted)', border: 'none', display: 'flex',
-                        alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                        color: 'var(--text-secondary)', transition: 'all 0.15s ease',
+                        alignItems: 'center', justifyContent: 'center',
+                        cursor: (debt.is_shared && debt.my_role === 'member') ? 'not-allowed' : 'pointer',
+                        color: (debt.is_shared && debt.my_role === 'member') ? 'var(--text-tertiary)' : 'var(--text-secondary)',
+                        opacity: (debt.is_shared && debt.my_role === 'member') ? 0.4 : 1,
+                        transition: 'all 0.15s ease',
                       }}
                     >
                       <Edit3 size={14} />
                     </button>
                     <button 
                       onClick={(e) => { e.stopPropagation(); setConfirmDelete({isOpen: true, debtId: debt.id}); }} 
-                      title="Eliminar" 
+                      disabled={debt.is_shared && debt.my_role === 'member'}
+                      title={debt.is_shared && debt.my_role === 'member' ? "Solo administradores pueden eliminar la deuda" : "Eliminar"} 
                       style={{
                         width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
                         background: 'var(--surface-muted)', border: 'none', display: 'flex',
-                        alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                        color: 'var(--expense-color)', transition: 'all 0.15s ease',
+                        alignItems: 'center', justifyContent: 'center',
+                        cursor: (debt.is_shared && debt.my_role === 'member') ? 'not-allowed' : 'pointer',
+                        color: (debt.is_shared && debt.my_role === 'member') ? 'var(--text-tertiary)' : 'var(--expense-color)',
+                        opacity: (debt.is_shared && debt.my_role === 'member') ? 0.4 : 1,
+                        transition: 'all 0.15s ease',
                       }}
                     >
                       <Trash2 size={14} />
@@ -859,16 +901,17 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
         />
       )}
 
-      {/* Modal: Registrar Abono */}
+      {/* Modal: Registrar / Editar Abono */}
       {payingDebt && (
         <DebtPaymentForm
+          initialData={editingPayment}
           debtConcept={payingDebt.concept}
           type={type}
           debtCurrency={payingDebt.currency || 'USD_BCV'}
           debtTotalAmount={payingDebt.total_amount}
           debtPaidAmount={calculatePaid(payingDebt)}
-          onSubmit={handleAddPayment}
-          onCancel={() => setPayingDebt(null)}
+          onSubmit={handleAddOrUpdatePayment}
+          onCancel={() => { setPayingDebt(null); setEditingPayment(undefined); }}
           loading={submitting}
           isShared={payingDebt.is_shared}
           sharedPartnerName={payingDebt.shared_partner_name}

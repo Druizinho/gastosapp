@@ -444,6 +444,8 @@ export interface SharedFixedExpenseBrief {
   is_paid_this_month: boolean;
   paid_by_name: string | null;
   paid_date: string | null;
+  members_count?: number;
+  member_names?: string[];
 }
 
 export interface SharedDebtBrief {
@@ -458,6 +460,8 @@ export interface SharedDebtBrief {
   paid_percentage: number;
   last_payment_by: string | null;
   last_payment_date: string | null;
+  members_count?: number;
+  member_names?: string[];
 }
 
 export interface SharedSavingGoalBrief {
@@ -474,6 +478,8 @@ export interface SharedSavingGoalBrief {
   last_deposit_by: string | null;
   last_deposit_amount: number | null;
   last_deposit_date: string | null;
+  members_count?: number;
+  member_names?: string[];
 }
 
 export interface PanaSummary {

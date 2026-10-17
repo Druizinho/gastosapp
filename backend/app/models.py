@@ -75,7 +75,7 @@ class FixedExpense(Base):
     is_shared = False
     share_id = None
     my_role = None
-    shared_members = []
+    shared_members = ()
     shared_partner_name = None
     shared_by = None
 
@@ -142,7 +142,7 @@ class Debt(Base):
     is_shared = False
     share_id = None
     my_role = None
-    shared_members = []
+    shared_members = ()
     shared_partner_name = None
     shared_by = None
 
@@ -288,7 +288,7 @@ class SavingGoal(Base):
     is_shared = False
     share_id = None
     my_role = None
-    shared_members = []
+    shared_members = ()
     shared_partner_name = None
     shared_by = None
 

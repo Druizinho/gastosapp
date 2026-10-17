@@ -67,6 +67,12 @@ const AppRoutes = () => {
             <Route path="/herramientas/panas" element={<PanasPage />} />
             <Route path="/herramientas/conexiones" element={<Navigate to="/herramientas/panas" replace />} />
             <Route path="/conexiones" element={<Navigate to="/herramientas/panas" replace />} />
+            <Route path="/panas" element={<Navigate to="/herramientas/panas" replace />} />
+            <Route path="/deudas" element={<Navigate to="/herramientas/deudas-nuestras" replace />} />
+            <Route path="/gastos-fijos" element={<Navigate to="/herramientas/gastos-fijos" replace />} />
+            <Route path="/ahorros" element={<Navigate to="/herramientas/ahorros" replace />} />
+            <Route path="/ingresos-estimados" element={<Navigate to="/herramientas/ingresos-estimados" replace />} />
+            <Route path="/dashboard" element={<Navigate to="/" replace />} />
             <Route path="/tasas" element={<RatesPage />} />
             <Route path="/ajustes" element={<SettingsPage />} />
           </Route>

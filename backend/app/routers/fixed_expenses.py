@@ -173,7 +173,7 @@ async def uncheck_fixed_expense(
         raise HTTPException(status_code=404, detail="Fixed expense not found")
 
     success, linked_expense_id = await crud_fixed_expenses.uncheck_fixed_expense(
-        db, fixed_expense_id=expense_id, month_year=month_year
+        db, fixed_expense_id=expense_id, month_year=month_year, user_id=user_id
     )
 
     if not success:

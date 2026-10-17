@@ -459,7 +459,7 @@ Para guardar tus cambios y sincronizarlos con GitHub:
 
 ```bash
 # 1. Agregar cambios
-git add .
+
 
 # 2. Confirmar con mensaje descriptivo
 git commit -m "feat: descripción de los cambios realizados"

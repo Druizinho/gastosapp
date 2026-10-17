@@ -13,13 +13,14 @@ import {
   Tag,
   Users
 } from 'lucide-react';
-import type { SavingGoal, SavingGoalCreate, SavingGoalUpdate, SavingDepositCreate, ExchangeRates } from '../types';
+import type { SavingGoal, SavingGoalCreate, SavingGoalUpdate, SavingDeposit, SavingDepositCreate, SavingDepositUpdate, ExchangeRates } from '../types';
 import {
   getSavingGoals,
   createSavingGoal,
   updateSavingGoal,
   deleteSavingGoal,
   addSavingDeposit,
+  updateSavingDeposit,
   deleteSavingDeposit,
   getRates
 } from '../api';
@@ -65,6 +66,7 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
   const [showGoalForm, setShowGoalForm] = useState(false);
   const [editingGoal, setEditingGoal] = useState<SavingGoal | undefined>(undefined);
   const [showDepositForm, setShowDepositForm] = useState(false);
+  const [editingDeposit, setEditingDeposit] = useState<SavingDeposit | undefined>(undefined);
   const [activeShareModalItem, setActiveShareModalItem] = useState<{ id: string; name: string } | null>(null);
 
   const [confirmDelete, setConfirmDelete] = useState<{
@@ -224,23 +226,32 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
     }
   };
 
-  const handleAddDeposit = async (data: SavingDepositCreate) => {
+  const handleAddOrUpdateDeposit = async (data: SavingDepositCreate | SavingDepositUpdate) => {
     if (!selectedGoal) return;
     try {
       setSubmitting(true);
-      const updated = await addSavingDeposit(selectedGoal.id, data);
+      let updated: SavingGoal;
+      if (editingDeposit) {
+        updated = await updateSavingDeposit(editingDeposit.id, data as SavingDepositUpdate);
+      } else {
+        updated = await addSavingDeposit(selectedGoal.id, data as SavingDepositCreate);
+      }
       setSelectedGoal(updated);
       setShowDepositForm(false);
+      setEditingDeposit(undefined);
       await fetchData();
 
-      if (updated.is_completed) {
+      if (editingDeposit) {
+        showToast('Aporte actualizado correctamente');
+      } else if (updated.is_completed) {
         showToast('🎉 ¡Felicidades! Fondo completado al 100%');
       } else {
         showToast('Aporte registrado correctamente');
       }
-    } catch (error) {
-      console.error('Error adding deposit:', error);
-      showToast('Error al registrar aporte');
+    } catch (error: any) {
+      console.error('Error saving deposit:', error);
+      const detail = error?.response?.data?.detail;
+      showToast(typeof detail === 'string' ? detail : 'Error al guardar aporte');
     } finally {
       setSubmitting(false);
     }
@@ -562,6 +573,7 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
           {selectedGoal.is_shared && saved > 0 && (() => {
             const palette = [color, '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4'];
             const byContributor: Record<string, { amount: number; isMe: boolean }> = {};
+            const myUserId = selectedGoal.shared_members?.find(m => m.is_me)?.user_id;
 
             selectedGoal.deposits.forEach(d => {
               let depAmount = Number(d.amount);
@@ -573,8 +585,8 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
                 else if (selectedGoal.currency === 'USD_CASH' && d.amount_usd) depAmount = Number(d.amount_usd);
               }
 
-              const isMe = !d.paid_by_name;
-              const key = isMe ? 'Tú' : d.paid_by_name!;
+              const isMe = myUserId ? d.paid_by_user_id === myUserId : !d.paid_by_name;
+              const key = isMe ? 'Tú' : (d.paid_by_name || 'Miembro');
               if (!byContributor[key]) {
                 byContributor[key] = { amount: 0, isMe };
               }
@@ -659,7 +671,11 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
 
           {/* Action button */}
           <button
-            onClick={() => setShowDepositForm(true)}
+            onClick={(e) => {
+              e.stopPropagation();
+              setEditingDeposit(undefined);
+              setShowDepositForm(true);
+            }}
             style={{
               width: '100%',
               marginTop: '1.25rem',
@@ -710,7 +726,10 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {[...selectedGoal.deposits]
                 .sort((a, b) => new Date(b.deposit_date).getTime() - new Date(a.deposit_date).getTime())
-                .map((d) => (
+                .map((d) => {
+                  const myUserId = selectedGoal.shared_members?.find(m => m.is_me)?.user_id;
+                  const isMeDeposit = myUserId ? d.paid_by_user_id === myUserId : !d.paid_by_name;
+                  return (
                   <div
                     key={d.id}
                     style={{
@@ -750,14 +769,14 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
                               fontWeight: 600,
                               padding: '0.1rem 0.45rem',
                               borderRadius: 'var(--radius-full)',
-                              background: d.paid_by_name ? 'rgba(59, 130, 246, 0.12)' : 'rgba(16, 185, 129, 0.12)',
-                              color: d.paid_by_name ? '#3B82F6' : '#10B981',
+                              background: !isMeDeposit ? 'rgba(59, 130, 246, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+                              color: !isMeDeposit ? '#3B82F6' : '#10B981',
                               display: 'inline-flex',
                               alignItems: 'center',
                               gap: '0.2rem'
                             }}>
                               <Users size={10} />
-                              {d.paid_by_name ? `Aporte de ${d.paid_by_name}` : 'Aporte tuyo'}
+                              {!isMeDeposit ? `Aporte de ${d.paid_by_name}` : 'Aporte tuyo'}
                             </span>
                           )}
                           {d.note && <span>• {d.note}</span>}
@@ -767,29 +786,50 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
                     </div>
 
                     {d.can_edit !== false && (
-                      <button
-                        onClick={() => setConfirmDelete({
-                          isOpen: true,
-                          depositId: d.id,
-                          title: '¿Eliminar aporte?',
-                          message: selectedGoal.is_shared
-                            ? `Se eliminará el aporte de ${formatCurrency(Number(d.amount), d.currency)} y se sincronizará con todos los miembros.`
-                            : `Se eliminará el aporte de ${formatCurrency(Number(d.amount), d.currency)}.`,
-                        })}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: 'var(--text-tertiary)',
-                          cursor: 'pointer',
-                          padding: '0.4rem',
-                          borderRadius: 'var(--radius-sm)',
-                        }}
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                        <button
+                          onClick={() => {
+                            setEditingDeposit(d);
+                            setShowDepositForm(true);
+                          }}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: 'var(--text-secondary)',
+                            cursor: 'pointer',
+                            padding: '0.4rem',
+                            borderRadius: 'var(--radius-sm)',
+                          }}
+                          title="Editar aporte"
+                        >
+                          <Edit3 size={15} />
+                        </button>
+                        <button
+                          onClick={() => setConfirmDelete({
+                            isOpen: true,
+                            depositId: d.id,
+                            title: '¿Eliminar aporte?',
+                            message: selectedGoal.is_shared
+                              ? `Se eliminará el aporte de ${formatCurrency(Number(d.amount), d.currency)} y se sincronizará con todos los miembros.`
+                              : `Se eliminará el aporte de ${formatCurrency(Number(d.amount), d.currency)}.`,
+                          })}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: 'var(--text-tertiary)',
+                            cursor: 'pointer',
+                            padding: '0.4rem',
+                            borderRadius: 'var(--radius-sm)',
+                          }}
+                          title="Eliminar aporte"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     )}
                   </div>
-                ))}
+                  );
+                })}
             </div>
           )}
         </div>
@@ -1213,13 +1253,14 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
       {/* Modal: Aporte */}
       {showDepositForm && selectedGoal && (
         <SavingDepositForm
+          initialData={editingDeposit}
           goalName={selectedGoal.name}
           goalCurrency={selectedGoal.currency}
           goalTargetAmount={Number(selectedGoal.target_amount)}
           goalCurrentSaved={calculateGoalSaved(selectedGoal)}
           goalColor={selectedGoal.color}
-          onSubmit={handleAddDeposit}
-          onCancel={() => setShowDepositForm(false)}
+          onSubmit={handleAddOrUpdateDeposit}
+          onCancel={() => { setShowDepositForm(false); setEditingDeposit(undefined); }}
           loading={submitting}
         />
       )}

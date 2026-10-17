@@ -17,9 +17,11 @@ if SQLALCHEMY_DATABASE_URL.startswith("postgresql://"):
 elif SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
     SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
 
+sql_echo = os.getenv("SQL_ECHO", "false").lower() == "true"
+
 engine = create_async_engine(
     SQLALCHEMY_DATABASE_URL, 
-    echo=True,
+    echo=sql_echo,
     connect_args={"statement_cache_size": 0}
 )
 

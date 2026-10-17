@@ -8,7 +8,7 @@ from decimal import Decimal
 import datetime
 from fastapi import HTTPException
 
-from . import models, schemas, sharing
+from . import models, schemas, sharing, bcv_service
 from .push_service import send_notification_to_user
 
 
@@ -117,7 +117,19 @@ async def update_saving_goal(
     shared_with_ids = update_data.pop('shared_with_ids', None)
     admin_ids = update_data.pop('admin_ids', None)
     update_data.pop('shared_with', None)
-    update_data.pop('manual_rate', None)
+    manual_rate = update_data.pop('manual_rate', None)
+
+    if extra_data is None and ('target_amount' in update_data or 'currency' in update_data):
+        new_target = update_data.get('target_amount', db_goal.target_amount)
+        raw_curr = update_data.get('currency', db_goal.currency)
+        new_curr = raw_curr.value if hasattr(raw_curr, "value") else str(raw_curr)
+        rates = await bcv_service.get_all_rates()
+        extra_data = bcv_service.convert_amount(
+            amount=new_target,
+            currency=new_curr,
+            rates=rates,
+            manual_rate=manual_rate
+        )
 
     if extra_data:
         update_data.update(extra_data)
@@ -142,7 +154,7 @@ async def update_saving_goal(
 
         if 'target_amount' in update_data or 'currency' in update_data:
             siblings = await sharing.sibling_entity_ids(db, share.id)
-            all_ids = list(siblings.values()) + [goal_id]
+            all_ids = list(set(list(siblings.values()) + [goal_id]))
             await sharing.recompute_settlement(db, "saving_goal", all_ids)
     else:
         if 'is_completed' in update_data:
@@ -154,6 +166,9 @@ async def update_saving_goal(
         for key, value in update_data.items():
             setattr(db_goal, key, value)
         await db.flush()
+
+        if 'target_amount' in update_data or 'currency' in update_data:
+            await sharing.recompute_settlement(db, "saving_goal", [goal_id])
 
         if shared_with_ids:
             clean_targets = [tid for tid in shared_with_ids if tid != user_id]
@@ -216,10 +231,10 @@ async def delete_saving_goal(db: AsyncSession, goal_id: UUID, user_id: UUID) -> 
         )
 
         members = await sharing.get_members(db, share.id)
-        for m in members:
-            res = await db.execute(select(models.SavingGoal).where(models.SavingGoal.id == m.entity_id))
-            g_obj = res.scalars().first()
-            if g_obj:
+        entity_ids = [m.entity_id for m in members]
+        if entity_ids:
+            res = await db.execute(select(models.SavingGoal).where(models.SavingGoal.id.in_(entity_ids)))
+            for g_obj in res.scalars().all():
                 await db.delete(g_obj)
 
         await db.delete(share)
@@ -302,7 +317,7 @@ async def add_saving_deposit(
         )
 
         siblings = await sharing.sibling_entity_ids(db, share.id)
-        all_goal_ids = list(siblings.values()) + [goal_id]
+        all_goal_ids = list(set(list(siblings.values()) + [goal_id]))
         await sharing.recompute_settlement(db, "saving_goal", all_goal_ids)
 
         await db.refresh(db_goal)
@@ -367,8 +382,20 @@ async def update_saving_deposit(
             raise HTTPException(status_code=403, detail="Solo puedes editar tus propios aportes o debes ser administrador")
 
     update_dict = deposit_update.model_dump(exclude_unset=True)
-    if 'manual_rate' in update_dict:
-        del update_dict['manual_rate']
+    manual_rate = update_dict.pop('manual_rate', None)
+
+    if extra_data is None and ('amount' in update_dict or 'currency' in update_dict):
+        new_amount = update_dict.get('amount', deposit.amount)
+        raw_curr = update_dict.get('currency', deposit.currency)
+        new_curr = raw_curr.value if hasattr(raw_curr, "value") else str(raw_curr)
+        rates = await bcv_service.get_all_rates()
+        extra_data = bcv_service.convert_amount(
+            amount=new_amount,
+            currency=new_curr,
+            rates=rates,
+            manual_rate=manual_rate
+        )
+
     if extra_data:
         update_dict.update(extra_data)
 
@@ -378,7 +405,7 @@ async def update_saving_deposit(
 
     # If linked to expense, update expense record too
     if deposit.expense_id:
-        exp_res = await db.execute(select(models.Expense).filter(models.Expense.id == deposit.expense_id, models.Expense.user_id == user_id))
+        exp_res = await db.execute(select(models.Expense).filter(models.Expense.id == deposit.expense_id))
         exp = exp_res.scalars().first()
         if exp:
             if 'amount' in update_dict:
@@ -395,7 +422,7 @@ async def update_saving_deposit(
         share, _ = membership
         await sharing.fan_out_child_update(db, models.SavingDeposit, deposit.sync_id, update_dict)
         siblings = await sharing.sibling_entity_ids(db, share.id)
-        all_goal_ids = list(siblings.values()) + [deposit.goal_id]
+        all_goal_ids = list(set(list(siblings.values()) + [deposit.goal_id]))
         await sharing.recompute_settlement(db, "saving_goal", all_goal_ids)
     else:
         await sharing.recompute_settlement(db, "saving_goal", [deposit.goal_id])
@@ -420,7 +447,7 @@ async def delete_saving_deposit(db: AsyncSession, deposit_id: UUID, user_id: UUI
 
     # If linked to expense, delete the expense as well
     if deposit.expense_id:
-        exp_res = await db.execute(select(models.Expense).filter(models.Expense.id == deposit.expense_id, models.Expense.user_id == user_id))
+        exp_res = await db.execute(select(models.Expense).filter(models.Expense.id == deposit.expense_id))
         exp = exp_res.scalars().first()
         if exp:
             await db.delete(exp)
@@ -441,7 +468,12 @@ async def delete_saving_deposit(db: AsyncSession, deposit_id: UUID, user_id: UUI
         goal_name = g_obj.name if g_obj else "Fondo"
 
         if deposit.sync_id:
-            await sharing.fan_out_child_delete(db, models.SavingDeposit, deposit.sync_id)
+            linked_expense_ids = await sharing.fan_out_child_delete(db, models.SavingDeposit, deposit.sync_id)
+            for lexp_id in set(linked_expense_ids):
+                exp_res = await db.execute(select(models.Expense).where(models.Expense.id == lexp_id))
+                exp_obj = exp_res.scalars().first()
+                if exp_obj:
+                    await db.delete(exp_obj)
         
         res_chk = await db.execute(select(models.SavingDeposit).where(models.SavingDeposit.id == deposit_id))
         dep_chk = res_chk.scalars().first()
@@ -455,7 +487,7 @@ async def delete_saving_deposit(db: AsyncSession, deposit_id: UUID, user_id: UUI
             db.expire(deposit.goal, ['deposits'])
 
         siblings = await sharing.sibling_entity_ids(db, share.id)
-        all_goal_ids = list(siblings.values()) + [goal_id]
+        all_goal_ids = list(set(list(siblings.values()) + [goal_id]))
         await sharing.recompute_settlement(db, "saving_goal", all_goal_ids)
 
         await sharing.notify_members(

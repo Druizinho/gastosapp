@@ -7,7 +7,7 @@ from typing import List, Optional
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from . import models, schemas
+from . import models, schemas, sharing
 from .push_service import send_push_notification, send_notification_to_user
 
 async def find_user_by_email(db: AsyncSession, email: str) -> Optional[schemas.UserSearchResult]:
@@ -248,7 +248,7 @@ async def create_connection_request_by_user_id(db: AsyncSession, requester_id: U
         title="Nueva solicitud de pana",
         body=f"{sender_name} te envió una solicitud para conectarse como panas",
         type="connection_request",
-        url="/panas"
+        url="/herramientas/panas"
     )
 
     await db.commit()
@@ -275,6 +275,79 @@ async def get_panas_overview(db: AsyncSession, user_id: UUID) -> schemas.PanasGl
         ).order_by(models.Connection.created_at.desc())
     )
     connections = result.scalars().all()
+    if not connections:
+        return schemas.PanasGlobalOverview(
+            panas=[],
+            total_active_panas=0,
+            total_shared_fixed_expenses=0,
+            pending_shared_fixed_expenses_this_month=0,
+            total_shared_debts=0,
+            shared_debts_remaining_by_currency={},
+            total_shared_saving_goals=0
+        )
+
+    partner_ids = [
+        (c.receiver_id if c.requester_id == user_id else c.requester_id)
+        for c in connections
+    ]
+
+    # Batch-fetch profiles for all partners
+    prof_res = await db.execute(select(models.Profile).where(models.Profile.id.in_(partner_ids)))
+    profiles_by_id = {p.id: p for p in prof_res.scalars().all()}
+
+    # Batch-fetch emails from auth.users
+    email_res = await db.execute(
+        text("SELECT id, email FROM auth.users WHERE id = ANY(:pids)"),
+        {"pids": partner_ids}
+    )
+    emails_by_id = {row.id: row.email for row in email_res.all()}
+
+    # Batch-fetch all shares where user_id is a member, along with all ShareMembers in those shares
+    my_share_ids_subq = select(models.ShareMember.share_id).where(models.ShareMember.user_id == user_id)
+    all_sm_res = await db.execute(
+        select(models.Share, models.ShareMember)
+        .join(models.ShareMember, models.Share.id == models.ShareMember.share_id)
+        .where(models.Share.id.in_(my_share_ids_subq))
+    )
+    all_sm_rows = all_sm_res.all()
+
+    share_by_id = {}
+    my_entity_by_share = {}
+    member_uids_by_share = {}
+
+    for share_obj, sm_obj in all_sm_rows:
+        share_by_id[share_obj.id] = share_obj
+        member_uids_by_share.setdefault(share_obj.id, set()).add(sm_obj.user_id)
+        if sm_obj.user_id == user_id:
+            my_entity_by_share[share_obj.id] = sm_obj.entity_id
+
+    # Collect user_id's entity IDs by type for bulk loading
+    fe_entity_ids = [
+        eid for sid, eid in my_entity_by_share.items()
+        if share_by_id[sid].entity_type == "fixed_expense"
+    ]
+    debt_entity_ids = [
+        eid for sid, eid in my_entity_by_share.items()
+        if share_by_id[sid].entity_type == "debt"
+    ]
+
+    fe_by_id = {}
+    if fe_entity_ids:
+        fe_res = await db.execute(
+            select(models.FixedExpense)
+            .options(selectinload(models.FixedExpense.checks))
+            .where(models.FixedExpense.id.in_(fe_entity_ids))
+        )
+        fe_by_id = {fe.id: fe for fe in fe_res.scalars().unique().all()}
+
+    debt_by_id = {}
+    if debt_entity_ids:
+        debt_res = await db.execute(
+            select(models.Debt)
+            .options(selectinload(models.Debt.payments))
+            .where(models.Debt.id.in_(debt_entity_ids))
+        )
+        debt_by_id = {d.id: d for d in debt_res.scalars().unique().all()}
 
     panas_summaries: List[schemas.PanaSummary] = []
     seen_fe_ids = set()
@@ -285,30 +358,9 @@ async def get_panas_overview(db: AsyncSession, user_id: UUID) -> schemas.PanasGl
 
     for conn in connections:
         partner_id = conn.receiver_id if conn.requester_id == user_id else conn.requester_id
-
-        prof_res = await db.execute(select(models.Profile).where(models.Profile.id == partner_id))
-        prof = prof_res.scalars().first()
+        prof = profiles_by_id.get(partner_id)
         partner_name = prof.display_name if prof and prof.display_name else "Pana"
-
-        email_res = await db.execute(
-            text("SELECT email FROM auth.users WHERE id = :pid"),
-            {"pid": partner_id}
-        )
-        email_row = email_res.first()
-        partner_email = email_row.email if email_row else None
-
-        # Query all shares where both user_id and partner_id are members
-        shares_res = await db.execute(
-            select(models.Share, models.ShareMember.entity_id)
-            .join(models.ShareMember, models.Share.id == models.ShareMember.share_id)
-            .where(
-                models.ShareMember.user_id == user_id,
-                models.Share.id.in_(
-                    select(models.ShareMember.share_id).where(models.ShareMember.user_id == partner_id)
-                )
-            )
-        )
-        shared_rows = shares_res.all()
+        partner_email = emails_by_id.get(partner_id)
 
         shared_fe_count = 0
         pending_fe_count = 0
@@ -316,47 +368,41 @@ async def get_panas_overview(db: AsyncSession, user_id: UUID) -> schemas.PanasGl
         shared_goals_count = 0
         pana_debts_currency_summary = {}
 
-        for share_obj, my_entity_id in shared_rows:
+        for sid, share_obj in share_by_id.items():
+            if partner_id not in member_uids_by_share.get(sid, set()):
+                continue
+            my_entity_id = my_entity_by_share.get(sid)
+            if not my_entity_id:
+                continue
+
             if share_obj.entity_type == "fixed_expense":
-                fe_res = await db.execute(select(models.FixedExpense).where(models.FixedExpense.id == my_entity_id))
-                fe = fe_res.scalars().first()
+                fe = fe_by_id.get(my_entity_id)
                 if fe and fe.is_active:
                     shared_fe_count += 1
                     seen_fe_ids.add(fe.id)
-
-                    chk_res = await db.execute(
-                        select(models.FixedExpenseCheck).where(
-                            models.FixedExpenseCheck.fixed_expense_id == my_entity_id,
-                            models.FixedExpenseCheck.month_year == current_month_str
-                        )
-                    )
-                    if not chk_res.scalars().first():
+                    paid_this_month = any(c.month_year == current_month_str for c in (fe.checks or []))
+                    if not paid_this_month:
                         pending_fe_count += 1
                         seen_pending_fe_ids.add(fe.id)
 
             elif share_obj.entity_type == "debt":
-                debt_res = await db.execute(
-                    select(models.Debt)
-                    .options(selectinload(models.Debt.payments))
-                    .where(models.Debt.id == my_entity_id)
-                )
-                debt = debt_res.scalars().first()
+                debt = debt_by_id.get(my_entity_id)
                 if debt and not debt.is_settled:
                     shared_debts_count += 1
-                    paid = sum(Decimal(p.amount) for p in debt.payments)
-                    rem = max(Decimal(debt.total_amount) - paid, Decimal(0))
+                    paid = sharing.sum_children_in_currency(debt.payments, debt.currency or "BS", "amount")
+                    rem = max(Decimal(str(debt.total_amount)) - paid, Decimal("0"))
                     curr = debt.currency or "BS"
-                    pana_debts_currency_summary[curr] = pana_debts_currency_summary.get(curr, Decimal(0)) + rem
+                    pana_debts_currency_summary[curr] = pana_debts_currency_summary.get(curr, Decimal("0")) + rem
 
                     if debt.id not in seen_debt_ids:
                         seen_debt_ids.add(debt.id)
-                        global_debts_currency_summary[curr] = global_debts_currency_summary.get(curr, Decimal(0)) + rem
+                        global_debts_currency_summary[curr] = global_debts_currency_summary.get(curr, Decimal("0")) + rem
 
             elif share_obj.entity_type == "saving_goal":
                 shared_goals_count += 1
                 seen_goal_ids.add(my_entity_id)
 
-        total_remaining = sum(pana_debts_currency_summary.values()) if pana_debts_currency_summary else Decimal(0)
+        total_remaining = sum(pana_debts_currency_summary.values()) if pana_debts_currency_summary else Decimal("0")
 
         panas_summaries.append(
             schemas.PanaSummary(
@@ -427,53 +473,99 @@ async def get_pana_details(db: AsyncSession, user_id: UUID, partner_id: UUID) ->
     )
     shared_rows = shares_res.all()
 
+    share_ids = [s.id for s, _ in shared_rows]
+    members_by_share = {}
+    all_member_uids = set()
+    if share_ids:
+        sm_res = await db.execute(
+            select(models.ShareMember)
+            .where(models.ShareMember.share_id.in_(share_ids))
+            .order_by(models.ShareMember.joined_at.asc())
+        )
+        for sm in sm_res.scalars().all():
+            members_by_share.setdefault(sm.share_id, []).append(sm)
+            all_member_uids.add(sm.user_id)
+
+    member_profiles = {}
+    if all_member_uids:
+        mprof_res = await db.execute(select(models.Profile).where(models.Profile.id.in_(all_member_uids)))
+        member_profiles = {p.id: p for p in mprof_res.scalars().all()}
+
+    fe_entity_ids = [eid for s, eid in shared_rows if s.entity_type == "fixed_expense"]
+    debt_entity_ids = [eid for s, eid in shared_rows if s.entity_type == "debt"]
+    goal_entity_ids = [eid for s, eid in shared_rows if s.entity_type == "saving_goal"]
+
+    fe_by_id = {}
+    if fe_entity_ids:
+        fe_res = await db.execute(
+            select(models.FixedExpense)
+            .options(selectinload(models.FixedExpense.checks))
+            .where(models.FixedExpense.id.in_(fe_entity_ids))
+        )
+        fe_by_id = {fe.id: fe for fe in fe_res.scalars().unique().all()}
+
+    debt_by_id = {}
+    if debt_entity_ids:
+        debt_res = await db.execute(
+            select(models.Debt)
+            .options(selectinload(models.Debt.payments))
+            .where(models.Debt.id.in_(debt_entity_ids))
+        )
+        debt_by_id = {d.id: d for d in debt_res.scalars().unique().all()}
+
+    goal_by_id = {}
+    if goal_entity_ids:
+        goal_res = await db.execute(
+            select(models.SavingGoal)
+            .options(selectinload(models.SavingGoal.deposits))
+            .where(models.SavingGoal.id.in_(goal_entity_ids))
+        )
+        goal_by_id = {g.id: g for g in goal_res.scalars().unique().all()}
+
     fe_briefs: List[schemas.SharedFixedExpenseBrief] = []
     debt_briefs: List[schemas.SharedDebtBrief] = []
     goal_briefs: List[schemas.SharedSavingGoalBrief] = []
 
     for share_obj, my_entity_id in shared_rows:
+        s_members = members_by_share.get(share_obj.id, [])
+        m_count = len(s_members) if s_members else 2
+        m_names = [
+            ("Tú" if sm.user_id == user_id else (member_profiles.get(sm.user_id).display_name if member_profiles.get(sm.user_id) and member_profiles.get(sm.user_id).display_name else "Pana"))
+            for sm in s_members
+        ]
+
         if share_obj.entity_type == "fixed_expense":
-            fe_res = await db.execute(select(models.FixedExpense).where(models.FixedExpense.id == my_entity_id))
-            fe = fe_res.scalars().first()
+            fe = fe_by_id.get(my_entity_id)
             if not fe:
                 continue
 
-            chk_res = await db.execute(
-                select(models.FixedExpenseCheck).where(
-                    models.FixedExpenseCheck.fixed_expense_id == my_entity_id,
-                    models.FixedExpenseCheck.month_year == current_month_str
-                )
-            )
-            chk = chk_res.scalars().first()
+            chk = next((c for c in (fe.checks or []) if c.month_year == current_month_str), None)
 
             fe_briefs.append(
                 schemas.SharedFixedExpenseBrief(
                     id=fe.id,
                     name=fe.name,
-                    amount=Decimal(fe.amount),
+                    amount=Decimal(str(fe.amount)),
                     currency=fe.currency or "BS",
                     category=fe.category,
                     payment_day=fe.payment_day,
                     is_active=fe.is_active,
                     is_paid_this_month=bool(chk is not None),
                     paid_by_name=chk.paid_by_name if chk else None,
-                    paid_date=chk.paid_date if chk else None
+                    paid_date=chk.paid_date if chk else None,
+                    members_count=m_count,
+                    member_names=m_names
                 )
             )
 
         elif share_obj.entity_type == "debt":
-            debt_res = await db.execute(
-                select(models.Debt)
-                .options(selectinload(models.Debt.payments))
-                .where(models.Debt.id == my_entity_id)
-            )
-            debt = debt_res.scalars().first()
+            debt = debt_by_id.get(my_entity_id)
             if not debt:
                 continue
 
-            paid = sum(Decimal(p.amount) for p in debt.payments)
-            remaining = max(Decimal(debt.total_amount) - paid, Decimal(0))
-            paid_pct = float(min(round((paid / Decimal(debt.total_amount)) * 100, 1), 100.0)) if debt.total_amount > 0 else 100.0
+            paid = sharing.sum_children_in_currency(debt.payments, debt.currency or "BS", "amount")
+            remaining = max(Decimal(str(debt.total_amount)) - paid, Decimal("0"))
+            paid_pct = float(min(round((paid / Decimal(str(debt.total_amount))) * 100, 1), 100.0)) if debt.total_amount > 0 else 100.0
 
             last_payment = None
             if debt.payments:
@@ -485,54 +577,37 @@ async def get_pana_details(db: AsyncSession, user_id: UUID, partner_id: UUID) ->
                     id=debt.id,
                     concept=debt.concept,
                     counterpart=debt.counterpart,
-                    total_amount=Decimal(debt.total_amount),
+                    total_amount=Decimal(str(debt.total_amount)),
                     remaining_amount=remaining,
                     currency=debt.currency or "BS",
                     type=debt.type,
                     is_settled=debt.is_settled,
                     paid_percentage=paid_pct,
                     last_payment_by=last_payment.paid_by_name if last_payment else None,
-                    last_payment_date=last_payment.payment_date if last_payment else None
+                    last_payment_date=last_payment.payment_date if last_payment else None,
+                    members_count=m_count,
+                    member_names=m_names
                 )
             )
 
         elif share_obj.entity_type == "saving_goal":
-            goal_res = await db.execute(
-                select(models.SavingGoal)
-                .options(selectinload(models.SavingGoal.deposits))
-                .where(models.SavingGoal.id == my_entity_id)
-            )
-            g = goal_res.scalars().first()
+            g = goal_by_id.get(my_entity_id)
             if not g:
                 continue
 
-            curr_amount = Decimal('0')
-            for d in g.deposits:
-                if d.currency == g.currency:
-                    curr_amount += Decimal(str(d.amount))
-                elif g.currency in ['USD_BCV', 'USD_CASH'] and d.amount_usd:
-                    curr_amount += Decimal(str(d.amount_usd))
-                elif g.currency == 'BS' and d.amount_bs:
-                    curr_amount += Decimal(str(d.amount_bs))
-                elif g.currency == 'EUR_BCV' and d.amount_eur:
-                    curr_amount += Decimal(str(d.amount_eur))
-                elif g.currency == 'USDT' and d.amount_usdt:
-                    curr_amount += Decimal(str(d.amount_usdt))
-                else:
-                    curr_amount += Decimal(str(d.amount))
-
+            curr_amount = sharing.sum_children_in_currency(g.deposits, g.currency or "BS", "amount")
             prog_pct = float(min(round((curr_amount / Decimal(str(g.target_amount))) * 100, 1), 100.0)) if g.target_amount > 0 else 100.0
 
             last_dep = None
             if g.deposits:
-                sorted_deps = sorted(g.deposits, key=lambda x: x.deposit_date or datetime.date.min, reverse=True)
+                sorted_deps = sorted(g.deposits, key=lambda x: x.deposit_date or datetime.min.date(), reverse=True)
                 last_dep = sorted_deps[0]
 
             goal_briefs.append(
                 schemas.SharedSavingGoalBrief(
                     id=g.id,
                     name=g.name,
-                    target_amount=Decimal(g.target_amount),
+                    target_amount=Decimal(str(g.target_amount)),
                     current_amount=curr_amount,
                     currency=g.currency,
                     category=g.category,
@@ -541,8 +616,10 @@ async def get_pana_details(db: AsyncSession, user_id: UUID, partner_id: UUID) ->
                     is_completed=g.is_completed,
                     progress_percentage=prog_pct,
                     last_deposit_by=last_dep.paid_by_name if last_dep else None,
-                    last_deposit_amount=Decimal(last_dep.amount) if last_dep else None,
-                    last_deposit_date=last_dep.deposit_date if last_dep else None
+                    last_deposit_amount=Decimal(str(last_dep.amount)) if last_dep else None,
+                    last_deposit_date=last_dep.deposit_date if last_dep else None,
+                    members_count=m_count,
+                    member_names=m_names
                 )
             )
 

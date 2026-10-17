@@ -8,8 +8,12 @@ from uuid import UUID, uuid4
 from decimal import Decimal
 from datetime import datetime, timezone, date
 
-from . import models, schemas, sharing
+from . import models, schemas, sharing, bcv_service
 from .push_service import send_notification_to_user
+
+
+def _debt_url(debt_type: Optional[str]) -> str:
+    return "/herramientas/deudas-por-cobrar" if debt_type == "receivable" else "/herramientas/deudas-nuestras"
 
 
 async def get_debts(db: AsyncSession, user_id: UUID, debt_type: str, is_settled: Optional[bool] = None):
@@ -77,7 +81,7 @@ async def create_debt(db: AsyncSession, debt: schemas.DebtCreate, user_id: UUID)
             title="Nueva deuda compartida",
             body=f"{req_name} creó una deuda compartida: {debt.concept}",
             type="shared_debt_created",
-            url="/deudas"
+            url=_debt_url(db_debt.type)
         )
 
     await db.commit()
@@ -112,7 +116,7 @@ async def update_debt(db: AsyncSession, debt_id: UUID, debt: schemas.DebtUpdate,
 
         # If financial fields changed, recalculate settlement for all members
         siblings = await sharing.sibling_entity_ids(db, share.id)
-        all_debt_ids = list(siblings.values()) + [debt_id]
+        all_debt_ids = list(set(list(siblings.values()) + [debt_id]))
         if 'total_amount' in update_data or 'currency' in update_data:
             await sharing.recompute_settlement(db, "debt", all_debt_ids)
 
@@ -128,13 +132,16 @@ async def update_debt(db: AsyncSession, debt_id: UUID, debt: schemas.DebtUpdate,
                 title="¡Deuda saldada!",
                 body=f"🎉 {user_name} marcó la deuda '{db_debt.concept}' como saldada",
                 type="shared_debt_settled",
-                url="/deudas"
+                url=_debt_url(db_debt.type)
             )
     else:
         # Debt was not shared previously
         for key, value in update_data.items():
             setattr(db_debt, key, value)
         await db.flush()
+
+        if 'total_amount' in update_data or 'currency' in update_data:
+            await sharing.recompute_settlement(db, "debt", [debt_id])
 
         # If user is now sharing it
         if shared_with_ids:
@@ -161,7 +168,7 @@ async def update_debt(db: AsyncSession, debt_id: UUID, debt: schemas.DebtUpdate,
                     title="Nueva deuda compartida",
                     body=f"{user_name} compartió una deuda contigo: {db_debt.concept}",
                     type="shared_debt_created",
-                    url="/deudas"
+                    url=_debt_url(db_debt.type)
                 )
 
     await db.commit()
@@ -187,6 +194,7 @@ async def delete_debt(db: AsyncSession, debt_id: UUID, user_id: UUID):
         user_prof = user_prof_res.scalars().first()
         user_name = user_prof.display_name if user_prof and user_prof.display_name else "Usuario"
         concept = db_debt.concept
+        debt_type = db_debt.type
 
         # Notify members before deleting
         await sharing.notify_members(
@@ -196,15 +204,15 @@ async def delete_debt(db: AsyncSession, debt_id: UUID, user_id: UUID):
             title="Deuda compartida eliminada",
             body=f"{user_name} eliminó la deuda compartida '{concept}' para todos los integrantes",
             type="shared_debt_deleted",
-            url="/deudas"
+            url=_debt_url(debt_type)
         )
 
-        # Delete all member copies and share
+        # Batch-load and delete all member copies and share
         members = await sharing.get_members(db, share.id)
-        for m in members:
-            res = await db.execute(select(models.Debt).where(models.Debt.id == m.entity_id))
-            d_obj = res.scalars().first()
-            if d_obj:
+        entity_ids = [m.entity_id for m in members]
+        if entity_ids:
+            res = await db.execute(select(models.Debt).where(models.Debt.id.in_(entity_ids)))
+            for d_obj in res.scalars().all():
                 await db.delete(d_obj)
 
         await db.delete(share)
@@ -275,7 +283,7 @@ async def add_debt_payment(db: AsyncSession, debt_id: UUID, user_id: UUID, payme
         )
 
         siblings = await sharing.sibling_entity_ids(db, share.id)
-        all_debt_ids = list(siblings.values()) + [debt_id]
+        all_debt_ids = list(set(list(siblings.values()) + [debt_id]))
         await sharing.recompute_settlement(db, "debt", all_debt_ids)
 
         # Check if settled after payment
@@ -289,7 +297,7 @@ async def add_debt_payment(db: AsyncSession, debt_id: UUID, user_id: UUID, payme
                 title="¡Deuda saldada!",
                 body=f"🎉 ¡La deuda '{db_debt.concept}' fue saldada por {payer_name} con un abono de {payment.amount} {curr_label}!",
                 type="shared_debt_settled",
-                url="/deudas"
+                url=_debt_url(db_debt.type)
             )
         else:
             await sharing.notify_members(
@@ -299,7 +307,7 @@ async def add_debt_payment(db: AsyncSession, debt_id: UUID, user_id: UUID, payme
                 title="Nuevo abono en deuda compartida",
                 body=f"{payer_name} abonó {payment.amount} {curr_label} a la deuda '{db_debt.concept}'",
                 type="shared_debt_payment",
-                url="/deudas"
+                url=_debt_url(db_debt.type)
             )
     else:
         # Check settlement on personal debt
@@ -332,8 +340,20 @@ async def update_debt_payment(
             raise HTTPException(status_code=403, detail="Solo puedes editar tus propios abonos o debes ser administrador")
 
     update_dict = payment_update.model_dump(exclude_unset=True)
-    if 'manual_rate' in update_dict:
-        del update_dict['manual_rate']
+    manual_rate = update_dict.pop('manual_rate', None)
+
+    if extra_data is None and ('amount' in update_dict or 'currency' in update_dict):
+        new_amount = update_dict.get('amount', payment.amount)
+        raw_curr = update_dict.get('currency', payment.currency)
+        new_curr = raw_curr.value if hasattr(raw_curr, "value") else str(raw_curr)
+        rates = await bcv_service.get_all_rates()
+        extra_data = bcv_service.convert_amount(
+            amount=new_amount,
+            currency=new_curr,
+            rates=rates,
+            manual_rate=manual_rate
+        )
+
     if extra_data:
         update_dict.update(extra_data)
 
@@ -345,7 +365,7 @@ async def update_debt_payment(
         share, _ = membership
         await sharing.fan_out_child_update(db, models.DebtPayment, payment.sync_id, update_dict)
         siblings = await sharing.sibling_entity_ids(db, share.id)
-        all_debt_ids = list(siblings.values()) + [payment.debt_id]
+        all_debt_ids = list(set(list(siblings.values()) + [payment.debt_id]))
         await sharing.recompute_settlement(db, "debt", all_debt_ids)
     else:
         await sharing.recompute_settlement(db, "debt", [payment.debt_id])
@@ -382,12 +402,13 @@ async def delete_debt_payment(db: AsyncSession, payment_id: UUID, user_id: UUID)
         debt_res = await db.execute(select(models.Debt).where(models.Debt.id == debt_id))
         debt_obj = debt_res.scalars().first()
         concept = debt_obj.concept if debt_obj else "Deuda"
+        debt_type = debt_obj.type if debt_obj else "owed"
 
         # Delete across all siblings via sync_id
         await sharing.fan_out_child_delete(db, models.DebtPayment, sync_id)
 
         siblings = await sharing.sibling_entity_ids(db, share.id)
-        all_debt_ids = list(siblings.values()) + [debt_id]
+        all_debt_ids = list(set(list(siblings.values()) + [debt_id]))
         await sharing.recompute_settlement(db, "debt", all_debt_ids)
 
         await sharing.notify_members(
@@ -397,7 +418,7 @@ async def delete_debt_payment(db: AsyncSession, payment_id: UUID, user_id: UUID)
             title="Abono eliminado",
             body=f"{user_name} eliminó un abono de {amount_label} en la deuda '{concept}'",
             type="shared_debt_payment",
-            url="/deudas"
+            url=_debt_url(debt_type)
         )
     else:
         await db.delete(payment)

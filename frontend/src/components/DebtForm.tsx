@@ -16,6 +16,7 @@ interface DebtFormProps {
 const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCancel, loading }) => {
   const isEditing = !!initialData;
   const isSharedDebt = isEditing && !!initialData?.is_shared;
+  const isReadOnlyMember = isSharedDebt && initialData?.my_role === 'member';
 
   const [connections, setConnections] = useState<Connection[]>([]);
   const [isSharedChecked, setIsSharedChecked] = useState(false);
@@ -183,7 +184,9 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
             }}>
               <Users size={16} style={{ flexShrink: 0 }} />
               <span>
-                Deuda compartida con <strong>{initialData.shared_partner_name}</strong>. El monto, concepto y contraparte están sincronizados y no se pueden modificar.
+                {isReadOnlyMember
+                  ? `Deuda compartida con ${initialData.shared_partner_name}. Solo los administradores pueden modificar los datos de la deuda.`
+                  : `Deuda compartida con ${initialData.shared_partner_name}. Tus cambios se sincronizarán con todos los miembros del grupo.`}
               </span>
             </div>
           )}
@@ -196,10 +199,10 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
               type="text"
               name="counterpart"
               required
-              disabled={isSharedDebt}
+              disabled={isReadOnlyMember}
               value={formData.counterpart}
               onChange={handleChange}
-              style={{ ...inputStyle, ...(isSharedDebt ? { opacity: 0.65, cursor: 'not-allowed' } : {}) }}
+              style={{ ...inputStyle, ...(isReadOnlyMember ? { opacity: 0.65, cursor: 'not-allowed' } : {}) }}
               placeholder="Ej: Banco, María, Empresa XYZ..."
             />
           </div>
@@ -210,10 +213,10 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
               type="text"
               name="concept"
               required
-              disabled={isSharedDebt}
+              disabled={isReadOnlyMember}
               value={formData.concept}
               onChange={handleChange}
-              style={{ ...inputStyle, ...(isSharedDebt ? { opacity: 0.65, cursor: 'not-allowed' } : {}) }}
+              style={{ ...inputStyle, ...(isReadOnlyMember ? { opacity: 0.65, cursor: 'not-allowed' } : {}) }}
               placeholder="Ej: Préstamo personal, Compra de equipos..."
             />
           </div>
@@ -228,10 +231,10 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
                 min="0.01"
                 step="0.01"
                 placeholder="0.00"
-                disabled={isSharedDebt}
+                disabled={isReadOnlyMember}
                 value={formData.total_amount || ''}
                 onChange={handleChange}
-                style={{ ...inputStyle, ...(isSharedDebt ? { opacity: 0.65, cursor: 'not-allowed' } : {}) }}
+                style={{ ...inputStyle, ...(isReadOnlyMember ? { opacity: 0.65, cursor: 'not-allowed' } : {}) }}
               />
             </div>
 
@@ -239,10 +242,10 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
               <label style={labelStyle}>Moneda *</label>
               <select
                 name="currency"
-                disabled={isSharedDebt}
+                disabled={isReadOnlyMember}
                 value={formData.currency}
                 onChange={handleChange}
-                style={{ ...inputStyle, ...(isSharedDebt ? { opacity: 0.65, cursor: 'not-allowed' } : {}) }}
+                style={{ ...inputStyle, ...(isReadOnlyMember ? { opacity: 0.65, cursor: 'not-allowed' } : {}) }}
               >
                 {CURRENCY_OPTIONS.map(opt => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>

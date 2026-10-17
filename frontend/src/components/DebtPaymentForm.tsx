@@ -1,16 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Users, X, Receipt } from 'lucide-react';
-import type { DebtPaymentCreate } from '../types';
+import type { DebtPayment, DebtPaymentCreate, DebtPaymentUpdate } from '../types';
 import { CURRENCY_OPTIONS } from '../types';
 import ConfirmModal from './ConfirmModal';
 
 interface DebtPaymentFormProps {
+  initialData?: DebtPayment;
   debtConcept?: string;
   type: 'owed' | 'receivable';
   debtCurrency: string;
   debtTotalAmount: number;
   debtPaidAmount: number;
-  onSubmit: (data: DebtPaymentCreate) => void;
+  onSubmit: (data: DebtPaymentCreate | DebtPaymentUpdate) => void;
   onCancel: () => void;
   loading: boolean;
   isShared?: boolean;
@@ -26,6 +27,7 @@ const formatCurrency = (amount: number, currency: string = 'USD_BCV') => {
 };
 
 const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({ 
+  initialData,
   debtConcept,
   type, 
   debtCurrency, 
@@ -37,20 +39,33 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
   isShared = false,
   sharedPartnerName = null
 }) => {
+  const isEditing = !!initialData;
   const remaining = Math.max(debtTotalAmount - debtPaidAmount, 0);
   const [formData, setFormData] = useState<DebtPaymentCreate>({
-    amount: '' as any,
-    currency: debtCurrency as any,
-    payment_date: new Date().toISOString().split('T')[0],
-    note: '',
+    amount: (initialData ? initialData.amount : '') as any,
+    currency: (initialData?.currency || debtCurrency) as any,
+    payment_date: initialData?.payment_date || new Date().toISOString().split('T')[0],
+    note: initialData?.note || '',
     register_as_expense: type === 'owed'
   });
   const [showConfirm, setShowConfirm] = useState(false);
 
+  useEffect(() => {
+    if (initialData) {
+      setFormData({
+        amount: initialData.amount,
+        currency: initialData.currency,
+        payment_date: initialData.payment_date,
+        note: initialData.note || '',
+        register_as_expense: false
+      });
+    }
+  }, [initialData]);
+
   // Check if user is paying in the same currency as the debt
   const isSameCurrency = formData.currency === debtCurrency;
   const currentAmount = Number(formData.amount) || 0;
-  const isOverpaying = isSameCurrency && currentAmount > remaining && remaining > 0;
+  const isOverpaying = !isEditing && isSameCurrency && currentAmount > remaining && remaining > 0;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target as HTMLInputElement;
@@ -64,10 +79,13 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const submitData = { ...formData };
+    const submitData: any = { ...formData };
     submitData.amount = Number(submitData.amount);
+    if (isEditing) {
+      delete submitData.register_as_expense;
+    }
     
-    if (isSameCurrency && submitData.amount > remaining) {
+    if (!isEditing && isSameCurrency && submitData.amount > remaining) {
       setShowConfirm(true);
       return;
     }
@@ -77,8 +95,11 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
 
   const handleConfirmSubmit = () => {
     setShowConfirm(false);
-    const submitData = { ...formData };
+    const submitData: any = { ...formData };
     submitData.amount = Number(submitData.amount);
+    if (isEditing) {
+      delete submitData.register_as_expense;
+    }
     onSubmit(submitData);
   };
 
@@ -141,7 +162,7 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
             </div>
             <div>
               <h2 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
-                Registrar Abono
+                {isEditing ? 'Editar Abono' : 'Registrar Abono'}
               </h2>
               {debtConcept && (
                 <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: 0 }}>
@@ -289,7 +310,7 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
             />
           </div>
 
-          {type === 'owed' && (
+          {type === 'owed' && !isEditing && (
             <div style={{
               display: 'flex',
               alignItems: 'center',
@@ -329,7 +350,7 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
                 background: 'var(--income-color)'
               }}
             >
-              {loading ? 'Procesando...' : 'Registrar Abono'}
+              {loading ? 'Procesando...' : (isEditing ? 'Guardar Cambios' : 'Registrar Abono')}
             </button>
           </div>
           

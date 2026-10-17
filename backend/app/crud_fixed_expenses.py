@@ -5,7 +5,7 @@ from sqlalchemy.orm import selectinload
 from typing import List, Optional
 from uuid import UUID, uuid4
 from fastapi import HTTPException
-from . import models, schemas, sharing
+from . import models, schemas, sharing, bcv_service
 from decimal import Decimal
 from datetime import datetime, timezone, timedelta
 import calendar
@@ -200,10 +200,10 @@ async def delete_fixed_expense(db: AsyncSession, expense_id: UUID, user_id: UUID
             )
 
             members = await sharing.get_members(db, share.id)
-            for m in members:
-                res = await db.execute(select(models.FixedExpense).where(models.FixedExpense.id == m.entity_id))
-                fe_obj = res.scalars().first()
-                if fe_obj:
+            entity_ids = [m.entity_id for m in members]
+            if entity_ids:
+                res = await db.execute(select(models.FixedExpense).where(models.FixedExpense.id.in_(entity_ids)))
+                for fe_obj in res.scalars().all():
                     await db.delete(fe_obj)
             await db.delete(share)
         else:
@@ -224,16 +224,14 @@ async def delete_fixed_expense(db: AsyncSession, expense_id: UUID, user_id: UUID
             expense_name = db_expense.name
 
             members = await sharing.get_members(db, share.id)
-            for m in members:
-                if m.entity_id == expense_id:
-                    continue
+            sibling_ids = [m.entity_id for m in members if m.entity_id != expense_id]
+            if sibling_ids:
                 res = await db.execute(
                     select(models.FixedExpense)
                     .options(selectinload(models.FixedExpense.checks))
-                    .where(models.FixedExpense.id == m.entity_id)
+                    .where(models.FixedExpense.id.in_(sibling_ids))
                 )
-                m_fe = res.scalars().first()
-                if m_fe:
+                for m_fe in res.scalars().all():
                     m_fe.is_active = False
                     m_fe.deactivated_at = end_of_prev_month
                     m_checks_to_remove = [mc for mc in (m_fe.checks or []) if mc.month_year >= month_year]
@@ -391,31 +389,44 @@ async def check_fixed_expense(
 
 async def update_fixed_expense_check(
     db: AsyncSession,
-    fixed_expense_id: UUID,
-    month_year: str,
+    check_id: UUID,
     user_id: UUID,
     check_update: schemas.FixedExpenseCheckUpdate,
     extra_data: dict = None
 ):
     result = await db.execute(
-        select(models.FixedExpenseCheck).filter(
-            models.FixedExpenseCheck.fixed_expense_id == fixed_expense_id,
-            models.FixedExpenseCheck.month_year == month_year
+        select(models.FixedExpenseCheck)
+        .join(models.FixedExpense, models.FixedExpenseCheck.fixed_expense_id == models.FixedExpense.id)
+        .filter(
+            models.FixedExpenseCheck.id == check_id,
+            models.FixedExpense.user_id == user_id
         )
     )
     check = result.scalars().first()
     if not check:
         return None
 
-    membership = await sharing.get_membership(db, fixed_expense_id)
+    membership = await sharing.get_membership(db, check.fixed_expense_id)
     if membership:
         share, member = membership
         if not sharing.can_edit_child(member, check.paid_by_user_id):
-            raise HTTPException(status_code=403, detail="Solo puedes editar los checks que tú pagaste o debes ser administrador")
+            raise HTTPException(status_code=403, detail="Solo puedes editar los pagos que tú registraste o debes ser administrador")
 
     update_dict = check_update.model_dump(exclude_unset=True)
-    if 'manual_rate' in update_dict:
-        del update_dict['manual_rate']
+    manual_rate = update_dict.pop('manual_rate', None)
+
+    if extra_data is None and ('paid_amount' in update_dict or 'currency' in update_dict):
+        new_amount = update_dict.get('paid_amount', check.paid_amount)
+        raw_curr = update_dict.get('currency', check.currency)
+        new_curr = raw_curr.value if hasattr(raw_curr, "value") else str(raw_curr)
+        rates = await bcv_service.get_all_rates()
+        extra_data = bcv_service.convert_amount(
+            amount=new_amount,
+            currency=new_curr,
+            rates=rates,
+            manual_rate=manual_rate
+        )
+
     if extra_data:
         update_dict.update(extra_data)
 
@@ -452,15 +463,22 @@ async def uncheck_fixed_expense(db: AsyncSession, fixed_expense_id: UUID, month_
         if user_id and not sharing.can_edit_child(member, check.paid_by_user_id):
             raise HTTPException(status_code=403, detail="Solo puedes desmarcar pagos que tú realizaste o debes ser administrador")
 
-        await sharing.fan_out_child_delete(db, models.FixedExpenseCheck, sync_id)
+        linked_expense_ids = await sharing.fan_out_child_delete(db, models.FixedExpenseCheck, sync_id)
+        for lexp_id in set(linked_expense_ids):
+            exp_res = await db.execute(select(models.Expense).where(models.Expense.id == lexp_id))
+            exp_obj = exp_res.scalars().first()
+            if exp_obj:
+                await db.delete(exp_obj)
+        expense_id = None  # Already deleted above across all synced checks
 
-        # Update last_paid_month on members
+        # Update last_paid_month on members in one batch query
         members = await sharing.get_members(db, share.id)
-        for m in members:
-            exp = await db.execute(select(models.FixedExpense).where(models.FixedExpense.id == m.entity_id))
-            fe_item = exp.scalars().first()
-            if fe_item and fe_item.last_paid_month == month_year:
-                fe_item.last_paid_month = None
+        entity_ids = [m.entity_id for m in members]
+        if entity_ids:
+            exp_res = await db.execute(select(models.FixedExpense).where(models.FixedExpense.id.in_(entity_ids)))
+            for fe_item in exp_res.scalars().all():
+                if fe_item.last_paid_month == month_year:
+                    fe_item.last_paid_month = None
     else:
         await db.delete(check)
         exp = await db.execute(select(models.FixedExpense).where(models.FixedExpense.id == fixed_expense_id))

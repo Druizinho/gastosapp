@@ -22,7 +22,7 @@ ENTITY_CONFIG = {
         "child_attr": "payments",
         "name_attr": "concept",
         "label": "deuda",
-        "url": "/deudas",
+        "url": "/herramientas/deudas-nuestras",
     },
     "fixed_expense": {
         "model": models.FixedExpense,
@@ -290,6 +290,10 @@ async def create_share(
             ch_data[child_fk] = clone.id
             ch_data["sync_id"] = ch.sync_id
             ch_data["paid_by_user_id"] = ch.paid_by_user_id or owner_id
+            if "create_expense" in ch_data:
+                ch_data["create_expense"] = False
+            if "expense_id" in ch_data:
+                ch_data["expense_id"] = None
             ch_clone = child_model_cls(**ch_data)
             db.add(ch_clone)
 
@@ -358,6 +362,10 @@ async def add_members(
                 ch_data[col.name] = getattr(ch, col.name)
             ch_data[child_fk] = clone.id
             ch_data["sync_id"] = ch.sync_id
+            if "create_expense" in ch_data:
+                ch_data["create_expense"] = False
+            if "expense_id" in ch_data:
+                ch_data["expense_id"] = None
             ch_clone = child_model_cls(**ch_data)
             db.add(ch_clone)
 
@@ -412,15 +420,15 @@ async def sync_parent_fields(
     model_cls = cfg["model"]
 
     siblings = await sibling_entity_ids(db, share.id, exclude_user_id=None)
-    for uid, eid in siblings.items():
-        if eid == source_entity_id:
-            continue
-        res = await db.execute(select(model_cls).where(model_cls.id == eid))
-        sibling = res.scalars().first()
-        if sibling:
-            for k, v in fields.items():
-                if hasattr(sibling, k):
-                    setattr(sibling, k, v)
+    target_eids = [eid for eid in siblings.values() if eid != source_entity_id]
+    if not target_eids:
+        return
+
+    res = await db.execute(select(model_cls).where(model_cls.id.in_(target_eids)))
+    for sibling in res.scalars().all():
+        for k, v in fields.items():
+            if hasattr(sibling, k):
+                setattr(sibling, k, v)
 
 
 # ==============================================================================
@@ -442,21 +450,24 @@ async def fan_out_child_create(
     sync_id = source_child.sync_id
 
     siblings = await sibling_entity_ids(db, share.id)
+    source_parent_id = getattr(source_child, parent_fk_name)
+    target_parent_ids = [pid for pid in siblings.values() if pid != source_parent_id]
+    if not target_parent_ids:
+        return
 
-    for uid, parent_id in siblings.items():
-        if parent_id == getattr(source_child, parent_fk_name):
-            continue
-
-        # In fixed_expense_checks, unique constraint on (fixed_expense_id, month_year)
-        if share.entity_type == "fixed_expense" and "month_year" in child_data:
-            chk = await db.execute(
-                select(models.FixedExpenseCheck).where(
-                    models.FixedExpenseCheck.fixed_expense_id == parent_id,
-                    models.FixedExpenseCheck.month_year == child_data["month_year"]
-                )
+    existing_fe_ids: Set[UUID] = set()
+    if share.entity_type == "fixed_expense" and "month_year" in child_data:
+        chk = await db.execute(
+            select(models.FixedExpenseCheck.fixed_expense_id).where(
+                models.FixedExpenseCheck.fixed_expense_id.in_(target_parent_ids),
+                models.FixedExpenseCheck.month_year == child_data["month_year"]
             )
-            if chk.scalars().first():
-                continue
+        )
+        existing_fe_ids = set(chk.scalars().all())
+
+    for parent_id in target_parent_ids:
+        if parent_id in existing_fe_ids:
+            continue
 
         copy_data = {**child_data}
         copy_data[parent_fk_name] = parent_id
@@ -499,19 +510,45 @@ async def fan_out_child_delete(
     db: AsyncSession,
     child_model: Any,
     sync_id: UUID
-):
+) -> List[UUID]:
     if not sync_id:
-        return
+        return []
     res = await db.execute(select(child_model).where(child_model.sync_id == sync_id))
     rows = res.scalars().all()
+    linked_expense_ids: List[UUID] = []
     for row in rows:
+        exp_id = getattr(row, "expense_id", None)
+        if exp_id:
+            linked_expense_ids.append(exp_id)
         await db.delete(row)
     await db.flush()
+    return linked_expense_ids
 
 
 # ==============================================================================
 # Settlement & Progress Recalculation
 # ==============================================================================
+
+def sum_children_in_currency(children: List[Any], target_currency: str, amount_attr: str = "amount") -> Decimal:
+    total = Decimal("0")
+    for ch in children or []:
+        raw_val = getattr(ch, amount_attr, None)
+        if raw_val is None:
+            continue
+        if ch.currency == target_currency:
+            total += Decimal(str(raw_val))
+        elif target_currency in ("USD_BCV", "USD_CASH") and getattr(ch, "amount_usd", None) is not None:
+            total += Decimal(str(ch.amount_usd))
+        elif target_currency == "BS" and getattr(ch, "amount_bs", None) is not None:
+            total += Decimal(str(ch.amount_bs))
+        elif target_currency == "EUR_BCV" and getattr(ch, "amount_eur", None) is not None:
+            total += Decimal(str(ch.amount_eur))
+        elif target_currency == "USDT" and getattr(ch, "amount_usdt", None) is not None:
+            total += Decimal(str(ch.amount_usdt))
+        else:
+            total += Decimal(str(raw_val))
+    return total
+
 
 async def recompute_settlement(db: AsyncSession, entity_type: str, entity_ids: List[UUID]):
     if not entity_ids:
@@ -520,43 +557,20 @@ async def recompute_settlement(db: AsyncSession, entity_type: str, entity_ids: L
     model_cls = cfg["model"]
     child_attr = cfg["child_attr"]
 
-    for eid in entity_ids:
-        res = await db.execute(
-            select(model_cls)
-            .options(selectinload(getattr(model_cls, child_attr)))
-            .where(model_cls.id == eid)
-        )
-        item = res.scalars().first()
-        if not item:
-            continue
+    res = await db.execute(
+        select(model_cls)
+        .options(selectinload(getattr(model_cls, child_attr)))
+        .where(model_cls.id.in_(entity_ids))
+    )
+    items = res.scalars().all()
 
+    for item in items:
         if entity_type == "debt":
-            curr_key = "amount_" + item.currency.lower().replace("_bcv", "").replace("_cash", "")
-            total_paid = Decimal("0")
-            for p in item.payments:
-                if p.currency == item.currency:
-                    total_paid += Decimal(str(p.amount))
-                else:
-                    equiv = getattr(p, curr_key, None)
-                    if equiv is not None:
-                        total_paid += Decimal(str(equiv))
+            total_paid = sum_children_in_currency(item.payments, item.currency, "amount")
             item.is_settled = (total_paid >= Decimal(str(item.total_amount)))
 
         elif entity_type == "saving_goal":
-            total_saved = Decimal("0")
-            for d in item.deposits:
-                if d.currency == item.currency:
-                    total_saved += Decimal(str(d.amount))
-                elif item.currency in ['USD_BCV', 'USD_CASH'] and d.amount_usd:
-                    total_saved += Decimal(str(d.amount_usd))
-                elif item.currency == 'BS' and d.amount_bs:
-                    total_saved += Decimal(str(d.amount_bs))
-                elif item.currency == 'EUR_BCV' and d.amount_eur:
-                    total_saved += Decimal(str(d.amount_eur))
-                elif item.currency == 'USDT' and d.amount_usdt:
-                    total_saved += Decimal(str(d.amount_usdt))
-                else:
-                    total_saved += Decimal(str(d.amount))
+            total_saved = sum_children_in_currency(item.deposits, item.currency, "amount")
             is_done = (total_saved >= Decimal(str(item.target_amount)))
             if is_done and not item.is_completed:
                 item.is_completed = True

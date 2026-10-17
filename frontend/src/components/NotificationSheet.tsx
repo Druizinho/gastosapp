@@ -25,19 +25,31 @@ const getTargetRouteForType = (type: string) => {
   switch (type) {
     case 'connection_request':
     case 'connection_accepted':
+    case 'share_member_added':
+    case 'share_member_left':
+    case 'share_role_changed':
       return '/herramientas/panas';
     case 'shared_debt_created':
     case 'shared_debt_payment':
     case 'shared_debt_settled':
     case 'shared_debt_deleted':
+    case 'shared_debt_leave':
+    case 'shared_debt_kick':
+    case 'shared_debt_role':
     case 'debts':
-      return '/deudas';
+      return '/herramientas/deudas-nuestras';
     case 'shared_fe_created':
     case 'shared_fe_paid':
+    case 'shared_fe_deleted':
+    case 'shared_fe_leave':
+    case 'shared_fe_kick':
+    case 'shared_fe_role':
     case 'fixed_expenses':
-      return '/gastos-fijos';
+      return '/herramientas/gastos-fijos';
+    case 'savings':
+      return '/herramientas/ahorros';
     case 'incomes':
-      return '/ingresos-estimados';
+      return '/herramientas/ingresos-estimados';
     default:
       return null;
   }
@@ -48,16 +60,26 @@ const getIconForType = (type: string) => {
     case 'connection_request':
       return <UserPlus size={20} style={{ color: 'var(--primary-color)' }} />;
     case 'connection_accepted':
+    case 'share_member_added':
       return <Users size={20} style={{ color: '#10B981' }} />;
     case 'shared_debt_created':
+    case 'shared_debt_role':
+    case 'share_role_changed':
       return <Users size={20} style={{ color: 'var(--expense-color)' }} />;
     case 'shared_debt_payment':
       return <CreditCard size={20} style={{ color: '#10B981' }} />;
     case 'shared_debt_settled':
       return <CheckCircle2 size={20} style={{ color: '#10B981' }} />;
     case 'shared_debt_deleted':
+    case 'shared_debt_leave':
+    case 'shared_debt_kick':
+    case 'shared_fe_deleted':
+    case 'shared_fe_leave':
+    case 'shared_fe_kick':
+    case 'share_member_left':
       return <AlertCircle size={20} style={{ color: 'var(--text-tertiary)' }} />;
     case 'shared_fe_created':
+    case 'shared_fe_role':
       return <Calendar size={20} style={{ color: 'var(--info-color)' }} />;
     case 'shared_fe_paid':
       return <CheckCircle2 size={20} style={{ color: '#10B981' }} />;
@@ -65,6 +87,8 @@ const getIconForType = (type: string) => {
       return <Calendar size={20} style={{ color: 'var(--info-color)' }} />;
     case 'debts': 
       return <CreditCard size={20} style={{ color: 'var(--expense-color)' }} />;
+    case 'savings':
+      return <DollarSign size={20} style={{ color: '#10B981' }} />;
     case 'incomes': 
       return <DollarSign size={20} style={{ color: 'var(--income-color)' }} />;
     case 'inactivity': 

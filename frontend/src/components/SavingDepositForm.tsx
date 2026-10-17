@@ -1,15 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
-import type { SavingDepositCreate, CurrencyType } from '../types';
+import type { SavingDeposit, SavingDepositCreate, SavingDepositUpdate, CurrencyType } from '../types';
 import { CURRENCY_OPTIONS } from '../types';
 
 interface SavingDepositFormProps {
+  initialData?: SavingDeposit;
   goalName: string;
   goalCurrency: string;
   goalTargetAmount: number;
   goalCurrentSaved: number;
   goalColor?: string;
-  onSubmit: (data: SavingDepositCreate) => void;
+  onSubmit: (data: SavingDepositCreate | SavingDepositUpdate) => void;
   onCancel: () => void;
   loading: boolean;
 }
@@ -28,6 +29,7 @@ const formatCurrency = (amount: number, currency: string) => {
 };
 
 export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
+  initialData,
   goalName,
   goalCurrency,
   goalTargetAmount,
@@ -37,16 +39,30 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
   onCancel,
   loading,
 }) => {
+  const isEditing = !!initialData;
   const remaining = Math.max(goalTargetAmount - goalCurrentSaved, 0);
 
   const [formData, setFormData] = useState<SavingDepositCreate>({
-    amount: '' as any,
-    currency: goalCurrency as CurrencyType,
-    deposit_date: new Date().toISOString().split('T')[0],
-    note: '',
+    amount: (initialData ? initialData.amount : '') as any,
+    currency: (initialData?.currency || goalCurrency) as CurrencyType,
+    deposit_date: initialData?.deposit_date || new Date().toISOString().split('T')[0],
+    note: initialData?.note || '',
     manual_rate: '' as any,
     register_as_expense: false,
   });
+
+  useEffect(() => {
+    if (initialData) {
+      setFormData({
+        amount: initialData.amount,
+        currency: initialData.currency,
+        deposit_date: initialData.deposit_date,
+        note: initialData.note || '',
+        manual_rate: '' as any,
+        register_as_expense: false,
+      });
+    }
+  }, [initialData]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -67,12 +83,15 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
     } else {
       delete submitData.manual_rate;
     }
+    if (isEditing) {
+      delete submitData.register_as_expense;
+    }
     onSubmit(submitData);
   };
 
   const currentAmount = Number(formData.amount) || 0;
   const isSameCurrency = formData.currency === goalCurrency;
-  const willComplete = isSameCurrency && currentAmount >= remaining && remaining > 0;
+  const willComplete = !isEditing && isSameCurrency && currentAmount >= remaining && remaining > 0;
 
   return (
     <div className="modal-backdrop" onClick={onCancel}>
@@ -90,7 +109,7 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
           paddingBottom: '0.65rem'
         }}>
           <h2 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
-            Aporte a &quot;{goalName}&quot;
+            {isEditing ? `Editar Aporte en "${goalName}"` : `Aporte a "${goalName}"`}
           </h2>
           <button
             type="button"
@@ -224,35 +243,37 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
               placeholder="Ej: Bono de trabajo, venta de garaje..."
               value={formData.note || ''}
               onChange={handleChange}
-            />
+              />
           </div>
 
           {/* Registrar como Gasto en Dashboard */}
-          <div style={{
-            background: 'var(--surface-muted)',
-            padding: '0.875rem 1rem',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--accent-light)',
-            marginBottom: '1rem',
-          }}>
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                name="register_as_expense"
-                checked={formData.register_as_expense}
-                onChange={handleChange}
-                style={{ width: '18px', height: '18px', marginTop: '0.15rem', accentColor: goalColor }}
-              />
-              <div style={{ flex: 1 }}>
-                <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', display: 'block' }}>
-                  Registrar como gasto en el Dashboard
-                </span>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4, display: 'block', marginTop: '0.2rem' }}>
-                  Descuenta este aporte de tu presupuesto general registrándolo en la categoría &quot;Ahorro&quot;.
-                </span>
-              </div>
-            </label>
-          </div>
+          {!isEditing && (
+            <div style={{
+              background: 'var(--surface-muted)',
+              padding: '0.875rem 1rem',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--accent-light)',
+              marginBottom: '1rem',
+            }}>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  name="register_as_expense"
+                  checked={formData.register_as_expense}
+                  onChange={handleChange}
+                  style={{ width: '18px', height: '18px', marginTop: '0.15rem', accentColor: goalColor }}
+                />
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', display: 'block' }}>
+                    Registrar como gasto en el Dashboard
+                  </span>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4, display: 'block', marginTop: '0.2rem' }}>
+                    Descuenta este aporte de tu presupuesto general registrándolo en la categoría &quot;Ahorro&quot;.
+                  </span>
+                </div>
+              </label>
+            </div>
+          )}
 
           {/* Botones */}
           <div className="form-actions">
@@ -273,7 +294,7 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
                 boxShadow: `0 4px 14px ${goalColor}44`,
               }}
             >
-              {loading ? 'Guardando...' : 'Aportar'}
+              {loading ? 'Guardando...' : (isEditing ? 'Guardar Cambios' : 'Aportar')}
             </button>
           </div>
         </form>
