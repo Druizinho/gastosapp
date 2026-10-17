@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Info, X, PiggyBank, SlidersHorizontal } from 'lucide-react';
+import { Users, X, PiggyBank, SlidersHorizontal } from 'lucide-react';
 import type { SavingGoal, SavingGoalCreate, SavingGoalUpdate, Category, Connection } from '../types';
+import { CURRENCY_OPTIONS } from '../types';
 import { getCategories, getConnections } from '../api';
+import { ParticipantPicker } from './panas/ParticipantPicker';
 
 interface SavingGoalFormProps {
   initialData?: SavingGoal;
@@ -33,7 +35,8 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
   // Panas connections
   const [connections, setConnections] = useState<Connection[]>([]);
   const [isSharedChecked, setIsSharedChecked] = useState(false);
-  const [selectedPartnerId, setSelectedPartnerId] = useState<string>('');
+  const [selectedPartnerIds, setSelectedPartnerIds] = useState<string[]>([]);
+  const [adminPartnerIds, setAdminPartnerIds] = useState<string[]>([]);
   const [showManualRate, setShowManualRate] = useState(false);
 
   const [formData, setFormData] = useState<SavingGoalCreate & { is_active?: boolean }>({
@@ -106,8 +109,14 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
       delete submitData.manual_rate;
     }
 
-    if (!isEditing && isSharedChecked && selectedPartnerId) {
-      submitData.shared_with = selectedPartnerId;
+    if (!isEditing && isSharedChecked && selectedPartnerIds.length > 0) {
+      submitData.shared_with_ids = selectedPartnerIds;
+      submitData.admin_ids = adminPartnerIds;
+      submitData.shared_with = selectedPartnerIds[0];
+    } else {
+      submitData.shared_with = null;
+      submitData.shared_with_ids = [];
+      submitData.admin_ids = [];
     }
 
     onSubmit(submitData);
@@ -237,11 +246,9 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
                 onChange={handleChange}
                 style={{ padding: '0.65rem 0.75rem' }}
               >
-                <option value="USD_BCV">USD (BCV)</option>
-                <option value="USD_CASH">USD (Efectivo)</option>
-                <option value="BS">Bolívares (Bs)</option>
-                <option value="EUR_BCV">Euros (BCV)</option>
-                <option value="USDT">USDT (Crypto)</option>
+                {CURRENCY_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
               </select>
             </div>
           </div>
@@ -353,8 +360,9 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
                   onChange={(e) => {
                     const checked = e.target.checked;
                     setIsSharedChecked(checked);
-                    if (checked && connections.length > 0 && !selectedPartnerId) {
-                      setSelectedPartnerId(connections[0].partner_id);
+                    if (!checked) {
+                      setSelectedPartnerIds([]);
+                      setAdminPartnerIds([]);
                     }
                   }}
                   style={{ width: '17px', height: '17px', accentColor: 'var(--primary-color)', cursor: 'pointer' }}
@@ -372,43 +380,25 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
                     margin: 0
                   }}
                 >
-                  <Users size={15} style={{ color: 'var(--primary-color)' }} /> Compartir con un Pana
+                  <Users size={15} style={{ color: 'var(--primary-color)' }} /> Compartir con Panas (Grupos)
                 </label>
               </div>
 
               {isSharedChecked && (
-                <div style={{ marginTop: '0.5rem' }}>
-                  {connections.length === 0 ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-tertiary)', fontSize: '0.75rem' }}>
-                      <Info size={13} style={{ flexShrink: 0 }} />
-                      <span>No tienes panas conectados aún. Ve a <strong>Panas</strong> para conectar.</span>
-                    </div>
-                  ) : (
-                    <div>
-                      <select
-                        value={selectedPartnerId}
-                        onChange={(e) => setSelectedPartnerId(e.target.value)}
-                        style={{
-                          width: '100%',
-                          padding: '0.55rem 0.75rem',
-                          borderRadius: 'var(--radius-sm)',
-                          border: '1px solid var(--accent-light)',
-                          background: 'var(--surface-color)',
-                          color: 'var(--text-primary)',
-                          fontSize: '0.85rem'
-                        }}
-                      >
-                        {connections.map(c => (
-                          <option key={c.partner_id} value={c.partner_id}>
-                            👤 {c.partner_name}
-                          </option>
-                        ))}
-                      </select>
-                      <p style={{ margin: '0.3rem 0 0', fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>
-                        Ambos compartirán la meta y los aportes sumarán al objetivo común en tiempo real.
-                      </p>
-                    </div>
-                  )}
+                <div style={{ marginTop: '0.65rem' }}>
+                  <ParticipantPicker
+                    connections={connections}
+                    selectedIds={selectedPartnerIds}
+                    adminIds={adminPartnerIds}
+                    onChange={(s, a) => {
+                      setSelectedPartnerIds(s);
+                      setAdminPartnerIds(a);
+                    }}
+                    accentColor="var(--primary-color)"
+                  />
+                  <p style={{ margin: '0.45rem 0 0', fontSize: '0.72rem', color: 'var(--text-tertiary)', lineHeight: 1.35 }}>
+                    Todos los integrantes verán la meta y los aportes sumarán al objetivo común en tiempo real.
+                  </p>
                 </div>
               )}
             </div>

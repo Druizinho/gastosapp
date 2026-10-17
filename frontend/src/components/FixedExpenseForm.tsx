@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import type { FixedExpenseCreate, FixedExpenseUpdate, FixedExpense, CurrencyType, ExchangeRates, Category, Connection } from '../types';
+import { CURRENCY_OPTIONS } from '../types';
 import { getRates, getCategories, getConnections } from '../api';
 import { Info, Users } from 'lucide-react';
+import { ParticipantPicker } from './panas/ParticipantPicker';
 
 interface FixedExpenseFormProps {
   initialData?: FixedExpense | null;
@@ -20,7 +22,8 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
 
   const [connections, setConnections] = useState<Connection[]>([]);
   const [isSharedChecked, setIsSharedChecked] = useState(false);
-  const [selectedPartnerId, setSelectedPartnerId] = useState('');
+  const [selectedPartnerIds, setSelectedPartnerIds] = useState<string[]>([]);
+  const [adminPartnerIds, setAdminPartnerIds] = useState<string[]>([]);
 
   const [rates, setRates] = useState<ExchangeRates | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -78,6 +81,7 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
 
     setIsSubmitting(true);
     try {
+      const isShared = !initialData?.is_shared && isSharedChecked && selectedPartnerIds.length > 0;
       await onSubmit({
         name,
         amount: parseFloat(amount.replace(',', '.')),
@@ -86,7 +90,9 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
         payment_day: paymentDay ? parseInt(paymentDay) : null,
         notes: notes || undefined,
         manual_rate: manualRate ? parseFloat(manualRate.replace(',', '.')) : undefined,
-        shared_with: !initialData?.is_shared && isSharedChecked && selectedPartnerId ? selectedPartnerId : null,
+        shared_with: isShared ? selectedPartnerIds[0] : null,
+        shared_with_ids: isShared ? selectedPartnerIds : [],
+        admin_ids: isShared ? adminPartnerIds : [],
       });
       if (!initialData) {
         setName('');
@@ -94,7 +100,8 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
         setNotes('');
         setPaymentDay('');
         setIsSharedChecked(false);
-        setSelectedPartnerId('');
+        setSelectedPartnerIds([]);
+        setAdminPartnerIds([]);
       }
     } finally {
       setIsSubmitting(false);
@@ -158,11 +165,9 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
             <div className="form-group half">
               <label>Moneda</label>
               <select value={currency} onChange={(e) => setCurrency(e.target.value as CurrencyType)} required>
-                <option value="USD_BCV">Dólar BCV</option>
-                <option value="EUR_BCV">Euro BCV</option>
-                <option value="BS">Bolívares</option>
-                <option value="USDT">USDT (Binance)</option>
-                <option value="USD_CASH">Dólares en Efectivo</option>
+                {CURRENCY_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
               </select>
             </div>
           </div>
@@ -243,56 +248,32 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
                     const checked = e.target.checked;
                     setIsSharedChecked(checked);
                     if (!checked) {
-                      setSelectedPartnerId('');
-                    } else if (connections.length > 0) {
-                      setSelectedPartnerId(connections[0].partner_id);
+                      setSelectedPartnerIds([]);
+                      setAdminPartnerIds([]);
                     }
                   }}
                   style={{ width: '18px', height: '18px', accentColor: 'var(--accent-color)', cursor: 'pointer' }}
                 />
                 <label htmlFor="share_fixed_expense" style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <Users size={16} /> Compartir con un Pana
+                  <Users size={16} /> Compartir con Panas (Grupos)
                 </label>
               </div>
 
               {isSharedChecked && (
                 <div style={{ marginTop: '0.75rem' }}>
-                  {connections.length === 0 ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-tertiary)', fontSize: '0.8rem' }}>
-                      <Info size={14} />
-                      <span>
-                        No tienes panas conectados. Ve a <strong>Herramientas &gt; Panas</strong> para conectar con otros perfiles.
-                      </span>
-                    </div>
-                  ) : (
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>
-                        Seleccionar Pana
-                      </label>
-                      <select
-                        value={selectedPartnerId}
-                        onChange={(e) => setSelectedPartnerId(e.target.value)}
-                        style={{
-                          width: '100%',
-                          padding: '0.6rem 0.75rem',
-                          borderRadius: 'var(--radius-md)',
-                          border: '1px solid var(--accent-light)',
-                          background: 'var(--surface-color)',
-                          color: 'var(--text-primary)',
-                          fontSize: '0.875rem'
-                        }}
-                      >
-                        {connections.map(c => (
-                          <option key={c.partner_id} value={c.partner_id}>
-                            👤 {c.partner_name}
-                          </option>
-                        ))}
-                      </select>
-                      <p style={{ margin: '0.4rem 0 0', fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-                        Tu pana podrá ver este gasto fijo y su estado de pago mensual sincronizado.
-                      </p>
-                    </div>
-                  )}
+                  <ParticipantPicker
+                    connections={connections}
+                    selectedIds={selectedPartnerIds}
+                    adminIds={adminPartnerIds}
+                    onChange={(s, a) => {
+                      setSelectedPartnerIds(s);
+                      setAdminPartnerIds(a);
+                    }}
+                    accentColor="var(--accent-color)"
+                  />
+                  <p style={{ margin: '0.45rem 0 0', fontSize: '0.75rem', color: 'var(--text-tertiary)', lineHeight: 1.35 }}>
+                    Todos los integrantes verán este gasto fijo y su estado mensual de pago sincronizado.
+                  </p>
                 </div>
               )}
             </div>

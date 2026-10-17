@@ -73,6 +73,9 @@ class FixedExpense(Base):
 
     # Attributes populated dynamically for shared fixed expenses
     is_shared = False
+    share_id = None
+    my_role = None
+    shared_members = []
     shared_partner_name = None
     shared_by = None
 
@@ -99,6 +102,8 @@ class FixedExpenseCheck(Base):
     expense_id = Column(UUID(as_uuid=True), nullable=True)  # ref to Expense if created
     notes = Column(String, nullable=True)
     paid_by_name = Column(String, nullable=True)
+    paid_by_user_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="SET NULL"), nullable=True, index=True)
+    sync_id = Column(UUID(as_uuid=True), nullable=True, index=True)
     mirror_check_id = Column(UUID(as_uuid=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -135,6 +140,9 @@ class Debt(Base):
     
     # Attributes populated dynamically for shared debts
     is_shared = False
+    share_id = None
+    my_role = None
+    shared_members = []
     shared_partner_name = None
     shared_by = None
 
@@ -158,6 +166,8 @@ class DebtPayment(Base):
     payment_date = Column(Date, nullable=False, server_default=func.current_date())
     note = Column(String, nullable=True)
     paid_by_name = Column(String, nullable=True)
+    paid_by_user_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="SET NULL"), nullable=True, index=True)
+    sync_id = Column(UUID(as_uuid=True), nullable=True, index=True)
     mirror_payment_id = Column(UUID(as_uuid=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -276,6 +286,9 @@ class SavingGoal(Base):
 
     # Attributes populated dynamically for shared saving goals
     is_shared = False
+    share_id = None
+    my_role = None
+    shared_members = []
     shared_partner_name = None
     shared_by = None
 
@@ -301,6 +314,8 @@ class SavingDeposit(Base):
     create_expense = Column(Boolean, nullable=False, server_default='false')
     expense_id = Column(UUID(as_uuid=True), ForeignKey("expenses.id", ondelete="SET NULL"), nullable=True)
     paid_by_name = Column(String, nullable=True)
+    paid_by_user_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="SET NULL"), nullable=True, index=True)
+    sync_id = Column(UUID(as_uuid=True), nullable=True, index=True)
     mirror_deposit_id = Column(UUID(as_uuid=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -316,3 +331,29 @@ class SharedSavingGoal(Base):
     partner_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
     mirror_goal_id = Column(UUID(as_uuid=True), ForeignKey("saving_goals.id", ondelete="CASCADE"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class Share(Base):
+    __tablename__ = "shares"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    entity_type = Column(String(20), nullable=False) # 'debt', 'fixed_expense', 'saving_goal'
+    owner_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    members = relationship("ShareMember", back_populates="share", cascade="all, delete-orphan")
+
+
+class ShareMember(Base):
+    __tablename__ = "share_members"
+
+    share_id = Column(UUID(as_uuid=True), ForeignKey("shares.id", ondelete="CASCADE"), primary_key=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), primary_key=True, index=True)
+    entity_id = Column(UUID(as_uuid=True), nullable=False, unique=True, index=True)
+    role = Column(String(10), nullable=False, default="member") # 'admin', 'member'
+    added_by = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="SET NULL"), nullable=True)
+    joined_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    share = relationship("Share", back_populates="members")
+    profile = relationship("Profile", foreign_keys=[user_id])
+

@@ -26,6 +26,7 @@ import {
 import SavingGoalForm from './SavingGoalForm';
 import SavingDepositForm from './SavingDepositForm';
 import ConfirmModal from './ConfirmModal';
+import { MemberAvatars, ShareMembersModal } from './panas';
 
 interface SavingGoalsProps {
   onBack?: () => void;
@@ -64,6 +65,7 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
   const [showGoalForm, setShowGoalForm] = useState(false);
   const [editingGoal, setEditingGoal] = useState<SavingGoal | undefined>(undefined);
   const [showDepositForm, setShowDepositForm] = useState(false);
+  const [activeShareModalItem, setActiveShareModalItem] = useState<{ id: string; name: string } | null>(null);
 
   const [confirmDelete, setConfirmDelete] = useState<{
     isOpen: boolean;
@@ -87,6 +89,10 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
       ]);
       setGoals(goalsData);
       setRates(ratesData);
+      setSelectedGoal(prev => {
+        if (!prev) return null;
+        return goalsData.find(g => g.id === prev.id) || null;
+      });
     } catch (error) {
       console.error('Error fetching saving goals:', error);
       showToast('Error al cargar fondos de ahorro');
@@ -117,19 +123,24 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
 
   // Convert amount between currencies using rates
   const convertAmount = (amount: number, fromCurrency: string) => {
-    if (!rates) return { usd: amount, bs: amount, eur: amount, usdt: amount };
+    if (!rates || !amount) return { usd: amount || 0, bs: amount || 0, eur: amount || 0, usdt: amount || 0 };
     const usd_bs = rates.usd_bs || 1;
     const eur_bs = rates.eur_bs || 1;
     const usdt_bs = rates.usdt_bs || 1;
 
+    const curr = fromCurrency === 'USD' ? 'USD_BCV' : fromCurrency === 'EUR' ? 'EUR_BCV' : fromCurrency;
+
     let bs = 0;
-    if (fromCurrency === 'BS') bs = amount;
-    else if (fromCurrency === 'USD_BCV') bs = amount * usd_bs;
-    else if (fromCurrency === 'EUR_BCV') bs = amount * eur_bs;
-    else if (fromCurrency === 'USDT') bs = amount * usdt_bs;
-    else if (fromCurrency === 'USD_CASH') {
-      const maxRate = Math.max(usd_bs, eur_bs, usdt_bs);
+    if (curr === 'BS') bs = amount;
+    else if (curr === 'USD_BCV') bs = amount * usd_bs;
+    else if (curr === 'EUR_BCV') bs = amount * eur_bs;
+    else if (curr === 'USDT') bs = amount * usdt_bs;
+    else if (curr === 'USD_CASH') {
+      const available_rates = [usd_bs, eur_bs, usdt_bs].filter(r => r > 1);
+      const maxRate = available_rates.length > 0 ? Math.max(...available_rates) : usd_bs;
       bs = amount * maxRate;
+    } else {
+      bs = amount * usd_bs;
     }
 
     return {
@@ -140,30 +151,45 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
     };
   };
 
-  // Global total saved summary
-  const getTotalSaved = () => {
-    let totalBs = 0, totalUsd = 0, totalEur = 0, totalUsdt = 0;
+  // Global totals across all goals
+  const getSummaryAmounts = () => {
+    const totalSaved = { usd: 0, bs: 0, eur: 0, usdt: 0 };
+    const totalTarget = { usd: 0, bs: 0, eur: 0, usdt: 0 };
+
     goals.forEach(goal => {
-      goal.deposits.forEach(d => {
-        if (d.amount_bs) {
-          totalBs += Number(d.amount_bs);
-          totalUsd += Number(d.amount_usd || 0);
-          totalEur += Number(d.amount_eur || 0);
-          totalUsdt += Number(d.amount_usdt || 0);
-        } else {
-          const c = convertAmount(Number(d.amount), d.currency);
-          totalBs += c.bs;
-          totalUsd += c.usd;
-          totalEur += c.eur;
-          totalUsdt += c.usdt;
-        }
-      });
+      const targetConv = convertAmount(Number(goal.target_amount), goal.currency);
+      totalTarget.usd += targetConv.usd;
+      totalTarget.bs += targetConv.bs;
+      totalTarget.eur += targetConv.eur;
+      totalTarget.usdt += targetConv.usdt;
+
+      if (goal.deposits && goal.deposits.length > 0) {
+        goal.deposits.forEach(d => {
+          if (d.amount_bs) {
+            totalSaved.bs += Number(d.amount_bs);
+            totalSaved.usd += Number(d.amount_usd || 0);
+            totalSaved.eur += Number(d.amount_eur || 0);
+            totalSaved.usdt += Number(d.amount_usdt || 0);
+          } else {
+            const depConv = convertAmount(Number(d.amount), d.currency);
+            totalSaved.usd += depConv.usd;
+            totalSaved.bs += depConv.bs;
+            totalSaved.eur += depConv.eur;
+            totalSaved.usdt += depConv.usdt;
+          }
+        });
+      }
     });
 
-    const map = { bs: totalBs, usd: totalUsd, eur: totalEur, usdt: totalUsdt };
+    return { totalSaved, totalTarget };
+  };
+
+  const formatSummaryAmount = (amounts: { usd: number; bs: number; eur: number; usdt: number }, currency?: 'usd' | 'bs' | 'eur' | 'usdt') => {
+    const activeCurrency = currency || displayCurrency;
     const prefixMap = { bs: 'Bs. ', usd: '$ ', eur: '€ ', usdt: '' };
     const suffixMap = { bs: '', usd: '', eur: '', usdt: ' USDT' };
-    return `${prefixMap[displayCurrency]}${Number(map[displayCurrency]).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${suffixMap[displayCurrency]}`;
+    const val = amounts[activeCurrency] || 0;
+    return `${prefixMap[activeCurrency]}${Number(val).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${suffixMap[activeCurrency]}`;
   };
 
   const cycleDisplayCurrency = () => {
@@ -189,9 +215,10 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
         setSelectedGoal(saved);
       }
       await fetchData();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving goal:', error);
-      showToast('Error al guardar fondo');
+      const detail = error?.response?.data?.detail;
+      showToast(typeof detail === 'string' ? detail : 'Error al guardar fondo');
     } finally {
       setSubmitting(false);
     }
@@ -272,6 +299,10 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
     const remaining = Math.max(target - saved, 0);
     const color = selectedGoal.color || '#10B981';
 
+    const savedConv = convertAmount(saved, selectedGoal.currency);
+    const targetConv = convertAmount(target, selectedGoal.currency);
+    const remainingConv = convertAmount(remaining, selectedGoal.currency);
+
     return (
       <div style={{ padding: '1rem', paddingBottom: '6rem', maxWidth: '600px', margin: '0 auto' }}>
         {/* Toast */}
@@ -322,13 +353,16 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
           </div>
           <button
             onClick={() => { setEditingGoal(selectedGoal); setShowGoalForm(true); }}
+            disabled={selectedGoal.is_shared && selectedGoal.my_role === 'member'}
+            title={selectedGoal.is_shared && selectedGoal.my_role === 'member' ? "Solo administradores pueden editar el fondo" : "Editar fondo"}
             style={{
               padding: '0.5rem',
               borderRadius: 'var(--radius-md)',
               background: 'var(--surface-color)',
-              color: 'var(--text-secondary)',
+              color: (selectedGoal.is_shared && selectedGoal.my_role === 'member') ? 'var(--text-tertiary)' : 'var(--text-secondary)',
               border: '1px solid var(--accent-light)',
-              cursor: 'pointer',
+              cursor: (selectedGoal.is_shared && selectedGoal.my_role === 'member') ? 'not-allowed' : 'pointer',
+              opacity: (selectedGoal.is_shared && selectedGoal.my_role === 'member') ? 0.4 : 1,
             }}
           >
             <Edit3 size={18} />
@@ -339,16 +373,19 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
               goalId: selectedGoal.id,
               title: '¿Eliminar Fondo?',
               message: selectedGoal.is_shared
-                ? `Este fondo está compartido con tu pana ${selectedGoal.shared_partner_name || ''}. Al eliminarlo, también se eliminará de la cuenta de tu pana y se perderá el historial sincronizado.`
+                ? `Este fondo está compartido con tus panas (${selectedGoal.shared_members?.length || 2} miembros). Al eliminarlo, también se eliminará para todos y se perderá el historial sincronizado.`
                 : 'Se eliminará el fondo de ahorro y todo su historial de aportes.',
             })}
+            disabled={selectedGoal.is_shared && selectedGoal.my_role === 'member'}
+            title={selectedGoal.is_shared && selectedGoal.my_role === 'member' ? "Solo administradores pueden eliminar el fondo" : "Eliminar fondo"}
             style={{
               padding: '0.5rem',
               borderRadius: 'var(--radius-md)',
               background: 'var(--surface-color)',
-              color: 'var(--expense-color)',
+              color: (selectedGoal.is_shared && selectedGoal.my_role === 'member') ? 'var(--text-tertiary)' : 'var(--expense-color)',
               border: '1px solid var(--expense-bg)',
-              cursor: 'pointer',
+              cursor: (selectedGoal.is_shared && selectedGoal.my_role === 'member') ? 'not-allowed' : 'pointer',
+              opacity: (selectedGoal.is_shared && selectedGoal.my_role === 'member') ? 0.4 : 1,
             }}
           >
             <Trash2 size={18} />
@@ -356,16 +393,21 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
         </header>
 
         {/* Goal Hero Card */}
-        <div style={{
-          background: 'var(--surface-color)',
-          borderRadius: 'var(--radius-lg)',
-          padding: '1.5rem',
-          border: '1px solid var(--accent-light)',
-          boxShadow: 'var(--shadow-md)',
-          marginBottom: '1.25rem',
-          position: 'relative',
-          overflow: 'hidden',
-        }}>
+        <div 
+          className="soft-card"
+          onClick={cycleDisplayCurrency}
+          style={{
+            background: 'var(--surface-color)',
+            borderRadius: 'var(--radius-lg)',
+            padding: '1.5rem',
+            border: '1px solid var(--accent-light)',
+            boxShadow: 'var(--shadow-md)',
+            marginBottom: '1.25rem',
+            position: 'relative',
+            overflow: 'hidden',
+            cursor: 'pointer',
+          }}
+        >
           {/* Subtle colored glow */}
           <div style={{
             position: 'absolute',
@@ -383,20 +425,30 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
           {/* Badges row */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
             {selectedGoal.is_shared && (
-              <span style={{
-                fontSize: '0.75rem',
-                fontWeight: 700,
-                color: '#3B82F6',
-                background: 'rgba(59, 130, 246, 0.15)',
-                padding: '0.25rem 0.65rem',
-                borderRadius: 'var(--radius-full)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.35rem',
-              }}>
-                <Users size={12} />
-                Compartido con tu pana {selectedGoal.shared_partner_name || 'Conectado'}
-              </span>
+              <div
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActiveShareModalItem({ id: selectedGoal.id, name: selectedGoal.name });
+                }}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.45rem',
+                  background: 'rgba(59, 130, 246, 0.15)',
+                  color: '#3B82F6',
+                  padding: '0.3rem 0.75rem',
+                  borderRadius: 'var(--radius-full)',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  border: '1px solid rgba(59, 130, 246, 0.25)',
+                  transition: 'all 0.15s ease'
+                }}
+                title="Gestionar miembros del fondo de ahorro"
+              >
+                <MemberAvatars members={selectedGoal.shared_members} size={20} />
+                <span>Gestionar panas ({selectedGoal.shared_members?.length || 2})</span>
+              </div>
             )}
             {selectedGoal.category && (
               <span style={{
@@ -455,16 +507,26 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
                 Ahorrado actualmente
               </span>
               <strong style={{ fontSize: '1.85rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-                {formatCurrency(saved, selectedGoal.currency)}
+                {formatSummaryAmount(savedConv)}
               </strong>
+              {displayCurrency !== (selectedGoal.currency.toLowerCase().startsWith('usd') ? 'usd' : selectedGoal.currency.toLowerCase().startsWith('eur') ? 'eur' : selectedGoal.currency.toLowerCase()) && (
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', display: 'block' }}>
+                  ≈ {formatCurrency(saved, selectedGoal.currency)}
+                </span>
+              )}
             </div>
             <div style={{ textAlign: 'right' }}>
               <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block' }}>
                 Monto Objetivo
               </span>
               <span style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
-                {formatCurrency(target, selectedGoal.currency)}
+                {formatSummaryAmount(targetConv)}
               </span>
+              {displayCurrency !== (selectedGoal.currency.toLowerCase().startsWith('usd') ? 'usd' : selectedGoal.currency.toLowerCase().startsWith('eur') ? 'eur' : selectedGoal.currency.toLowerCase()) && (
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', display: 'block' }}>
+                  ≈ {formatCurrency(target, selectedGoal.currency)}
+                </span>
+              )}
             </div>
           </div>
 
@@ -488,84 +550,94 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
             <span>{progress.toFixed(1)}% alcanzado</span>
             <span>
-              {remaining > 0 ? `Faltan ${formatCurrency(remaining, selectedGoal.currency)}` : '¡Objetivo superado!'}
+              {remaining > 0 ? `Faltan ${formatSummaryAmount(remainingConv)}` : '¡Objetivo superado!'}
             </span>
+          </div>
+
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginTop: '0.5rem', textAlign: 'center' }}>
+            Toca para cambiar moneda ({displayCurrency.toUpperCase()})
           </div>
 
           {/* Shared breakdown if applicable */}
           {selectedGoal.is_shared && saved > 0 && (() => {
-            const userDeposits = selectedGoal.deposits.filter(d => !d.paid_by_name);
-            const partnerDeposits = selectedGoal.deposits.filter(d => !!d.paid_by_name);
-            const userSaved = userDeposits.reduce((acc, d) => {
-              if (d.currency === selectedGoal.currency) return acc + Number(d.amount);
-              if (selectedGoal.currency === 'USD_BCV' && d.amount_usd) return acc + Number(d.amount_usd);
-              if (selectedGoal.currency === 'BS' && d.amount_bs) return acc + Number(d.amount_bs);
-              if (selectedGoal.currency === 'EUR_BCV' && d.amount_eur) return acc + Number(d.amount_eur);
-              if (selectedGoal.currency === 'USDT' && d.amount_usdt) return acc + Number(d.amount_usdt);
-              if (selectedGoal.currency === 'USD_CASH' && d.amount_usd) return acc + Number(d.amount_usd);
-              return acc + Number(d.amount);
-            }, 0);
-            const partnerSaved = partnerDeposits.reduce((acc, d) => {
-              if (d.currency === selectedGoal.currency) return acc + Number(d.amount);
-              if (selectedGoal.currency === 'USD_BCV' && d.amount_usd) return acc + Number(d.amount_usd);
-              if (selectedGoal.currency === 'BS' && d.amount_bs) return acc + Number(d.amount_bs);
-              if (selectedGoal.currency === 'EUR_BCV' && d.amount_eur) return acc + Number(d.amount_eur);
-              if (selectedGoal.currency === 'USDT' && d.amount_usdt) return acc + Number(d.amount_usdt);
-              if (selectedGoal.currency === 'USD_CASH' && d.amount_usd) return acc + Number(d.amount_usd);
-              return acc + Number(d.amount);
-            }, 0);
-            const userPct = saved > 0 ? Math.round((userSaved / saved) * 100) : 0;
-            const partnerPct = 100 - userPct;
+            const palette = [color, '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4'];
+            const byContributor: Record<string, { amount: number; isMe: boolean }> = {};
+
+            selectedGoal.deposits.forEach(d => {
+              let depAmount = Number(d.amount);
+              if (d.currency !== selectedGoal.currency) {
+                if (selectedGoal.currency === 'USD_BCV' && d.amount_usd) depAmount = Number(d.amount_usd);
+                else if (selectedGoal.currency === 'BS' && d.amount_bs) depAmount = Number(d.amount_bs);
+                else if (selectedGoal.currency === 'EUR_BCV' && d.amount_eur) depAmount = Number(d.amount_eur);
+                else if (selectedGoal.currency === 'USDT' && d.amount_usdt) depAmount = Number(d.amount_usdt);
+                else if (selectedGoal.currency === 'USD_CASH' && d.amount_usd) depAmount = Number(d.amount_usd);
+              }
+
+              const isMe = !d.paid_by_name;
+              const key = isMe ? 'Tú' : d.paid_by_name!;
+              if (!byContributor[key]) {
+                byContributor[key] = { amount: 0, isMe };
+              }
+              byContributor[key].amount += depAmount;
+            });
+
+            const entries = Object.entries(byContributor);
+            const memberStats = entries.map(([name, data], idx) => ({
+              name,
+              amount: data.amount,
+              pct: saved > 0 ? Math.round((data.amount / saved) * 100) : 0,
+              color: palette[idx % palette.length],
+              isMe: data.isMe
+            }));
 
             return (
               <div style={{
                 marginTop: '1rem',
-                padding: '0.75rem 0.9rem',
+                padding: '0.85rem 1rem',
                 background: 'var(--surface-muted)',
                 borderRadius: 'var(--radius-md)',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '0.45rem',
+                gap: '0.6rem',
                 border: '1px solid var(--accent-light)'
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                    <Users size={13} style={{ color: '#3B82F6' }} />
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <Users size={14} style={{ color: '#3B82F6' }} />
                     Aportes del fondo conjunto
                   </span>
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
                     Total: {formatCurrency(saved, selectedGoal.currency)}
                   </span>
                 </div>
-                {/* Dual progress bar */}
+                {/* Multi-member progress bar */}
                 <div style={{
-                  height: '7px',
+                  height: '8px',
                   width: '100%',
                   background: 'var(--surface-color)',
                   borderRadius: 'var(--radius-full)',
                   overflow: 'hidden',
                   display: 'flex'
                 }}>
-                  <div style={{
-                    width: `${userPct}%`,
-                    height: '100%',
-                    background: color,
-                    transition: 'width 0.4s ease'
-                  }} />
-                  <div style={{
-                    width: `${partnerPct}%`,
-                    height: '100%',
-                    background: '#3B82F6',
-                    transition: 'width 0.4s ease'
-                  }} />
+                  {memberStats.map((stat, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        width: `${stat.pct}%`,
+                        height: '100%',
+                        background: stat.color,
+                        transition: 'width 0.4s ease'
+                      }}
+                      title={`${stat.name}: ${stat.pct}%`}
+                    />
+                  ))}
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-                  <span style={{ color: color, fontWeight: 700 }}>
-                    ● Tú: {formatCurrency(userSaved, selectedGoal.currency)} ({userPct}%)
-                  </span>
-                  <span style={{ color: '#3B82F6', fontWeight: 700 }}>
-                    ● {selectedGoal.shared_partner_name || 'Tu pana'}: {formatCurrency(partnerSaved, selectedGoal.currency)} ({partnerPct}%)
-                  </span>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', fontSize: '0.75rem' }}>
+                  {memberStats.map((stat, i) => (
+                    <span key={i} style={{ color: stat.color, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <span>●</span> {stat.name}: {formatCurrency(stat.amount, selectedGoal.currency)} ({stat.pct}%)
+                    </span>
+                  ))}
                 </div>
               </div>
             );
@@ -694,31 +766,64 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
                       </div>
                     </div>
 
-                    <button
-                      onClick={() => setConfirmDelete({
-                        isOpen: true,
-                        depositId: d.id,
-                        title: '¿Eliminar aporte?',
-                        message: selectedGoal.is_shared
-                          ? `Se eliminará el aporte de ${formatCurrency(Number(d.amount), d.currency)} y se sincronizará con la cuenta de tu pana.`
-                          : `Se eliminará el aporte de ${formatCurrency(Number(d.amount), d.currency)}.`,
-                      })}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: 'var(--text-tertiary)',
-                        cursor: 'pointer',
-                        padding: '0.4rem',
-                        borderRadius: 'var(--radius-sm)',
-                      }}
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                    {d.can_edit !== false && (
+                      <button
+                        onClick={() => setConfirmDelete({
+                          isOpen: true,
+                          depositId: d.id,
+                          title: '¿Eliminar aporte?',
+                          message: selectedGoal.is_shared
+                            ? `Se eliminará el aporte de ${formatCurrency(Number(d.amount), d.currency)} y se sincronizará con todos los miembros.`
+                            : `Se eliminará el aporte de ${formatCurrency(Number(d.amount), d.currency)}.`,
+                        })}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--text-tertiary)',
+                          cursor: 'pointer',
+                          padding: '0.4rem',
+                          borderRadius: 'var(--radius-sm)',
+                        }}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
                   </div>
                 ))}
             </div>
           )}
         </div>
+
+        {activeShareModalItem && (
+          <ShareMembersModal
+            entityId={activeShareModalItem.id}
+            entityType="saving_goal"
+            entityName={activeShareModalItem.name}
+            onClose={() => setActiveShareModalItem(null)}
+            onUpdated={fetchData}
+            onSelfLeave={() => {
+              setActiveShareModalItem(null);
+              setSelectedGoal(null);
+              fetchData();
+              showToast('Has salido del fondo compartido');
+            }}
+          />
+        )}
+
+        {/* Confirmation Modal in Detail View */}
+        <ConfirmModal
+          isOpen={confirmDelete.isOpen}
+          title={confirmDelete.title || '¿Estás seguro?'}
+          message={confirmDelete.message || 'Esta acción no se puede deshacer.'}
+          onConfirm={() => {
+            if (confirmDelete.goalId) {
+              handleDeleteGoal(confirmDelete.goalId);
+            } else if (confirmDelete.depositId) {
+              handleDeleteDeposit(confirmDelete.depositId);
+            }
+          }}
+          onCancel={() => setConfirmDelete({ isOpen: false })}
+        />
       </div>
     );
   }
@@ -817,45 +922,73 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
       </header>
 
       {/* Summary Card */}
-      <div
-        onClick={cycleDisplayCurrency}
-        style={{
-          background: 'var(--surface-color)',
-          borderRadius: 'var(--radius-lg)',
-          padding: '1.25rem',
-          border: '1px solid var(--accent-light)',
-          boxShadow: 'var(--shadow-md)',
-          marginBottom: '1.25rem',
-          cursor: 'pointer',
-          position: 'relative',
-          overflow: 'hidden',
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.2rem' }}>
-              Total Ahorrado Acumulado
-            </span>
-            <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#10B981', letterSpacing: '-0.02em' }}>
-              {getTotalSaved()}
-            </div>
-            <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
-              Toca para cambiar divisa ({displayCurrency.toUpperCase()})
-            </span>
-          </div>
+      {(() => {
+        const { totalSaved, totalTarget } = getSummaryAmounts();
+        const totalTargetVal = totalTarget[displayCurrency] || 0;
+        const totalSavedVal = totalSaved[displayCurrency] || 0;
+        const globalProgress = totalTargetVal > 0 ? Math.min((totalSavedVal / totalTargetVal) * 100, 100) : 0;
 
-          <div style={{ display: 'flex', gap: '0.75rem' }}>
-            <div style={{ textAlign: 'center', background: 'var(--surface-muted)', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-md)' }}>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', display: 'block' }}>Activos</span>
-              <strong style={{ fontSize: '1.1rem', color: 'var(--text-primary)' }}>{activeGoalsCount}</strong>
+        return (
+          <div
+            className="soft-card"
+            onClick={cycleDisplayCurrency}
+            style={{ 
+              marginBottom: '1.5rem', 
+              padding: '1.5rem', 
+              cursor: 'pointer',
+              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.06) 0%, var(--surface-color) 100%)',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Total Ahorrado Acumulado
+              </span>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '0.5rem',
+                padding: '0.25rem 0.6rem', borderRadius: 'var(--radius-full)',
+                background: 'rgba(16, 185, 129, 0.1)', color: '#10B981',
+                fontSize: '0.75rem', fontWeight: 600,
+                whiteSpace: 'nowrap', flexShrink: 0
+              }}>
+                <PiggyBank size={14} />
+                {activeGoalsCount} activos
+              </div>
             </div>
-            <div style={{ textAlign: 'center', background: 'rgba(16, 185, 129, 0.1)', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-md)' }}>
-              <span style={{ fontSize: '0.7rem', color: '#10B981', display: 'block' }}>Logrados</span>
-              <strong style={{ fontSize: '1.1rem', color: '#10B981' }}>{completedGoalsCount}</strong>
+            <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+              {loading ? '...' : formatSummaryAmount(totalSaved)}
             </div>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginTop: '0.25rem', marginBottom: totalTargetVal > 0 ? '0.75rem' : '0' }}>
+              Toca para cambiar moneda
+            </div>
+
+            {totalTargetVal > 0 && (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                    {completedGoalsCount} de {goals.length} fondos completados
+                  </span>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#10B981' }}>
+                    {Math.round(globalProgress)}%
+                  </span>
+                </div>
+                <div style={{ width: '100%', background: 'var(--surface-muted)', borderRadius: 'var(--radius-full)', height: '6px', overflow: 'hidden' }}>
+                  <div style={{ 
+                    height: '100%', 
+                    background: '#10B981', 
+                    width: `${Math.min(globalProgress, 100)}%`,
+                    borderRadius: 'var(--radius-full)',
+                    transition: 'width 0.5s ease'
+                  }} />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.4rem' }}>
+                  <span>Meta total: {formatSummaryAmount(totalTarget)}</span>
+                  <span>{completedGoalsCount} logrados</span>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-      </div>
+        );
+      })()}
 
       {/* Tabs */}
       <div style={{
@@ -982,20 +1115,16 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
                     </h3>
                     <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
                       {goal.is_shared && (
-                        <span style={{
-                          fontSize: '0.7rem',
-                          fontWeight: 600,
-                          color: '#3B82F6',
-                          background: 'rgba(59, 130, 246, 0.12)',
-                          padding: '0.15rem 0.5rem',
-                          borderRadius: 'var(--radius-full)',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '0.25rem',
-                        }}>
-                          <Users size={11} />
-                          Pana: {goal.shared_partner_name || 'Conectado'}
-                        </span>
+                        <div
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveShareModalItem({ id: goal.id, name: goal.name });
+                          }}
+                          style={{ display: 'inline-block' }}
+                          title="Gestionar miembros del fondo de ahorro"
+                        >
+                          <MemberAvatars members={goal.shared_members} size={22} />
+                        </div>
                       )}
                       {goal.category && (
                         <span style={{
@@ -1109,6 +1238,21 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
         }}
         onCancel={() => setConfirmDelete({ isOpen: false })}
       />
+
+      {activeShareModalItem && (
+        <ShareMembersModal
+          entityId={activeShareModalItem.id}
+          entityType="saving_goal"
+          entityName={activeShareModalItem.name}
+          onClose={() => setActiveShareModalItem(null)}
+          onUpdated={fetchData}
+          onSelfLeave={() => {
+            setActiveShareModalItem(null);
+            fetchData();
+            showToast('Has salido del fondo compartido');
+          }}
+        />
+      )}
     </div>
   );
 };

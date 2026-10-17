@@ -4,67 +4,12 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy import or_, and_
 from fastapi import HTTPException
 from typing import List, Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 from decimal import Decimal
+from datetime import datetime, timezone, date
 
-from . import models, schemas
+from . import models, schemas, sharing
 from .push_service import send_notification_to_user
-
-
-async def _populate_shared_info(db: AsyncSession, debts: List[models.Debt], user_id: UUID) -> List[models.Debt]:
-    if not debts:
-        return debts
-    
-    debt_ids = [d.id for d in debts]
-    shared_result = await db.execute(
-        select(models.SharedDebt).where(
-            or_(
-                models.SharedDebt.debt_id.in_(debt_ids),
-                models.SharedDebt.mirror_debt_id.in_(debt_ids)
-            )
-        )
-    )
-    shared_records = shared_result.scalars().all()
-    if not shared_records:
-        for d in debts:
-            d.is_shared = False
-            d.shared_partner_name = None
-            d.shared_by = None
-        return debts
-
-    profile_ids = set()
-    for s in shared_records:
-        profile_ids.add(s.owner_id)
-        profile_ids.add(s.partner_id)
-        
-    profiles_result = await db.execute(
-        select(models.Profile).where(models.Profile.id.in_(profile_ids))
-    )
-    profiles = {p.id: p for p in profiles_result.scalars().all()}
-
-    shared_by_debt_id = {}
-    for s in shared_records:
-        shared_by_debt_id[s.debt_id] = s
-        if s.mirror_debt_id:
-            shared_by_debt_id[s.mirror_debt_id] = s
-
-    for d in debts:
-        if d.id in shared_by_debt_id:
-            s = shared_by_debt_id[d.id]
-            is_owner = s.owner_id == user_id
-            partner_id = s.partner_id if is_owner else s.owner_id
-            partner_profile = profiles.get(partner_id)
-            owner_profile = profiles.get(s.owner_id)
-
-            d.is_shared = True
-            d.shared_partner_name = partner_profile.display_name if partner_profile and partner_profile.display_name else "Usuario"
-            d.shared_by = owner_profile.display_name if owner_profile and owner_profile.display_name else "Usuario"
-        else:
-            d.is_shared = False
-            d.shared_partner_name = None
-            d.shared_by = None
-
-    return debts
 
 
 async def get_debts(db: AsyncSession, user_id: UUID, debt_type: str, is_settled: Optional[bool] = None):
@@ -79,7 +24,7 @@ async def get_debts(db: AsyncSession, user_id: UUID, debt_type: str, is_settled:
     query = query.order_by(models.Debt.created_at.desc())
     result = await db.execute(query)
     debts = result.scalars().all()
-    await _populate_shared_info(db, debts, user_id)
+    await sharing.populate_share_meta(db, debts, user_id, "debt")
     return debts
 
 
@@ -91,87 +36,53 @@ async def get_debt(db: AsyncSession, debt_id: UUID, user_id: UUID):
     )
     debt = result.scalars().first()
     if debt:
-        await _populate_shared_info(db, [debt], user_id)
+        await sharing.populate_share_meta(db, [debt], user_id, "debt")
     return debt
 
 
 async def create_debt(db: AsyncSession, debt: schemas.DebtCreate, user_id: UUID):
-    shared_with = debt.shared_with
-    debt_data = debt.model_dump(exclude={'shared_with'})
+    shared_with_ids = [tid for tid in (debt.shared_with_ids or []) if tid != user_id]
+    admin_ids = debt.admin_ids or []
     
-    if shared_with:
-        # Validate connection
-        conn_res = await db.execute(
-            select(models.Connection).where(
-                models.Connection.status == 'accepted',
-                or_(
-                    and_(models.Connection.requester_id == user_id, models.Connection.receiver_id == shared_with),
-                    and_(models.Connection.receiver_id == user_id, models.Connection.requester_id == shared_with)
-                )
-            )
-        )
-        if not conn_res.scalars().first():
-            raise HTTPException(status_code=400, detail="El usuario seleccionado no es una conexión aceptada")
-            
-        # Get profiles
+    debt_data = debt.model_dump(exclude={'shared_with', 'shared_with_ids', 'admin_ids'})
+    
+    # Primary debt created for current user
+    db_debt = models.Debt(**debt_data, user_id=user_id)
+    db.add(db_debt)
+    await db.flush()
+
+    if shared_with_ids:
+        # Validate connections
+        await sharing.assert_can_add(db, user_id, shared_with_ids)
+
         requester_prof_res = await db.execute(select(models.Profile).where(models.Profile.id == user_id))
         requester_prof = requester_prof_res.scalars().first()
         req_name = requester_prof.display_name if requester_prof and requester_prof.display_name else "Alguien"
 
-        partner_prof_res = await db.execute(select(models.Profile).where(models.Profile.id == shared_with))
-        partner_prof = partner_prof_res.scalars().first()
-        partner_name = partner_prof.display_name if partner_prof and partner_prof.display_name else "Usuario"
-
-        # Create primary debt
-        db_debt = models.Debt(**debt_data, user_id=user_id)
-        db.add(db_debt)
-        await db.flush()
-
-        # Create identical mirror debt for partner (same type and same counterpart, both share the debt together)
-        mirror_data = {
-            "type": debt.type,
-            "counterpart": debt.counterpart,
-            "concept": debt.concept,
-            "total_amount": debt.total_amount,
-            "currency": debt.currency.value if hasattr(debt.currency, "value") else str(debt.currency),
-            "start_date": debt.start_date,
-            "due_date": debt.due_date,
-            "is_settled": debt.is_settled,
-            "notes": debt.notes,
-            "user_id": shared_with
-        }
-        db_mirror = models.Debt(**mirror_data)
-        db.add(db_mirror)
-        await db.flush()
-
-        # Link in shared_debts
-        shared_record = models.SharedDebt(
-            debt_id=db_debt.id,
-            owner_id=user_id,
-            partner_id=shared_with,
-            mirror_debt_id=db_mirror.id
-        )
-        db.add(shared_record)
-
-        # Notify partner
-        await send_notification_to_user(
+        # Create multi-member share
+        share = await sharing.create_share(
             db=db,
-            user_id=shared_with,
+            entity_type="debt",
+            owner_id=user_id,
+            owner_entity=db_debt,
+            target_ids=shared_with_ids,
+            admin_ids=admin_ids
+        )
+
+        # Notify all target members
+        await sharing.notify_members(
+            db=db,
+            share_id=share.id,
+            exclude_user_id=user_id,
             title="Nueva deuda compartida",
             body=f"{req_name} creó una deuda compartida: {debt.concept}",
             type="shared_debt_created",
             url="/deudas"
         )
 
-        await db.commit()
-        await db.refresh(db_debt)
-        return await get_debt(db, db_debt.id, user_id)
-    else:
-        db_debt = models.Debt(**debt_data, user_id=user_id)
-        db.add(db_debt)
-        await db.commit()
-        await db.refresh(db_debt)
-        return await get_debt(db, db_debt.id, user_id)
+    await db.commit()
+    await db.refresh(db_debt)
+    return await get_debt(db, db_debt.id, user_id)
 
 
 async def update_debt(db: AsyncSession, debt_id: UUID, debt: schemas.DebtUpdate, user_id: UUID):
@@ -180,136 +91,79 @@ async def update_debt(db: AsyncSession, debt_id: UUID, debt: schemas.DebtUpdate,
         return None
         
     update_data = debt.model_dump(exclude_unset=True)
-    shared_with = update_data.pop('shared_with', None)
+    shared_with_ids = update_data.pop('shared_with_ids', None)
+    admin_ids = update_data.pop('admin_ids', None)
+    update_data.pop('shared_with', None)
 
-    # Check if this debt is shared
-    shared_res = await db.execute(
-        select(models.SharedDebt).where(
-            or_(
-                models.SharedDebt.debt_id == debt_id,
-                models.SharedDebt.mirror_debt_id == debt_id
-            )
-        )
-    )
-    shared_record = shared_res.scalars().first()
+    # Check if this debt is currently shared
+    membership = await sharing.get_membership(db, debt_id)
 
-    if shared_record:
-        if 'total_amount' in update_data and update_data['total_amount'] != db_debt.total_amount:
-            raise HTTPException(status_code=400, detail="No se puede modificar el monto de una deuda compartida")
-        if 'concept' in update_data and update_data['concept'] != db_debt.concept:
-            raise HTTPException(status_code=400, detail="No se puede modificar el concepto de una deuda compartida")
-        if 'counterpart' in update_data and update_data['counterpart'] != db_debt.counterpart:
-            raise HTTPException(status_code=400, detail="No se puede modificar la contraparte de una deuda compartida")
+    if membership:
+        share, member = membership
+        sharing.require_admin(member)
 
-        mirror_id = shared_record.mirror_debt_id if shared_record.debt_id == debt_id else shared_record.debt_id
-        if mirror_id:
-            mirror_res = await db.execute(select(models.Debt).where(models.Debt.id == mirror_id))
-            mirror_debt = mirror_res.scalars().first()
-            if mirror_debt:
-                old_settled = mirror_debt.is_settled
-                if 'is_settled' in update_data:
-                    mirror_debt.is_settled = update_data['is_settled']
-                if 'due_date' in update_data:
-                    mirror_debt.due_date = update_data['due_date']
-                
-                # Notify partner if manually marked as settled
-                if update_data.get('is_settled') is True and not old_settled:
-                    partner_id = shared_record.partner_id if shared_record.owner_id == user_id else shared_record.owner_id
-                    user_prof_res = await db.execute(select(models.Profile).where(models.Profile.id == user_id))
-                    user_prof = user_prof_res.scalars().first()
-                    user_name = user_prof.display_name if user_prof and user_prof.display_name else "Usuario"
-                    await send_notification_to_user(
-                        db=db,
-                        user_id=partner_id,
-                        title="¡Deuda saldada!",
-                        body=f"🎉 {user_name} marcó la deuda '{db_debt.concept}' como saldada",
-                        type="shared_debt_settled",
-                        url="/deudas"
-                    )
-    elif shared_with:
-        # Debt was not shared previously, but user is sharing it now
-        conn_res = await db.execute(
-            select(models.Connection).where(
-                models.Connection.status == 'accepted',
-                or_(
-                    and_(models.Connection.requester_id == user_id, models.Connection.receiver_id == shared_with),
-                    and_(models.Connection.receiver_id == user_id, models.Connection.requester_id == shared_with)
-                )
-            )
-        )
-        if not conn_res.scalars().first():
-            raise HTTPException(status_code=400, detail="El usuario seleccionado no es una conexión aceptada")
-
+        # Apply update to current user's debt
         for key, value in update_data.items():
             setattr(db_debt, key, value)
         await db.flush()
 
-        requester_prof_res = await db.execute(select(models.Profile).where(models.Profile.id == user_id))
-        requester_prof = requester_prof_res.scalars().first()
-        req_name = requester_prof.display_name if requester_prof and requester_prof.display_name else "Alguien"
+        # Sync changes to all sibling debts in the share
+        await sharing.sync_parent_fields(db, share, debt_id, update_data)
 
-        mirror_data = {
-            "type": db_debt.type,
-            "counterpart": db_debt.counterpart,
-            "concept": db_debt.concept,
-            "total_amount": db_debt.total_amount,
-            "currency": db_debt.currency.value if hasattr(db_debt.currency, "value") else str(db_debt.currency),
-            "start_date": db_debt.start_date,
-            "due_date": db_debt.due_date,
-            "is_settled": db_debt.is_settled,
-            "notes": db_debt.notes,
-            "user_id": shared_with
-        }
-        db_mirror = models.Debt(**mirror_data)
-        db.add(db_mirror)
+        # If financial fields changed, recalculate settlement for all members
+        siblings = await sharing.sibling_entity_ids(db, share.id)
+        all_debt_ids = list(siblings.values()) + [debt_id]
+        if 'total_amount' in update_data or 'currency' in update_data:
+            await sharing.recompute_settlement(db, "debt", all_debt_ids)
+
+        # If manually marked settled, notify members
+        if update_data.get('is_settled') is True:
+            user_prof_res = await db.execute(select(models.Profile).where(models.Profile.id == user_id))
+            user_prof = user_prof_res.scalars().first()
+            user_name = user_prof.display_name if user_prof and user_prof.display_name else "Usuario"
+            await sharing.notify_members(
+                db=db,
+                share_id=share.id,
+                exclude_user_id=user_id,
+                title="¡Deuda saldada!",
+                body=f"🎉 {user_name} marcó la deuda '{db_debt.concept}' como saldada",
+                type="shared_debt_settled",
+                url="/deudas"
+            )
+    else:
+        # Debt was not shared previously
+        for key, value in update_data.items():
+            setattr(db_debt, key, value)
         await db.flush()
 
-        shared_record = models.SharedDebt(
-            debt_id=db_debt.id,
-            owner_id=user_id,
-            partner_id=shared_with,
-            mirror_debt_id=db_mirror.id
-        )
-        db.add(shared_record)
+        # If user is now sharing it
+        if shared_with_ids:
+            clean_targets = [tid for tid in shared_with_ids if tid != user_id]
+            if clean_targets:
+                await sharing.assert_can_add(db, user_id, clean_targets)
+                share = await sharing.create_share(
+                    db=db,
+                    entity_type="debt",
+                    owner_id=user_id,
+                    owner_entity=db_debt,
+                    target_ids=clean_targets,
+                    admin_ids=admin_ids or []
+                )
 
-        # Copy existing payments to mirror debt if any exist
-        for p in db_debt.payments:
-            mirror_p_data = {
-                "debt_id": db_mirror.id,
-                "amount": p.amount,
-                "currency": p.currency,
-                "amount_usd": p.amount_usd,
-                "amount_bs": p.amount_bs,
-                "amount_eur": p.amount_eur,
-                "amount_usdt": p.amount_usdt,
-                "rate_usd_bs": p.rate_usd_bs,
-                "rate_eur_bs": p.rate_eur_bs,
-                "rate_usdt_bs": p.rate_usdt_bs,
-                "payment_date": p.payment_date,
-                "note": p.note,
-                "paid_by_name": p.paid_by_name or req_name,
-                "mirror_payment_id": p.id
-            }
-            db_mirror_p = models.DebtPayment(**mirror_p_data)
-            db.add(db_mirror_p)
-            await db.flush()
-            p.mirror_payment_id = db_mirror_p.id
+                user_prof_res = await db.execute(select(models.Profile).where(models.Profile.id == user_id))
+                user_prof = user_prof_res.scalars().first()
+                user_name = user_prof.display_name if user_prof and user_prof.display_name else "Alguien"
 
-        await send_notification_to_user(
-            db=db,
-            user_id=shared_with,
-            title="Nueva deuda compartida",
-            body=f"{req_name} compartió una deuda contigo: {db_debt.concept}",
-            type="shared_debt_created",
-            url="/deudas"
-        )
+                await sharing.notify_members(
+                    db=db,
+                    share_id=share.id,
+                    exclude_user_id=user_id,
+                    title="Nueva deuda compartida",
+                    body=f"{user_name} compartió una deuda contigo: {db_debt.concept}",
+                    type="shared_debt_created",
+                    url="/deudas"
+                )
 
-        await db.commit()
-        return await get_debt(db, debt_id, user_id)
-
-    for key, value in update_data.items():
-        setattr(db_debt, key, value)
-        
     await db.commit()
     return await get_debt(db, debt_id, user_id)
 
@@ -319,40 +173,44 @@ async def delete_debt(db: AsyncSession, debt_id: UUID, user_id: UUID):
     if not db_debt:
         return False
 
-    shared_res = await db.execute(
-        select(models.SharedDebt).where(
-            or_(
-                models.SharedDebt.debt_id == debt_id,
-                models.SharedDebt.mirror_debt_id == debt_id
+    membership = await sharing.get_membership(db, debt_id)
+
+    if membership:
+        share, member = membership
+        if member.role != "admin":
+            raise HTTPException(
+                status_code=403,
+                detail="Solo un administrador puede eliminar una deuda compartida. Si deseas dejar de verla, usa la opción 'Salir'."
             )
-        )
-    )
-    shared_record = shared_res.scalars().first()
-    if shared_record:
-        partner_id = shared_record.partner_id if shared_record.owner_id == user_id else shared_record.owner_id
+
         user_prof_res = await db.execute(select(models.Profile).where(models.Profile.id == user_id))
         user_prof = user_prof_res.scalars().first()
         user_name = user_prof.display_name if user_prof and user_prof.display_name else "Usuario"
         concept = db_debt.concept
 
-        mirror_id = shared_record.mirror_debt_id if shared_record.debt_id == debt_id else shared_record.debt_id
-        if mirror_id:
-            mirror_res = await db.execute(select(models.Debt).where(models.Debt.id == mirror_id))
-            mirror_debt = mirror_res.scalars().first()
-            if mirror_debt:
-                await db.delete(mirror_debt)
-        await db.delete(shared_record)
-
-        await send_notification_to_user(
+        # Notify members before deleting
+        await sharing.notify_members(
             db=db,
-            user_id=partner_id,
+            share_id=share.id,
+            exclude_user_id=user_id,
             title="Deuda compartida eliminada",
-            body=f"{user_name} eliminó la deuda compartida '{concept}'",
+            body=f"{user_name} eliminó la deuda compartida '{concept}' para todos los integrantes",
             type="shared_debt_deleted",
             url="/deudas"
         )
 
-    await db.delete(db_debt)
+        # Delete all member copies and share
+        members = await sharing.get_members(db, share.id)
+        for m in members:
+            res = await db.execute(select(models.Debt).where(models.Debt.id == m.entity_id))
+            d_obj = res.scalars().first()
+            if d_obj:
+                await db.delete(d_obj)
+
+        await db.delete(share)
+    else:
+        await db.delete(db_debt)
+
     await db.commit()
     return True
 
@@ -373,13 +231,19 @@ async def add_debt_payment(db: AsyncSession, debt_id: UUID, user_id: UUID, payme
     payer_prof = payer_prof_res.scalars().first()
     payer_name = payer_prof.display_name if payer_prof and payer_prof.display_name else "Usuario"
 
-    db_payment = models.DebtPayment(**data, debt_id=debt_id, paid_by_name=payer_name)
+    sync_uuid = uuid4()
+    db_payment = models.DebtPayment(
+        **data,
+        debt_id=debt_id,
+        paid_by_name=payer_name,
+        paid_by_user_id=user_id,
+        sync_id=sync_uuid
+    )
     db.add(db_payment)
     db_debt.payments.append(db_payment)
     await db.flush()
 
     if register_as_expense:
-        from datetime import date
         expense_data = {
             "amount": data["amount"],
             "currency": data["currency"],
@@ -395,98 +259,99 @@ async def add_debt_payment(db: AsyncSession, debt_id: UUID, user_id: UUID, payme
         db_expense = models.Expense(**expense_data)
         db.add(db_expense)
 
-    # Check if this debt is shared
-    shared_res = await db.execute(
-        select(models.SharedDebt).where(
-            or_(
-                models.SharedDebt.debt_id == debt_id,
-                models.SharedDebt.mirror_debt_id == debt_id
-            )
+    membership = await sharing.get_membership(db, debt_id)
+
+    if membership:
+        share, member = membership
+        await sharing.fan_out_child_create(
+            db=db,
+            share=share,
+            source_child=db_payment,
+            child_data=data,
+            child_model=models.DebtPayment,
+            parent_fk_name="debt_id",
+            payer_id=user_id,
+            payer_name=payer_name
         )
-    )
-    shared_record = shared_res.scalars().first()
 
-    partner_id = None
-    if shared_record:
-        is_owner = shared_record.owner_id == user_id
-        partner_id = shared_record.partner_id if is_owner else shared_record.owner_id
-        mirror_debt_id = shared_record.mirror_debt_id if shared_record.debt_id == debt_id else shared_record.debt_id
-        
-        if mirror_debt_id:
-            mirror_payment_data = {**data}
-            mirror_payment_data['debt_id'] = mirror_debt_id
-            mirror_payment_data['paid_by_name'] = payer_name
-            mirror_payment_data['mirror_payment_id'] = db_payment.id
-            db_mirror_payment = models.DebtPayment(**mirror_payment_data)
-            db.add(db_mirror_payment)
-            await db.flush()
-            db_payment.mirror_payment_id = db_mirror_payment.id
+        siblings = await sharing.sibling_entity_ids(db, share.id)
+        all_debt_ids = list(siblings.values()) + [debt_id]
+        await sharing.recompute_settlement(db, "debt", all_debt_ids)
 
-            # Check mirror debt settlement
-            mirror_debt_res = await db.execute(
-                select(models.Debt).where(models.Debt.id == mirror_debt_id).options(selectinload(models.Debt.payments))
-            )
-            mirror_debt = mirror_debt_res.scalars().first()
-            if mirror_debt:
-                cur_key = "amount_" + mirror_debt.currency.lower().replace("_bcv", "").replace("_cash", "")
-                m_total_paid = Decimal("0")
-                for p in mirror_debt.payments:
-                    if p.currency == mirror_debt.currency:
-                        m_total_paid += p.amount
-                    else:
-                        equiv = getattr(p, cur_key, None)
-                        if equiv is not None:
-                            m_total_paid += equiv
-                if m_total_paid >= mirror_debt.total_amount and not mirror_debt.is_settled:
-                    mirror_debt.is_settled = True
-
-    await db.commit()
-    
-    # Reload debt with all payments to check settlement
-    db.expire(db_debt)
-    db_debt = await get_debt(db, debt_id, user_id)
-    
-    # Auto-detect if debt is fully paid
-    currency_key = "amount_" + db_debt.currency.lower().replace("_bcv", "").replace("_cash", "")
-    total_paid = Decimal("0")
-    for p in db_debt.payments:
-        if p.currency == db_debt.currency:
-            total_paid += p.amount
-        else:
-            equivalent = getattr(p, currency_key, None)
-            if equivalent is not None:
-                total_paid += equivalent
-    
-    just_settled = False
-    if total_paid >= db_debt.total_amount and not db_debt.is_settled:
-        db_debt.is_settled = True
-        just_settled = True
-        await db.commit()
-
-    # Send push notification to partner
-    if partner_id:
+        # Check if settled after payment
+        await db.refresh(db_debt)
         curr_label = payment.currency.value if hasattr(payment.currency, "value") else str(payment.currency)
-        if just_settled:
-            await send_notification_to_user(
+        if db_debt.is_settled:
+            await sharing.notify_members(
                 db=db,
-                user_id=partner_id,
+                share_id=share.id,
+                exclude_user_id=user_id,
                 title="¡Deuda saldada!",
                 body=f"🎉 ¡La deuda '{db_debt.concept}' fue saldada por {payer_name} con un abono de {payment.amount} {curr_label}!",
                 type="shared_debt_settled",
                 url="/deudas"
             )
         else:
-            await send_notification_to_user(
+            await sharing.notify_members(
                 db=db,
-                user_id=partner_id,
+                share_id=share.id,
+                exclude_user_id=user_id,
                 title="Nuevo abono en deuda compartida",
                 body=f"{payer_name} abonó {payment.amount} {curr_label} a la deuda '{db_debt.concept}'",
                 type="shared_debt_payment",
                 url="/deudas"
             )
-        await db.commit()
-    
+    else:
+        # Check settlement on personal debt
+        await sharing.recompute_settlement(db, "debt", [debt_id])
+
+    await db.commit()
     return await get_debt(db, debt_id, user_id)
+
+
+async def update_debt_payment(
+    db: AsyncSession,
+    payment_id: UUID,
+    user_id: UUID,
+    payment_update: schemas.DebtPaymentUpdate,
+    extra_data: dict = None
+):
+    result = await db.execute(
+        select(models.DebtPayment)
+        .join(models.Debt)
+        .filter(models.DebtPayment.id == payment_id, models.Debt.user_id == user_id)
+    )
+    payment = result.scalars().first()
+    if not payment:
+        return None
+
+    membership = await sharing.get_membership(db, payment.debt_id)
+    if membership:
+        share, member = membership
+        if not sharing.can_edit_child(member, payment.paid_by_user_id):
+            raise HTTPException(status_code=403, detail="Solo puedes editar tus propios abonos o debes ser administrador")
+
+    update_dict = payment_update.model_dump(exclude_unset=True)
+    if 'manual_rate' in update_dict:
+        del update_dict['manual_rate']
+    if extra_data:
+        update_dict.update(extra_data)
+
+    for k, v in update_dict.items():
+        setattr(payment, k, v)
+    await db.flush()
+
+    if membership and payment.sync_id:
+        share, _ = membership
+        await sharing.fan_out_child_update(db, models.DebtPayment, payment.sync_id, update_dict)
+        siblings = await sharing.sibling_entity_ids(db, share.id)
+        all_debt_ids = list(siblings.values()) + [payment.debt_id]
+        await sharing.recompute_settlement(db, "debt", all_debt_ids)
+    else:
+        await sharing.recompute_settlement(db, "debt", [payment.debt_id])
+
+    await db.commit()
+    return await get_debt(db, payment.debt_id, user_id)
 
 
 async def delete_debt_payment(db: AsyncSession, payment_id: UUID, user_id: UUID):
@@ -500,80 +365,44 @@ async def delete_debt_payment(db: AsyncSession, payment_id: UUID, user_id: UUID)
         return None
         
     debt_id = payment.debt_id
-    mirror_payment_id = payment.mirror_payment_id
+    sync_id = payment.sync_id or payment.id
+    amount_label = f"{payment.amount} {payment.currency}"
 
-    # If this payment has a mirror payment, delete it and recalculate settlement on mirror debt
-    if mirror_payment_id:
-        mirror_payment_res = await db.execute(
-            select(models.DebtPayment).where(models.DebtPayment.id == mirror_payment_id)
+    membership = await sharing.get_membership(db, debt_id)
+
+    if membership:
+        share, member = membership
+        if not sharing.can_edit_child(member, payment.paid_by_user_id):
+            raise HTTPException(status_code=403, detail="Solo puedes eliminar tus propios abonos o debes ser administrador")
+
+        user_prof_res = await db.execute(select(models.Profile).where(models.Profile.id == user_id))
+        user_prof = user_prof_res.scalars().first()
+        user_name = user_prof.display_name if user_prof and user_prof.display_name else "Usuario"
+
+        debt_res = await db.execute(select(models.Debt).where(models.Debt.id == debt_id))
+        debt_obj = debt_res.scalars().first()
+        concept = debt_obj.concept if debt_obj else "Deuda"
+
+        # Delete across all siblings via sync_id
+        await sharing.fan_out_child_delete(db, models.DebtPayment, sync_id)
+
+        siblings = await sharing.sibling_entity_ids(db, share.id)
+        all_debt_ids = list(siblings.values()) + [debt_id]
+        await sharing.recompute_settlement(db, "debt", all_debt_ids)
+
+        await sharing.notify_members(
+            db=db,
+            share_id=share.id,
+            exclude_user_id=user_id,
+            title="Abono eliminado",
+            body=f"{user_name} eliminó un abono de {amount_label} en la deuda '{concept}'",
+            type="shared_debt_payment",
+            url="/deudas"
         )
-        mirror_payment = mirror_payment_res.scalars().first()
-        if mirror_payment:
-            mirror_debt_id = mirror_payment.debt_id
-            await db.delete(mirror_payment)
-            await db.flush()
-            
-            mirror_debt_res = await db.execute(
-                select(models.Debt).where(models.Debt.id == mirror_debt_id).options(selectinload(models.Debt.payments))
-            )
-            mirror_debt = mirror_debt_res.scalars().first()
-            if mirror_debt:
-                cur_key = "amount_" + mirror_debt.currency.lower().replace("_bcv", "").replace("_cash", "")
-                m_total_paid = Decimal("0")
-                for p in mirror_debt.payments:
-                    if p.currency == mirror_debt.currency:
-                        m_total_paid += p.amount
-                    else:
-                        equiv = getattr(p, cur_key, None)
-                        if equiv is not None:
-                            m_total_paid += equiv
-                if m_total_paid < mirror_debt.total_amount and mirror_debt.is_settled:
-                    mirror_debt.is_settled = False
+    else:
+        await db.delete(payment)
+        await db.flush()
+        await sharing.recompute_settlement(db, "debt", [debt_id])
 
-        # Notify partner about deleted payment in shared debt
-        shared_res = await db.execute(
-            select(models.SharedDebt).where(
-                or_(
-                    models.SharedDebt.debt_id == debt_id,
-                    models.SharedDebt.mirror_debt_id == debt_id
-                )
-            )
-        )
-        shared_record = shared_res.scalars().first()
-        if shared_record:
-            partner_id = shared_record.partner_id if shared_record.owner_id == user_id else shared_record.owner_id
-            user_prof_res = await db.execute(select(models.Profile).where(models.Profile.id == user_id))
-            user_prof = user_prof_res.scalars().first()
-            user_name = user_prof.display_name if user_prof and user_prof.display_name else "Usuario"
-            debt_res = await db.execute(select(models.Debt).where(models.Debt.id == debt_id))
-            debt_obj = debt_res.scalars().first()
-            debt_concept = debt_obj.concept if debt_obj else "Deuda"
-            await send_notification_to_user(
-                db=db,
-                user_id=partner_id,
-                title="Abono eliminado",
-                body=f"{user_name} eliminó un abono de {payment.amount} {payment.currency} en la deuda '{debt_concept}'",
-                type="shared_debt_payment",
-                url="/deudas"
-            )
-
-    await db.delete(payment)
     await db.commit()
-    
-    db_debt = await get_debt(db, debt_id, user_id)
-    
-    currency_key = "amount_" + db_debt.currency.lower().replace("_bcv", "").replace("_cash", "")
-    total_paid = Decimal("0")
-    for p in db_debt.payments:
-        if p.currency == db_debt.currency:
-            total_paid += p.amount
-        else:
-            equivalent = getattr(p, currency_key, None)
-            if equivalent is not None:
-                total_paid += equivalent
-    
-    if total_paid < db_debt.total_amount and db_debt.is_settled:
-        db_debt.is_settled = False
-        await db.commit()
-        
     return await get_debt(db, debt_id, user_id)

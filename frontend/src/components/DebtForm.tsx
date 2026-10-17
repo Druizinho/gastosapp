@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Info, X, Wallet } from 'lucide-react';
+import { Users, X, Wallet } from 'lucide-react';
 import type { Debt, DebtCreate, DebtUpdate, Connection } from '../types';
+import { CURRENCY_OPTIONS } from '../types';
 import { getConnections } from '../api';
+import { ParticipantPicker } from './panas/ParticipantPicker';
 
 interface DebtFormProps {
   initialData?: Debt;
@@ -17,7 +19,8 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
 
   const [connections, setConnections] = useState<Connection[]>([]);
   const [isSharedChecked, setIsSharedChecked] = useState(false);
-  const [selectedPartnerId, setSelectedPartnerId] = useState('');
+  const [selectedPartnerIds, setSelectedPartnerIds] = useState<string[]>([]);
+  const [adminPartnerIds, setAdminPartnerIds] = useState<string[]>([]);
 
   const [formData, setFormData] = useState<DebtCreate>({
     type,
@@ -29,7 +32,9 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
     due_date: '',
     is_settled: false,
     notes: '',
-    shared_with: null
+    shared_with: null,
+    shared_with_ids: [],
+    admin_ids: []
   });
 
   useEffect(() => {
@@ -64,10 +69,18 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const submitData = { ...formData };
+    const submitData: any = { ...formData };
     submitData.total_amount = Number(submitData.total_amount);
     if (!submitData.due_date) submitData.due_date = null;
-    if (!isSharedChecked) submitData.shared_with = null;
+    if (isSharedChecked && selectedPartnerIds.length > 0) {
+      submitData.shared_with_ids = selectedPartnerIds;
+      submitData.admin_ids = adminPartnerIds;
+      submitData.shared_with = selectedPartnerIds[0];
+    } else {
+      submitData.shared_with = null;
+      submitData.shared_with_ids = [];
+      submitData.admin_ids = [];
+    }
     onSubmit(submitData);
   };
 
@@ -231,11 +244,9 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
                 onChange={handleChange}
                 style={{ ...inputStyle, ...(isSharedDebt ? { opacity: 0.65, cursor: 'not-allowed' } : {}) }}
               >
-                <option value="BS">Bolívares (BS)</option>
-                <option value="USD_BCV">Dólar BCV</option>
-                <option value="EUR_BCV">Euro BCV</option>
-                <option value="USDT">USDT (Binance)</option>
-                <option value="USD_CASH">Dólares Efectivo</option>
+                {CURRENCY_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
               </select>
             </div>
           </div>
@@ -256,61 +267,32 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
                     const checked = e.target.checked;
                     setIsSharedChecked(checked);
                     if (!checked) {
-                      setSelectedPartnerId('');
-                      setFormData(prev => ({ ...prev, shared_with: null }));
-                    } else if (connections.length > 0) {
-                      const first = connections[0];
-                      setSelectedPartnerId(first.partner_id);
-                      setFormData(prev => ({
-                        ...prev,
-                        shared_with: first.partner_id
-                      }));
+                      setSelectedPartnerIds([]);
+                      setAdminPartnerIds([]);
                     }
                   }}
-                  style={{ width: '18px', height: '18px', accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+                  style={{ width: '18px', height: '18px', accentColor: themeColor, cursor: 'pointer' }}
                 />
                 <label htmlFor="share_debt" style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <Users size={16} /> Compartir con un Pana
+                  <Users size={16} /> Compartir con Panas (Grupos)
                 </label>
               </div>
 
               {isSharedChecked && (
                 <div style={{ marginTop: '0.75rem' }}>
-                  {connections.length === 0 ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-tertiary)', fontSize: '0.8rem' }}>
-                      <Info size={14} />
-                      <span>
-                        No tienes panas conectados. Ve a <strong>Herramientas &gt; Panas</strong> para conectar con otros perfiles.
-                      </span>
-                    </div>
-                  ) : (
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>
-                        Seleccionar Pana
-                      </label>
-                      <select
-                        value={selectedPartnerId}
-                        onChange={(e) => {
-                          const partnerId = e.target.value;
-                          setSelectedPartnerId(partnerId);
-                          setFormData(prev => ({
-                            ...prev,
-                            shared_with: partnerId
-                          }));
-                        }}
-                        style={inputStyle}
-                      >
-                        {connections.map(c => (
-                          <option key={c.id} value={c.partner_id}>
-                            👤 {c.partner_name}
-                          </option>
-                        ))}
-                      </select>
-                      <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '0.35rem', marginBottom: 0 }}>
-                        Ambos compartirán la misma deuda frente a la contraparte ({type === 'owed' ? 'ambos la deben' : 'a ambos les deben'}). Los abonos de cualquiera reducirán el saldo pendiente.
-                      </p>
-                    </div>
-                  )}
+                  <ParticipantPicker
+                    connections={connections}
+                    selectedIds={selectedPartnerIds}
+                    adminIds={adminPartnerIds}
+                    onChange={(s, a) => {
+                      setSelectedPartnerIds(s);
+                      setAdminPartnerIds(a);
+                    }}
+                    accentColor={themeColor}
+                  />
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '0.45rem', marginBottom: 0, lineHeight: 1.35 }}>
+                    Todos los integrantes verán la deuda completa y sus abonos. Puedes asignar quién es Administrador o Miembro.
+                  </p>
                 </div>
               )}
             </div>

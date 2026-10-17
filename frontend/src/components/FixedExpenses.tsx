@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Receipt, Pause, Play, Trash2, Edit3, Calendar, CheckCircle2, Circle, Undo2, Users } from 'lucide-react';
+import { ArrowLeft, Plus, Receipt, Pause, Play, Trash2, Edit3, Calendar, CheckCircle2, Circle, Undo2 } from 'lucide-react';
 import { getFixedExpenses, getFixedExpenseSummary, createFixedExpense, updateFixedExpense, deleteFixedExpense, checkFixedExpense, uncheckFixedExpense } from '../api';
 import type { FixedExpense, FixedExpenseCreate, FixedExpenseUpdate, FixedExpenseSummary, FixedExpenseCheckCreate } from '../types';
 import FixedExpenseForm from './FixedExpenseForm';
 import FixedExpensePayForm from './FixedExpensePayForm';
 import ConfirmModal from './ConfirmModal';
+import { MemberAvatars, ShareMembersModal } from './panas';
 
 const currencyLabels: Record<string, string> = {
   'USD_BCV': '$',
@@ -31,6 +32,7 @@ const FixedExpenses: React.FC = () => {
   const [editingExpense, setEditingExpense] = useState<FixedExpense | null>(null);
   const [payingExpense, setPayingExpense] = useState<FixedExpense | null>(null);
   const [confirmDelete, setConfirmDelete] = useState({ isOpen: false, expenseId: '' });
+  const [activeShareModalItem, setActiveShareModalItem] = useState<{ id: string; name: string } | null>(null);
   const [displayCurrency, setDisplayCurrency] = useState<'bs' | 'usd' | 'eur' | 'usdt'>('usd');
   const [activeTab, setActiveTab] = useState<'pending' | 'paid'>('pending');
 
@@ -216,15 +218,16 @@ const FixedExpenses: React.FC = () => {
                 </span>
               )}
               {expense.is_shared && (
-                <span style={{
-                  display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
-                  fontSize: '0.7rem', fontWeight: 600,
-                  color: 'var(--accent-color)', background: 'rgba(59, 130, 246, 0.1)',
-                  padding: '0.15rem 0.5rem', borderRadius: 'var(--radius-full)',
-                }}>
-                  <Users size={12} />
-                  Compartido con {expense.shared_partner_name ? `tu pana ${expense.shared_partner_name}` : 'tu pana'}
-                </span>
+                <div
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveShareModalItem({ id: expense.id, name: expense.name });
+                  }}
+                  style={{ marginTop: '0.25rem', display: 'inline-block' }}
+                  title="Gestionar miembros del gasto fijo"
+                >
+                  <MemberAvatars members={expense.shared_members} size={22} />
+                </div>
               )}
             </div>
           </div>
@@ -310,11 +313,14 @@ const FixedExpenses: React.FC = () => {
             {expense.is_active && isPaid && (
               <button
                 onClick={() => handleUncheck(expense)}
-                title="Deshacer pago"
+                disabled={check?.can_edit === false}
+                title={check?.can_edit === false ? "Solo quien registró el pago o un admin puede deshacerlo" : "Deshacer pago"}
                 style={{
                   width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
                   background: 'rgba(16, 185, 129, 0.15)', border: 'none', display: 'flex',
-                  alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                  alignItems: 'center', justifyContent: 'center',
+                  cursor: check?.can_edit === false ? 'not-allowed' : 'pointer',
+                  opacity: check?.can_edit === false ? 0.4 : 1,
                   color: 'var(--income-color)', transition: 'all 0.15s ease',
                 }}
               >
@@ -323,11 +329,14 @@ const FixedExpenses: React.FC = () => {
             )}
             <button
               onClick={() => handleToggleActive(expense)}
-              title={expense.is_active ? 'Pausar' : 'Reactivar'}
+              disabled={expense.is_shared && expense.my_role === 'member'}
+              title={expense.is_shared && expense.my_role === 'member' ? 'Solo administradores pueden pausar/reactivar' : (expense.is_active ? 'Pausar' : 'Reactivar')}
               style={{
                 width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
                 background: 'var(--surface-muted)', border: 'none', display: 'flex',
-                alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                alignItems: 'center', justifyContent: 'center',
+                cursor: (expense.is_shared && expense.my_role === 'member') ? 'not-allowed' : 'pointer',
+                opacity: (expense.is_shared && expense.my_role === 'member') ? 0.4 : 1,
                 color: expense.is_active ? 'var(--warning-color)' : 'var(--income-color)',
                 transition: 'all 0.15s ease',
               }}
@@ -336,11 +345,14 @@ const FixedExpenses: React.FC = () => {
             </button>
             <button
               onClick={() => { setEditingExpense(expense); setIsFormOpen(true); }}
-              title="Editar"
+              disabled={expense.is_shared && expense.my_role === 'member'}
+              title={expense.is_shared && expense.my_role === 'member' ? 'Solo administradores pueden editar el gasto fijo' : 'Editar'}
               style={{
                 width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
                 background: 'var(--surface-muted)', border: 'none', display: 'flex',
-                alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                alignItems: 'center', justifyContent: 'center',
+                cursor: (expense.is_shared && expense.my_role === 'member') ? 'not-allowed' : 'pointer',
+                opacity: (expense.is_shared && expense.my_role === 'member') ? 0.4 : 1,
                 color: 'var(--text-secondary)', transition: 'all 0.15s ease',
               }}
             >
@@ -348,11 +360,14 @@ const FixedExpenses: React.FC = () => {
             </button>
             <button
               onClick={() => setConfirmDelete({ isOpen: true, expenseId: expense.id })}
-              title="Eliminar"
+              disabled={expense.is_shared && expense.my_role === 'member'}
+              title={expense.is_shared && expense.my_role === 'member' ? 'Solo administradores pueden dar de baja el gasto fijo' : 'Eliminar'}
               style={{
                 width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
                 background: 'var(--surface-muted)', border: 'none', display: 'flex',
-                alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                alignItems: 'center', justifyContent: 'center',
+                cursor: (expense.is_shared && expense.my_role === 'member') ? 'not-allowed' : 'pointer',
+                opacity: (expense.is_shared && expense.my_role === 'member') ? 0.4 : 1,
                 color: 'var(--expense-color)', transition: 'all 0.15s ease',
               }}
             >
@@ -630,13 +645,27 @@ const FixedExpenses: React.FC = () => {
             isOpen={confirmDelete.isOpen}
             title="Dar de baja / Eliminar gasto fijo"
             message={toDelete?.is_shared
-              ? `Este gasto fijo está compartido con ${toDelete.shared_partner_name ? `tu pana ${toDelete.shared_partner_name}` : 'tu pana'}. A partir de este mes dejará de aparecer para ambos. Si registraste pagos en meses anteriores, se mantendrán en el historial. ¿Deseas continuar?`
+              ? `Este gasto fijo está compartido con tus panas (${toDelete.shared_members?.length || 2} miembros). A partir de este mes dejará de aparecer para todos. Si registraste pagos en meses anteriores, se mantendrán en el historial. ¿Deseas continuar?`
               : "¿Estás seguro de que quieres dar de baja este gasto fijo? A partir de este mes dejará de aparecer. Si registraste pagos en meses anteriores, se mantendrán protegidos en tu historial."}
             onConfirm={handleConfirmDelete}
             onCancel={() => setConfirmDelete({ isOpen: false, expenseId: '' })}
           />
         );
       })()}
+
+      {activeShareModalItem && (
+        <ShareMembersModal
+          entityId={activeShareModalItem.id}
+          entityType="fixed_expense"
+          entityName={activeShareModalItem.name}
+          onClose={() => setActiveShareModalItem(null)}
+          onUpdated={fetchData}
+          onSelfLeave={() => {
+            setActiveShareModalItem(null);
+            fetchData();
+          }}
+        />
+      )}
     </div>
   );
 };

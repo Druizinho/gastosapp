@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Users, X, Receipt } from 'lucide-react';
 import type { DebtPaymentCreate } from '../types';
+import { CURRENCY_OPTIONS } from '../types';
 import ConfirmModal from './ConfirmModal';
 
 interface DebtPaymentFormProps {
@@ -184,7 +185,7 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
             }}>
               <Users size={16} style={{ flexShrink: 0 }} />
               <span>
-                Este abono se sincronizará automáticamente con la cuenta de <strong>{sharedPartnerName ? `tu pana ${sharedPartnerName}` : 'tu pana'}</strong>.
+                Este abono se sincronizará automáticamente con todos los miembros del grupo{sharedPartnerName ? ` (${sharedPartnerName})` : ''}.
               </span>
             </div>
           )}
@@ -257,11 +258,9 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
                 onChange={handleChange}
                 style={inputStyle}
               >
-                <option value="BS">Bolívares (BS)</option>
-                <option value="USD_BCV">Dólar BCV</option>
-                <option value="EUR_BCV">Euro BCV</option>
-                <option value="USDT">USDT (Binance)</option>
-                <option value="USD_CASH">Dólares Efectivo</option>
+                {CURRENCY_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
               </select>
             </div>
           </div>

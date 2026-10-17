@@ -1,10 +1,40 @@
-from pydantic import BaseModel, ConfigDict, Field
-from typing import Optional, List
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from typing import Optional, List, Any
 import datetime
 from uuid import UUID
 from decimal import Decimal
 
 from enum import Enum
+
+class ShareRole(str, Enum):
+    admin = "admin"
+    member = "member"
+
+class ShareMemberOut(BaseModel):
+    user_id: UUID
+    name: str
+    role: ShareRole
+    avatar_url: Optional[str] = None
+    is_me: bool = False
+    is_owner: bool = False
+    is_my_pana: bool = False
+    pana_request_pending: bool = False
+
+    model_config = ConfigDict(from_attributes=True)
+
+class ShareInfoOut(BaseModel):
+    share_id: UUID
+    entity_type: str
+    my_role: ShareRole
+    owner_id: UUID
+    members: List[ShareMemberOut]
+
+class ShareMembersAdd(BaseModel):
+    user_ids: List[UUID] = Field(..., min_length=1)
+    admin_ids: List[UUID] = []
+
+class ShareRoleUpdate(BaseModel):
+    role: ShareRole
 
 class CurrencyType(str, Enum):
     USD_BCV = "USD_BCV"
@@ -132,6 +162,18 @@ class FixedExpenseBase(BaseModel):
 class FixedExpenseCreate(FixedExpenseBase):
     manual_rate: Optional[Decimal] = Field(None, gt=0)
     shared_with: Optional[UUID] = None
+    shared_with_ids: List[UUID] = []
+    admin_ids: List[UUID] = []
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_shared_with(cls, data: Any):
+        if isinstance(data, dict):
+            sw = data.get("shared_with")
+            sw_ids = data.get("shared_with_ids") or []
+            if sw and sw not in sw_ids:
+                data["shared_with_ids"] = [sw] + sw_ids
+        return data
 
 class FixedExpenseUpdate(BaseModel):
     name: Optional[str] = None
@@ -143,6 +185,18 @@ class FixedExpenseUpdate(BaseModel):
     notes: Optional[str] = None
     manual_rate: Optional[Decimal] = Field(None, gt=0)
     shared_with: Optional[UUID] = None
+    shared_with_ids: Optional[List[UUID]] = None
+    admin_ids: Optional[List[UUID]] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_shared_with(cls, data: Any):
+        if isinstance(data, dict):
+            sw = data.get("shared_with")
+            sw_ids = data.get("shared_with_ids")
+            if sw and not sw_ids:
+                data["shared_with_ids"] = [sw]
+        return data
 
 # Fixed Expense Check Schemas
 
@@ -158,6 +212,13 @@ class FixedExpenseCheckCreate(FixedExpenseCheckBase):
     manual_rate: Optional[Decimal] = Field(None, gt=0)
     paid_by_name: Optional[str] = None
 
+class FixedExpenseCheckUpdate(BaseModel):
+    paid_amount: Optional[Decimal] = Field(None, gt=0)
+    currency: Optional[CurrencyType] = None
+    paid_date: Optional[datetime.date] = None
+    notes: Optional[str] = None
+    manual_rate: Optional[Decimal] = Field(None, gt=0)
+
 class FixedExpenseCheckResponse(FixedExpenseCheckBase):
     id: UUID
     fixed_expense_id: UUID
@@ -171,6 +232,9 @@ class FixedExpenseCheckResponse(FixedExpenseCheckBase):
     rate_eur_bs: Optional[Decimal] = None
     rate_usdt_bs: Optional[Decimal] = None
     paid_by_name: Optional[str] = None
+    paid_by_user_id: Optional[UUID] = None
+    sync_id: Optional[UUID] = None
+    can_edit: bool = True
     mirror_check_id: Optional[UUID] = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -189,6 +253,9 @@ class FixedExpenseResponse(FixedExpenseBase):
     rate_usdt_bs: Optional[Decimal] = None
     last_paid_month: Optional[str] = None
     is_shared: bool = False
+    share_id: Optional[UUID] = None
+    my_role: Optional[ShareRole] = None
+    shared_members: List[ShareMemberOut] = []
     shared_partner_name: Optional[str] = None
     shared_by: Optional[str] = None
     checks: List[FixedExpenseCheckResponse] = []
@@ -216,6 +283,13 @@ class DebtPaymentCreate(DebtPaymentBase):
     manual_rate: Optional[Decimal] = Field(None, gt=0)
     register_as_expense: bool = False
 
+class DebtPaymentUpdate(BaseModel):
+    amount: Optional[Decimal] = Field(None, gt=0)
+    currency: Optional[CurrencyType] = None
+    payment_date: Optional[datetime.date] = None
+    note: Optional[str] = None
+    manual_rate: Optional[Decimal] = Field(None, gt=0)
+
 class DebtPaymentResponse(DebtPaymentBase):
     id: UUID
     debt_id: UUID
@@ -228,6 +302,9 @@ class DebtPaymentResponse(DebtPaymentBase):
     rate_eur_bs: Optional[Decimal] = None
     rate_usdt_bs: Optional[Decimal] = None
     paid_by_name: Optional[str] = None
+    paid_by_user_id: Optional[UUID] = None
+    sync_id: Optional[UUID] = None
+    can_edit: bool = True
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -244,6 +321,18 @@ class DebtBase(BaseModel):
 
 class DebtCreate(DebtBase):
     shared_with: Optional[UUID] = None
+    shared_with_ids: List[UUID] = []
+    admin_ids: List[UUID] = []
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_shared_with(cls, data: Any):
+        if isinstance(data, dict):
+            sw = data.get("shared_with")
+            sw_ids = data.get("shared_with_ids") or []
+            if sw and sw not in sw_ids:
+                data["shared_with_ids"] = [sw] + sw_ids
+        return data
 
 class DebtUpdate(BaseModel):
     counterpart: Optional[str] = None
@@ -254,6 +343,18 @@ class DebtUpdate(BaseModel):
     is_settled: Optional[bool] = None
     notes: Optional[str] = None
     shared_with: Optional[UUID] = None
+    shared_with_ids: Optional[List[UUID]] = None
+    admin_ids: Optional[List[UUID]] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_shared_with(cls, data: Any):
+        if isinstance(data, dict):
+            sw = data.get("shared_with")
+            sw_ids = data.get("shared_with_ids")
+            if sw and not sw_ids:
+                data["shared_with_ids"] = [sw]
+        return data
 
 class DebtResponse(DebtBase):
     id: UUID
@@ -261,6 +362,9 @@ class DebtResponse(DebtBase):
     created_at: datetime.datetime
     payments: List[DebtPaymentResponse] = []
     is_shared: bool = False
+    share_id: Optional[UUID] = None
+    my_role: Optional[ShareRole] = None
+    shared_members: List[ShareMemberOut] = []
     shared_partner_name: Optional[str] = None
     shared_by: Optional[str] = None
 
@@ -377,6 +481,8 @@ class SharedFixedExpenseBrief(BaseModel):
     is_paid_this_month: bool = False
     paid_by_name: Optional[str] = None
     paid_date: Optional[datetime.date] = None
+    members_count: int = 2
+    member_names: List[str] = []
 
 
 class SharedDebtBrief(BaseModel):
@@ -391,6 +497,8 @@ class SharedDebtBrief(BaseModel):
     paid_percentage: float
     last_payment_by: Optional[str] = None
     last_payment_date: Optional[datetime.date] = None
+    members_count: int = 2
+    member_names: List[str] = []
 
 
 class SharedSavingGoalBrief(BaseModel):
@@ -407,6 +515,8 @@ class SharedSavingGoalBrief(BaseModel):
     last_deposit_by: Optional[str] = None
     last_deposit_amount: Optional[Decimal] = None
     last_deposit_date: Optional[datetime.date] = None
+    members_count: int = 2
+    member_names: List[str] = []
 
 
 class PanaSummary(BaseModel):
@@ -456,6 +566,13 @@ class SavingDepositCreate(SavingDepositBase):
     manual_rate: Optional[Decimal] = Field(None, gt=0)
     register_as_expense: bool = False
 
+class SavingDepositUpdate(BaseModel):
+    amount: Optional[Decimal] = Field(None, gt=0)
+    currency: Optional[CurrencyType] = None
+    deposit_date: Optional[datetime.date] = None
+    note: Optional[str] = None
+    manual_rate: Optional[Decimal] = Field(None, gt=0)
+
 class SavingDepositResponse(SavingDepositBase):
     id: UUID
     goal_id: UUID
@@ -470,6 +587,9 @@ class SavingDepositResponse(SavingDepositBase):
     create_expense: bool = False
     expense_id: Optional[UUID] = None
     paid_by_name: Optional[str] = None
+    paid_by_user_id: Optional[UUID] = None
+    sync_id: Optional[UUID] = None
+    can_edit: bool = True
     mirror_deposit_id: Optional[UUID] = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -483,10 +603,23 @@ class SavingGoalBase(BaseModel):
     color: Optional[str] = '#10B981'
     icon: Optional[str] = 'piggy-bank'
     notes: Optional[str] = None
+    is_active: bool = True
 
 class SavingGoalCreate(SavingGoalBase):
     manual_rate: Optional[Decimal] = Field(None, gt=0)
     shared_with: Optional[UUID] = None
+    shared_with_ids: List[UUID] = []
+    admin_ids: List[UUID] = []
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_shared_with(cls, data: Any):
+        if isinstance(data, dict):
+            sw = data.get("shared_with")
+            sw_ids = data.get("shared_with_ids") or []
+            if sw and sw not in sw_ids:
+                data["shared_with_ids"] = [sw] + sw_ids
+        return data
 
 class SavingGoalUpdate(BaseModel):
     name: Optional[str] = None
@@ -501,6 +634,18 @@ class SavingGoalUpdate(BaseModel):
     notes: Optional[str] = None
     manual_rate: Optional[Decimal] = Field(None, gt=0)
     shared_with: Optional[UUID] = None
+    shared_with_ids: Optional[List[UUID]] = None
+    admin_ids: Optional[List[UUID]] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_shared_with(cls, data: Any):
+        if isinstance(data, dict):
+            sw = data.get("shared_with")
+            sw_ids = data.get("shared_with_ids")
+            if sw and not sw_ids:
+                data["shared_with_ids"] = [sw]
+        return data
 
 class SavingGoalResponse(SavingGoalBase):
     id: UUID
@@ -518,6 +663,9 @@ class SavingGoalResponse(SavingGoalBase):
     rate_usdt_bs: Optional[Decimal] = None
     deposits: List[SavingDepositResponse] = []
     is_shared: bool = False
+    share_id: Optional[UUID] = None
+    my_role: Optional[ShareRole] = None
+    shared_members: List[ShareMemberOut] = []
     shared_partner_name: Optional[str] = None
     shared_by: Optional[str] = None
 

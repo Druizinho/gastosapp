@@ -1,5 +1,39 @@
 export type CurrencyType = 'USD_BCV' | 'EUR_BCV' | 'BS' | 'USDT' | 'USD_CASH';
 
+export interface CurrencyOption {
+  value: CurrencyType;
+  label: string;
+}
+
+export const CURRENCY_OPTIONS: CurrencyOption[] = [
+  { value: 'USD_BCV', label: 'USD (BCV)' },
+  { value: 'BS', label: 'Bolívares (Bs)' },
+  { value: 'USD_CASH', label: 'USD (Efectivo)' },
+  { value: 'EUR_BCV', label: 'EUR (BCV)' },
+  { value: 'USDT', label: 'USDT (Binance)' },
+];
+
+export type ShareRole = 'admin' | 'member';
+
+export interface ShareMemberOut {
+  user_id: string;
+  name: string;
+  role: ShareRole;
+  avatar_url?: string | null;
+  is_me?: boolean;
+  is_owner?: boolean;
+  is_my_pana?: boolean;
+  pana_request_pending?: boolean;
+}
+
+export interface ShareInfoOut {
+  share_id: string;
+  entity_type: string;
+  my_role: ShareRole;
+  owner_id: string;
+  members: ShareMemberOut[];
+}
+
 export interface Expense {
   id: string;
   amount: number;
@@ -118,6 +152,9 @@ export interface FixedExpenseCheck {
   rate_eur_bs?: number | null;
   rate_usdt_bs?: number | null;
   paid_by_name?: string | null;
+  paid_by_user_id?: string | null;
+  sync_id?: string | null;
+  can_edit?: boolean;
   mirror_check_id?: string | null;
 }
 
@@ -127,6 +164,14 @@ export interface FixedExpenseCheckCreate {
   currency?: CurrencyType;
   paid_date?: string;
   create_expense?: boolean;
+  notes?: string;
+  manual_rate?: number;
+}
+
+export interface FixedExpenseCheckUpdate {
+  paid_amount?: number;
+  currency?: CurrencyType;
+  paid_date?: string;
   notes?: string;
   manual_rate?: number;
 }
@@ -152,6 +197,9 @@ export interface FixedExpense {
   rate_eur_bs?: number | null;
   rate_usdt_bs?: number | null;
   is_shared?: boolean;
+  share_id?: string | null;
+  my_role?: ShareRole | null;
+  shared_members?: ShareMemberOut[];
   shared_partner_name?: string | null;
   shared_by?: string | null;
   checks: FixedExpenseCheck[];
@@ -167,6 +215,8 @@ export interface FixedExpenseCreate {
   notes?: string;
   manual_rate?: number;
   shared_with?: string | null;
+  shared_with_ids?: string[];
+  admin_ids?: string[];
 }
 
 export interface FixedExpenseUpdate {
@@ -179,6 +229,8 @@ export interface FixedExpenseUpdate {
   notes?: string;
   manual_rate?: number;
   shared_with?: string | null;
+  shared_with_ids?: string[];
+  admin_ids?: string[];
 }
 
 export interface FixedExpenseSummary {
@@ -208,6 +260,9 @@ export interface DebtPayment {
   payment_date: string;
   note: string | null;
   paid_by_name?: string | null;
+  paid_by_user_id?: string | null;
+  sync_id?: string | null;
+  can_edit?: boolean;
   mirror_payment_id?: string | null;
   created_at: string;
 }
@@ -219,6 +274,14 @@ export interface DebtPaymentCreate {
   note?: string;
   manual_rate?: number;
   register_as_expense?: boolean;
+}
+
+export interface DebtPaymentUpdate {
+  amount?: number;
+  currency?: CurrencyType;
+  payment_date?: string | null;
+  note?: string | null;
+  manual_rate?: number;
 }
 
 export interface Debt {
@@ -236,6 +299,9 @@ export interface Debt {
   created_at: string;
   payments: DebtPayment[];
   is_shared?: boolean;
+  share_id?: string | null;
+  my_role?: ShareRole | null;
+  shared_members?: ShareMemberOut[];
   shared_partner_name?: string | null;
   shared_by?: string | null;
 }
@@ -251,6 +317,8 @@ export interface DebtCreate {
   is_settled?: boolean;
   notes?: string;
   shared_with?: string | null;
+  shared_with_ids?: string[];
+  admin_ids?: string[];
 }
 
 export interface DebtUpdate {
@@ -262,6 +330,8 @@ export interface DebtUpdate {
   is_settled?: boolean;
   notes?: string;
   shared_with?: string | null;
+  shared_with_ids?: string[];
+  admin_ids?: string[];
 }
 
 // Estimated Income Types
@@ -461,6 +531,9 @@ export interface SavingDeposit {
   rate_eur_bs?: number | null;
   rate_usdt_bs?: number | null;
   paid_by_name?: string | null;
+  paid_by_user_id?: string | null;
+  sync_id?: string | null;
+  can_edit?: boolean;
   mirror_deposit_id?: string | null;
 }
 
@@ -471,6 +544,14 @@ export interface SavingDepositCreate {
   note?: string;
   manual_rate?: number;
   register_as_expense?: boolean;
+}
+
+export interface SavingDepositUpdate {
+  amount?: number;
+  currency?: CurrencyType;
+  deposit_date?: string;
+  note?: string | null;
+  manual_rate?: number;
 }
 
 export interface SavingGoal {
@@ -497,6 +578,9 @@ export interface SavingGoal {
   rate_usdt_bs?: number | null;
   deposits: SavingDeposit[];
   is_shared?: boolean;
+  share_id?: string | null;
+  my_role?: ShareRole | null;
+  shared_members?: ShareMemberOut[];
   shared_partner_name?: string | null;
   shared_by?: string | null;
 }
@@ -512,6 +596,8 @@ export interface SavingGoalCreate {
   notes?: string;
   manual_rate?: number;
   shared_with?: string | null;
+  shared_with_ids?: string[];
+  admin_ids?: string[];
 }
 
 export interface SavingGoalUpdate {
@@ -527,6 +613,8 @@ export interface SavingGoalUpdate {
   notes?: string;
   manual_rate?: number;
   shared_with?: string | null;
+  shared_with_ids?: string[];
+  admin_ids?: string[];
 }
 
 export interface SavingSummaryResponse {

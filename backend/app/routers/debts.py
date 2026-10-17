@@ -95,6 +95,34 @@ async def add_debt_payment(
         
     return db_debt
 
+@router.put("/payments/{payment_id}", response_model=schemas.DebtResponse)
+async def update_debt_payment(
+    payment_id: UUID,
+    payment_update: schemas.DebtPaymentUpdate,
+    db: AsyncSession = Depends(get_db),
+    user_id: UUID = Depends(get_current_user)
+):
+    equivalents = None
+    if payment_update.amount is not None and payment_update.currency is not None:
+        rates = await bcv_service.get_all_rates()
+        equivalents = bcv_service.convert_amount(
+            amount=payment_update.amount,
+            currency=payment_update.currency.value if hasattr(payment_update.currency, "value") else str(payment_update.currency),
+            rates=rates,
+            manual_rate=payment_update.manual_rate
+        )
+    db_debt = await crud_debts.update_debt_payment(
+        db=db,
+        payment_id=payment_id,
+        user_id=user_id,
+        payment_update=payment_update,
+        extra_data=equivalents
+    )
+    if not db_debt:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    return db_debt
+
+
 @router.delete("/payments/{payment_id}", response_model=schemas.DebtResponse)
 async def delete_debt_payment(
     payment_id: UUID,

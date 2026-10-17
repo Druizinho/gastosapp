@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Edit3, ArrowLeft, Wallet, Calendar, AlertCircle, CheckCircle, Users } from 'lucide-react';
+import { Plus, Trash2, Edit3, ArrowLeft, Wallet, Calendar, AlertCircle, CheckCircle } from 'lucide-react';
 import type { Debt, DebtCreate, DebtUpdate, DebtPaymentCreate, ExchangeRates } from '../types';
 import { getDebts, createDebt, updateDebt, addDebtPayment, deleteDebt, getRates, deleteDebtPayment } from '../api';
 import DebtForm from './DebtForm';
 import DebtPaymentForm from './DebtPaymentForm';
 import ConfirmModal from './ConfirmModal';
+import { MemberAvatars, ShareMembersModal } from './panas';
 
 const currencyLabels: Record<string, string> = {
   'USD_BCV': '$',
@@ -45,6 +46,7 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
   const [payingDebt, setPayingDebt] = useState<Debt | null>(null);
 
   const [confirmDelete, setConfirmDelete] = useState<{isOpen: boolean; debtId?: string; paymentId?: string}>({isOpen: false});
+  const [activeShareModalItem, setActiveShareModalItem] = useState<{ id: string; name: string } | null>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -65,6 +67,10 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
       ]);
       setDebts(debtsData);
       setRates(ratesData);
+      setSelectedDebt(prev => {
+        if (!prev) return null;
+        return debtsData.find(d => d.id === prev.id) || null;
+      });
     } catch (error) {
       console.error('Error fetching debts:', error);
     } finally {
@@ -276,15 +282,20 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
           {/* Header */}
           <div style={{ marginBottom: '1.25rem' }}>
             {selectedDebt.is_shared && (
-              <div style={{
-                display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
-                background: 'rgba(59, 130, 246, 0.1)', color: '#3B82F6',
-                padding: '0.25rem 0.65rem', borderRadius: 'var(--radius-full)',
-                fontSize: '0.75rem', fontWeight: 600, marginBottom: '0.75rem',
-                border: '1px solid rgba(59, 130, 246, 0.2)'
-              }}>
-                <Users size={13} />
-                Compartida con tu pana {selectedDebt.shared_partner_name}
+              <div 
+                onClick={() => setActiveShareModalItem({ id: selectedDebt.id, name: selectedDebt.concept })}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '0.5rem',
+                  background: 'rgba(59, 130, 246, 0.1)', color: '#3B82F6',
+                  padding: '0.3rem 0.75rem', borderRadius: 'var(--radius-full)',
+                  fontSize: '0.78rem', fontWeight: 600, marginBottom: '0.75rem',
+                  border: '1px solid rgba(59, 130, 246, 0.25)', cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+                title="Gestionar miembros de la deuda"
+              >
+                <MemberAvatars members={selectedDebt.shared_members} size={20} />
+                <span>Gestionar panas ({selectedDebt.shared_members?.length || 2})</span>
               </div>
             )}
             <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
@@ -368,23 +379,29 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
             </button>
             <button
               onClick={() => { setEditingDebt(selectedDebt); setShowForm(true); }}
+              disabled={selectedDebt.is_shared && selectedDebt.my_role === 'member'}
               style={{
                 width: '40px', padding: '0', borderRadius: 'var(--radius-md)',
-                background: 'none', color: 'var(--text-secondary)',
-                border: '1px solid var(--accent-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
+                background: 'none', color: (selectedDebt.is_shared && selectedDebt.my_role === 'member') ? 'var(--text-tertiary)' : 'var(--text-secondary)',
+                border: '1px solid var(--accent-light)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: (selectedDebt.is_shared && selectedDebt.my_role === 'member') ? 'not-allowed' : 'pointer',
+                opacity: (selectedDebt.is_shared && selectedDebt.my_role === 'member') ? 0.4 : 1
               }}
-              title="Editar deuda"
+              title={selectedDebt.is_shared && selectedDebt.my_role === 'member' ? "Solo administradores pueden editar la deuda" : "Editar deuda"}
             >
               <Edit3 size={16} />
             </button>
             <button
               onClick={() => setConfirmDelete({isOpen: true, debtId: selectedDebt.id})}
+              disabled={selectedDebt.is_shared && selectedDebt.my_role === 'member'}
               style={{
                 width: '40px', padding: '0', borderRadius: 'var(--radius-md)',
-                background: 'none', color: 'var(--expense-color)',
-                border: '1px solid var(--expense-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
+                background: 'none', color: (selectedDebt.is_shared && selectedDebt.my_role === 'member') ? 'var(--text-tertiary)' : 'var(--expense-color)',
+                border: '1px solid var(--expense-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: (selectedDebt.is_shared && selectedDebt.my_role === 'member') ? 'not-allowed' : 'pointer',
+                opacity: (selectedDebt.is_shared && selectedDebt.my_role === 'member') ? 0.4 : 1
               }}
-              title="Eliminar deuda"
+              title={selectedDebt.is_shared && selectedDebt.my_role === 'member' ? "Solo administradores pueden eliminar la deuda" : "Eliminar deuda"}
             >
               <Trash2 size={16} />
             </button>
@@ -450,17 +467,19 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
                       </p>
                     )}
                   </div>
-                  <button
-                    onClick={() => setConfirmDelete({isOpen: true, paymentId: payment.id})}
-                    style={{
-                      background: 'transparent', border: 'none', color: 'var(--expense-color)',
-                      cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0.25rem',
-                      marginLeft: '0.5rem'
-                    }}
-                    title="Eliminar abono"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  {payment.can_edit !== false && (
+                    <button
+                      onClick={() => setConfirmDelete({isOpen: true, paymentId: payment.id})}
+                      style={{
+                        background: 'transparent', border: 'none', color: 'var(--expense-color)',
+                        cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0.25rem',
+                        marginLeft: '0.5rem'
+                      }}
+                      title="Eliminar abono"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -529,6 +548,22 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
           }}
           onCancel={() => setConfirmDelete({isOpen: false})}
         />
+
+        {activeShareModalItem && (
+          <ShareMembersModal
+            entityId={activeShareModalItem.id}
+            entityType="debt"
+            entityName={activeShareModalItem.name}
+            onClose={() => setActiveShareModalItem(null)}
+            onUpdated={fetchDebts}
+            onSelfLeave={() => {
+              setActiveShareModalItem(null);
+              setSelectedDebt(null);
+              fetchDebts();
+              showToast('Has salido de la deuda compartida');
+            }}
+          />
+        )}
       </div>
     );
   }
@@ -720,15 +755,16 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
                       </span>
                     )}
                     {debt.is_shared && (
-                      <span style={{
-                        display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
-                        fontSize: '0.7rem', fontWeight: 600, color: '#3B82F6',
-                        background: 'rgba(59, 130, 246, 0.1)', padding: '0.15rem 0.5rem',
-                        borderRadius: 'var(--radius-full)', marginTop: '0.25rem', marginLeft: '0.35rem'
-                      }}>
-                        <Users size={10} />
-                        Pana: {debt.shared_partner_name}
-                      </span>
+                      <div
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveShareModalItem({ id: debt.id, name: debt.concept });
+                        }}
+                        style={{ marginTop: '0.35rem', display: 'inline-block' }}
+                        title="Ver miembros compartidos"
+                      >
+                        <MemberAvatars members={debt.shared_members} size={22} />
+                      </div>
                     )}
                   </div>
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
@@ -874,6 +910,21 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
         }}
         onCancel={() => setConfirmDelete({isOpen: false})}
       />
+
+      {activeShareModalItem && (
+        <ShareMembersModal
+          entityId={activeShareModalItem.id}
+          entityType="debt"
+          entityName={activeShareModalItem.name}
+          onClose={() => setActiveShareModalItem(null)}
+          onUpdated={fetchDebts}
+          onSelfLeave={() => {
+            setActiveShareModalItem(null);
+            fetchDebts();
+            showToast('Has salido de la deuda compartida');
+          }}
+        />
+      )}
     </div>
   );
 };

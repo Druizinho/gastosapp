@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { ExpenseCreate, ExpenseUpdate, Expense, CurrencyType, ExchangeRates, Category } from '../types';
+import { CURRENCY_OPTIONS } from '../types';
 import { getRates, getCategories } from '../api';
 import { Info } from 'lucide-react';
 
@@ -106,11 +107,9 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ initialData, onSubmit, onCanc
             <div className="form-group half">
               <label>Moneda</label>
               <select value={currency} onChange={(e) => setCurrency(e.target.value as CurrencyType)} required>
-                <option value="USD_BCV">Dólar BCV</option>
-                <option value="EUR_BCV">Euro BCV</option>
-                <option value="BS">Bolívares</option>
-                <option value="USDT">USDT (Binance)</option>
-                <option value="USD_CASH">Dólares en Efectivo</option>
+                {CURRENCY_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
               </select>
             </div>
           </div>

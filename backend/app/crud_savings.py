@@ -3,69 +3,13 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy import or_, and_
 from typing import List, Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 from decimal import Decimal
 import datetime
 from fastapi import HTTPException
 
-from . import models, schemas
+from . import models, schemas, sharing
 from .push_service import send_notification_to_user
-
-
-async def _populate_shared_info(db: AsyncSession, goals: List[models.SavingGoal], user_id: UUID) -> List[models.SavingGoal]:
-    if not goals:
-        return []
-
-    goal_ids = [g.id for g in goals]
-    shared_result = await db.execute(
-        select(models.SharedSavingGoal).where(
-            or_(
-                models.SharedSavingGoal.goal_id.in_(goal_ids),
-                models.SharedSavingGoal.mirror_goal_id.in_(goal_ids)
-            )
-        )
-    )
-    shared_records = shared_result.scalars().all()
-    if not shared_records:
-        for g in goals:
-            g.is_shared = False
-            g.shared_partner_name = None
-            g.shared_by = None
-        return goals
-
-    profile_ids = set()
-    for s in shared_records:
-        profile_ids.add(s.owner_id)
-        profile_ids.add(s.partner_id)
-
-    profiles_result = await db.execute(
-        select(models.Profile).where(models.Profile.id.in_(profile_ids))
-    )
-    profiles = {p.id: p for p in profiles_result.scalars().all()}
-
-    shared_by_goal_id = {}
-    for s in shared_records:
-        shared_by_goal_id[s.goal_id] = s
-        if s.mirror_goal_id:
-            shared_by_goal_id[s.mirror_goal_id] = s
-
-    for g in goals:
-        if g.id in shared_by_goal_id:
-            s = shared_by_goal_id[g.id]
-            is_owner = s.owner_id == user_id
-            partner_id = s.partner_id if is_owner else s.owner_id
-            partner_profile = profiles.get(partner_id)
-            owner_profile = profiles.get(s.owner_id)
-
-            g.is_shared = True
-            g.shared_partner_name = partner_profile.display_name if partner_profile and partner_profile.display_name else "Pana"
-            g.shared_by = owner_profile.display_name if owner_profile and owner_profile.display_name else "Pana"
-        else:
-            g.is_shared = False
-            g.shared_partner_name = None
-            g.shared_by = None
-
-    return goals
 
 
 async def get_saving_goals(
@@ -86,7 +30,8 @@ async def get_saving_goals(
     query = query.order_by(models.SavingGoal.is_completed.asc(), models.SavingGoal.created_at.desc())
     result = await db.execute(query)
     goals = result.scalars().all()
-    return await _populate_shared_info(db, goals, user_id)
+    await sharing.populate_share_meta(db, goals, user_id, "saving_goal")
+    return goals
 
 
 async def get_saving_goal(db: AsyncSession, goal_id: UUID, user_id: UUID) -> Optional[models.SavingGoal]:
@@ -98,8 +43,8 @@ async def get_saving_goal(db: AsyncSession, goal_id: UUID, user_id: UUID) -> Opt
     goal = result.scalars().first()
     if not goal:
         return None
-    populated = await _populate_shared_info(db, [goal], user_id)
-    return populated[0] if populated else None
+    await sharing.populate_share_meta(db, [goal], user_id, "saving_goal")
+    return goal
 
 
 async def create_saving_goal(
@@ -108,68 +53,52 @@ async def create_saving_goal(
     user_id: UUID,
     extra_data: Optional[dict] = None
 ) -> models.SavingGoal:
-    shared_with = goal.shared_with
-    data = goal.model_dump(exclude={'manual_rate', 'shared_with'})
+    shared_with_ids = goal.shared_with_ids or ([] if not goal.shared_with else [goal.shared_with])
+    admin_ids = getattr(goal, 'admin_ids', None) or []
+
+    data = goal.model_dump(exclude={'manual_rate', 'shared_with', 'shared_with_ids', 'admin_ids'})
     if extra_data:
         data.update(extra_data)
 
-    if shared_with:
-        # Validate that connection with partner is accepted
-        conn_res = await db.execute(
-            select(models.Connection).where(
-                models.Connection.status == 'accepted',
-                or_(
-                    and_(models.Connection.requester_id == user_id, models.Connection.receiver_id == shared_with),
-                    and_(models.Connection.receiver_id == user_id, models.Connection.requester_id == shared_with)
-                )
-            )
-        )
-        if not conn_res.scalars().first():
-            raise HTTPException(status_code=400, detail="El usuario seleccionado no es un pana conectado")
+    clean_targets = [tid for tid in shared_with_ids if tid != user_id]
 
-        # Get requester profile name
-        prof_res = await db.execute(select(models.Profile).where(models.Profile.id == user_id))
-        requester_prof = prof_res.scalars().first()
-        req_name = requester_prof.display_name if requester_prof and requester_prof.display_name else "Tu pana"
+    if clean_targets:
+        await sharing.assert_can_add(db, user_id, clean_targets)
 
-        # Create primary goal
+        # Create primary goal for creator
         db_goal = models.SavingGoal(**data, user_id=user_id)
         db.add(db_goal)
         await db.flush()
 
-        # Create mirror goal for partner
-        mirror_data = {**data, "user_id": shared_with}
-        db_mirror = models.SavingGoal(**mirror_data)
-        db.add(db_mirror)
-        await db.flush()
-
-        # Link in shared_saving_goals
-        shared_record = models.SharedSavingGoal(
-            goal_id=db_goal.id,
-            owner_id=user_id,
-            partner_id=shared_with,
-            mirror_goal_id=db_mirror.id
-        )
-        db.add(shared_record)
-
-        # Notify partner
-        await send_notification_to_user(
+        share = await sharing.create_share(
             db=db,
-            user_id=shared_with,
+            entity_type="saving_goal",
+            owner_id=user_id,
+            owner_entity=db_goal,
+            target_ids=clean_targets,
+            admin_ids=admin_ids
+        )
+
+        user_prof_res = await db.execute(select(models.Profile).where(models.Profile.id == user_id))
+        user_prof = user_prof_res.scalars().first()
+        req_name = user_prof.display_name if user_prof and user_prof.display_name else "Tu pana"
+
+        await sharing.notify_members(
+            db=db,
+            share_id=share.id,
+            exclude_user_id=user_id,
             title="Nuevo fondo de ahorro compartido",
-            body=f"{req_name} creó un fondo de ahorro compartido: {goal.name}",
+            body=f"{req_name} creó un fondo de ahorro compartido: {db_goal.name}",
             type="savings",
             url="/herramientas/ahorros"
         )
 
         await db.commit()
-        await db.refresh(db_goal)
         return await get_saving_goal(db, db_goal.id, user_id)
     else:
         db_goal = models.SavingGoal(**data, user_id=user_id)
         db.add(db_goal)
         await db.commit()
-        await db.refresh(db_goal)
         return await get_saving_goal(db, db_goal.id, user_id)
 
 
@@ -185,43 +114,73 @@ async def update_saving_goal(
         return None
 
     update_data = goal.model_dump(exclude_unset=True)
-    if 'manual_rate' in update_data:
-        del update_data['manual_rate']
-    if 'shared_with' in update_data:
-        del update_data['shared_with']
+    shared_with_ids = update_data.pop('shared_with_ids', None)
+    admin_ids = update_data.pop('admin_ids', None)
+    update_data.pop('shared_with', None)
+    update_data.pop('manual_rate', None)
 
     if extra_data:
         update_data.update(extra_data)
 
-    if 'is_completed' in update_data:
-        if update_data['is_completed'] and not db_goal.is_completed:
-            db_goal.completed_at = datetime.datetime.now(datetime.timezone.utc)
-        elif not update_data['is_completed']:
-            db_goal.completed_at = None
+    membership = await sharing.get_membership(db, goal_id)
 
-    for key, value in update_data.items():
-        setattr(db_goal, key, value)
+    if membership:
+        share, member = membership
+        sharing.require_admin(member)
 
-    # If shared, sync changes to mirror goal
-    shared_res = await db.execute(
-        select(models.SharedSavingGoal).where(
-            or_(
-                models.SharedSavingGoal.goal_id == goal_id,
-                models.SharedSavingGoal.mirror_goal_id == goal_id
-            )
-        )
-    )
-    shared_record = shared_res.scalars().first()
-    if shared_record:
-        mirror_id = shared_record.mirror_goal_id if shared_record.goal_id == goal_id else shared_record.goal_id
-        if mirror_id:
-            mirror_res = await db.execute(select(models.SavingGoal).where(models.SavingGoal.id == mirror_id))
-            db_mirror = mirror_res.scalars().first()
-            if db_mirror:
-                sync_keys = ['name', 'target_amount', 'currency', 'target_date', 'category', 'color', 'icon', 'notes', 'is_active', 'is_completed', 'completed_at']
-                for k in sync_keys:
-                    if hasattr(db_goal, k):
-                        setattr(db_mirror, k, getattr(db_goal, k))
+        if 'is_completed' in update_data:
+            if update_data['is_completed'] and not db_goal.is_completed:
+                update_data['completed_at'] = datetime.datetime.now(datetime.timezone.utc)
+            elif not update_data['is_completed']:
+                update_data['completed_at'] = None
+
+        for key, value in update_data.items():
+            setattr(db_goal, key, value)
+        await db.flush()
+
+        await sharing.sync_parent_fields(db, share, goal_id, update_data)
+
+        if 'target_amount' in update_data or 'currency' in update_data:
+            siblings = await sharing.sibling_entity_ids(db, share.id)
+            all_ids = list(siblings.values()) + [goal_id]
+            await sharing.recompute_settlement(db, "saving_goal", all_ids)
+    else:
+        if 'is_completed' in update_data:
+            if update_data['is_completed'] and not db_goal.is_completed:
+                db_goal.completed_at = datetime.datetime.now(datetime.timezone.utc)
+            elif not update_data['is_completed']:
+                db_goal.completed_at = None
+
+        for key, value in update_data.items():
+            setattr(db_goal, key, value)
+        await db.flush()
+
+        if shared_with_ids:
+            clean_targets = [tid for tid in shared_with_ids if tid != user_id]
+            if clean_targets:
+                await sharing.assert_can_add(db, user_id, clean_targets)
+                share = await sharing.create_share(
+                    db=db,
+                    entity_type="saving_goal",
+                    owner_id=user_id,
+                    owner_entity=db_goal,
+                    target_ids=clean_targets,
+                    admin_ids=admin_ids or []
+                )
+
+                user_prof_res = await db.execute(select(models.Profile).where(models.Profile.id == user_id))
+                user_prof = user_prof_res.scalars().first()
+                req_name = user_prof.display_name if user_prof and user_prof.display_name else "Tu pana"
+
+                await sharing.notify_members(
+                    db=db,
+                    share_id=share.id,
+                    exclude_user_id=user_id,
+                    title="Nuevo fondo de ahorro compartido",
+                    body=f"{req_name} creó un fondo de ahorro compartido: {db_goal.name}",
+                    type="savings",
+                    url="/herramientas/ahorros"
+                )
 
     await db.commit()
     return await get_saving_goal(db, goal_id, user_id)
@@ -232,40 +191,41 @@ async def delete_saving_goal(db: AsyncSession, goal_id: UUID, user_id: UUID) -> 
     if not db_goal:
         return False
 
-    shared_res = await db.execute(
-        select(models.SharedSavingGoal).where(
-            or_(
-                models.SharedSavingGoal.goal_id == goal_id,
-                models.SharedSavingGoal.mirror_goal_id == goal_id
+    membership = await sharing.get_membership(db, goal_id)
+
+    if membership:
+        share, member = membership
+        if member.role != "admin":
+            raise HTTPException(
+                status_code=403,
+                detail="Solo un administrador puede eliminar un fondo de ahorro compartido. Si deseas dejar de verlo, usa la opción 'Salir'."
             )
-        )
-    )
-    shared_record = shared_res.scalars().first()
-    if shared_record:
-        mirror_id = shared_record.mirror_goal_id if shared_record.goal_id == goal_id else shared_record.goal_id
-        partner_id = shared_record.partner_id if shared_record.owner_id == user_id else shared_record.owner_id
 
-        if mirror_id:
-            mirror_res = await db.execute(select(models.SavingGoal).where(models.SavingGoal.id == mirror_id))
-            db_mirror = mirror_res.scalars().first()
-            if db_mirror:
-                await db.delete(db_mirror)
+        user_prof_res = await db.execute(select(models.Profile).where(models.Profile.id == user_id))
+        user_prof = user_prof_res.scalars().first()
+        user_name = user_prof.display_name if user_prof and user_prof.display_name else "Usuario"
 
-        await db.delete(shared_record)
-
-        prof_res = await db.execute(select(models.Profile).where(models.Profile.id == user_id))
-        req_prof = prof_res.scalars().first()
-        req_name = req_prof.display_name if req_prof and req_prof.display_name else "Tu pana"
-        await send_notification_to_user(
+        await sharing.notify_members(
             db=db,
-            user_id=partner_id,
+            share_id=share.id,
+            exclude_user_id=user_id,
             title="Fondo de ahorro eliminado",
-            body=f"{req_name} eliminó el fondo de ahorro compartido '{db_goal.name}'",
+            body=f"{user_name} eliminó el fondo de ahorro compartido '{db_goal.name}' para todos los integrantes",
             type="savings",
             url="/herramientas/ahorros"
         )
 
-    await db.delete(db_goal)
+        members = await sharing.get_members(db, share.id)
+        for m in members:
+            res = await db.execute(select(models.SavingGoal).where(models.SavingGoal.id == m.entity_id))
+            g_obj = res.scalars().first()
+            if g_obj:
+                await db.delete(g_obj)
+
+        await db.delete(share)
+    else:
+        await db.delete(db_goal)
+
     await db.commit()
     return True
 
@@ -281,7 +241,6 @@ async def add_saving_deposit(
     if not db_goal:
         return None
 
-    # Get user profile name
     prof_res = await db.execute(select(models.Profile).where(models.Profile.id == user_id))
     user_prof = prof_res.scalars().first()
     user_name = user_prof.display_name if user_prof and user_prof.display_name else "Usuario"
@@ -313,117 +272,136 @@ async def add_saving_deposit(
         await db.flush()
         expense_id = db_expense.id
 
+    sync_uuid = uuid4()
     db_deposit = models.SavingDeposit(
         **data,
         goal_id=goal_id,
         create_expense=register_as_expense,
         expense_id=expense_id,
-        paid_by_name=user_name
+        paid_by_name=user_name,
+        paid_by_user_id=user_id,
+        sync_id=sync_uuid
     )
     db.add(db_deposit)
     db_goal.deposits.append(db_deposit)
     await db.flush()
 
-    # Check if goal is shared
-    shared_res = await db.execute(
-        select(models.SharedSavingGoal).where(
-            or_(
-                models.SharedSavingGoal.goal_id == goal_id,
-                models.SharedSavingGoal.mirror_goal_id == goal_id
-            )
-        )
-    )
-    shared_record = shared_res.scalars().first()
-    mirror_goal = None
-    partner_id = None
+    membership = await sharing.get_membership(db, goal_id)
 
-    if shared_record:
-        mirror_id = shared_record.mirror_goal_id if shared_record.goal_id == goal_id else shared_record.goal_id
-        partner_id = shared_record.partner_id if shared_record.owner_id == user_id else shared_record.owner_id
-
-        if mirror_id:
-            mirror_res = await db.execute(
-                select(models.SavingGoal).where(models.SavingGoal.id == mirror_id).options(selectinload(models.SavingGoal.deposits))
-            )
-            mirror_goal = mirror_res.scalars().first()
-            if mirror_goal:
-                mirror_deposit_data = {
-                    **data,
-                    "goal_id": mirror_id,
-                    "create_expense": False,
-                    "expense_id": None,
-                    "paid_by_name": user_name,
-                    "mirror_deposit_id": db_deposit.id
-                }
-                db_mirror_deposit = models.SavingDeposit(**mirror_deposit_data)
-                db.add(db_mirror_deposit)
-                mirror_goal.deposits.append(db_mirror_deposit)
-                await db.flush()
-                db_deposit.mirror_deposit_id = db_mirror_deposit.id
-
-    def calc_total_deposited(goal_obj):
-        goal_currency = goal_obj.currency
-        tot = Decimal('0')
-        for d in goal_obj.deposits:
-            if d.currency == goal_currency:
-                tot += Decimal(str(d.amount))
-            elif goal_currency in ['USD_BCV', 'USD_CASH'] and d.amount_usd:
-                tot += Decimal(str(d.amount_usd))
-            elif goal_currency == 'BS' and d.amount_bs:
-                tot += Decimal(str(d.amount_bs))
-            elif goal_currency == 'EUR_BCV' and d.amount_eur:
-                tot += Decimal(str(d.amount_eur))
-            elif goal_currency == 'USDT' and d.amount_usdt:
-                tot += Decimal(str(d.amount_usdt))
-            else:
-                tot += Decimal(str(d.amount))
-        return tot
-
-    total_deposited = calc_total_deposited(db_goal)
-    just_completed = False
-    if total_deposited >= Decimal(str(db_goal.target_amount)) and not db_goal.is_completed:
-        db_goal.is_completed = True
-        db_goal.completed_at = datetime.datetime.now(datetime.timezone.utc)
-        just_completed = True
-
-    if mirror_goal:
-        mirror_total = calc_total_deposited(mirror_goal)
-        if mirror_total >= Decimal(str(mirror_goal.target_amount)) and not mirror_goal.is_completed:
-            mirror_goal.is_completed = True
-            mirror_goal.completed_at = datetime.datetime.now(datetime.timezone.utc)
-
-    await db.commit()
-
-    if just_completed:
-        await send_notification_to_user(
+    if membership:
+        share, member = membership
+        await sharing.fan_out_child_create(
             db=db,
-            user_id=user_id,
-            title="🎉 ¡Meta de ahorro alcanzada!",
-            body=f"¡Felicidades! Has completado tu meta '{db_goal.name}' con un total de {total_deposited:.2f} {db_goal.currency}.",
-            type="savings",
-            url="/herramientas/ahorros"
+            share=share,
+            source_child=db_deposit,
+            child_data=data,
+            child_model=models.SavingDeposit,
+            parent_fk_name="goal_id",
+            payer_id=user_id,
+            payer_name=user_name
         )
-        if partner_id:
-            await send_notification_to_user(
+
+        siblings = await sharing.sibling_entity_ids(db, share.id)
+        all_goal_ids = list(siblings.values()) + [goal_id]
+        await sharing.recompute_settlement(db, "saving_goal", all_goal_ids)
+
+        await db.refresh(db_goal)
+        curr_label = data["currency"].value if hasattr(data["currency"], "value") else str(data["currency"])
+        if db_goal.is_completed:
+            await sharing.notify_members(
                 db=db,
-                user_id=partner_id,
+                share_id=share.id,
+                exclude_user_id=None,
                 title="🎉 ¡Meta de ahorro alcanzada!",
-                body=f"¡Felicidades! Se completó el fondo compartido '{db_goal.name}' con un total de {total_deposited:.2f} {db_goal.currency}.",
+                body=f"¡Felicidades! Se completó el fondo compartido '{db_goal.name}' con un aporte de {user_name} de {data['amount']} {curr_label}!",
                 type="savings",
                 url="/herramientas/ahorros"
             )
-    elif partner_id:
-        curr_str = data["currency"].value if hasattr(data["currency"], "value") else str(data["currency"])
-        await send_notification_to_user(
-            db=db,
-            user_id=partner_id,
-            title="Aporte a fondo compartido",
-            body=f"{user_name} aportó {data['amount']} {curr_str} al fondo '{db_goal.name}'",
-            type="savings",
-            url="/herramientas/ahorros"
-        )
+        else:
+            await sharing.notify_members(
+                db=db,
+                share_id=share.id,
+                exclude_user_id=user_id,
+                title="Aporte a fondo compartido",
+                body=f"{user_name} aportó {data['amount']} {curr_label} al fondo '{db_goal.name}'",
+                type="savings",
+                url="/herramientas/ahorros"
+            )
+    else:
+        await sharing.recompute_settlement(db, "saving_goal", [goal_id])
+        await db.refresh(db_goal)
+        if db_goal.is_completed:
+            await send_notification_to_user(
+                db=db,
+                user_id=user_id,
+                title="🎉 ¡Meta de ahorro alcanzada!",
+                body=f"¡Felicidades! Has completado tu meta '{db_goal.name}'.",
+                type="savings",
+                url="/herramientas/ahorros"
+            )
 
+    await db.commit()
     return await get_saving_goal(db, goal_id, user_id)
+
+
+async def update_saving_deposit(
+    db: AsyncSession,
+    deposit_id: UUID,
+    user_id: UUID,
+    deposit_update: schemas.SavingDepositUpdate,
+    extra_data: Optional[dict] = None
+) -> Optional[models.SavingGoal]:
+    result = await db.execute(
+        select(models.SavingDeposit)
+        .join(models.SavingGoal)
+        .filter(models.SavingDeposit.id == deposit_id, models.SavingGoal.user_id == user_id)
+    )
+    deposit = result.scalars().first()
+    if not deposit:
+        return None
+
+    membership = await sharing.get_membership(db, deposit.goal_id)
+    if membership:
+        share, member = membership
+        if not sharing.can_edit_child(member, deposit.paid_by_user_id):
+            raise HTTPException(status_code=403, detail="Solo puedes editar tus propios aportes o debes ser administrador")
+
+    update_dict = deposit_update.model_dump(exclude_unset=True)
+    if 'manual_rate' in update_dict:
+        del update_dict['manual_rate']
+    if extra_data:
+        update_dict.update(extra_data)
+
+    for k, v in update_dict.items():
+        setattr(deposit, k, v)
+    await db.flush()
+
+    # If linked to expense, update expense record too
+    if deposit.expense_id:
+        exp_res = await db.execute(select(models.Expense).filter(models.Expense.id == deposit.expense_id, models.Expense.user_id == user_id))
+        exp = exp_res.scalars().first()
+        if exp:
+            if 'amount' in update_dict:
+                exp.amount = update_dict['amount']
+            if 'currency' in update_dict:
+                exp.currency = update_dict['currency'].value if hasattr(update_dict['currency'], 'value') else str(update_dict['currency'])
+            if 'deposit_date' in update_dict:
+                exp.date = update_dict['deposit_date']
+            for key in ["amount_usd", "amount_bs", "amount_eur", "amount_usdt", "rate_usd_bs", "rate_eur_bs", "rate_usdt_bs"]:
+                if key in update_dict:
+                    setattr(exp, key, update_dict[key])
+
+    if membership and deposit.sync_id:
+        share, _ = membership
+        await sharing.fan_out_child_update(db, models.SavingDeposit, deposit.sync_id, update_dict)
+        siblings = await sharing.sibling_entity_ids(db, share.id)
+        all_goal_ids = list(siblings.values()) + [deposit.goal_id]
+        await sharing.recompute_settlement(db, "saving_goal", all_goal_ids)
+    else:
+        await sharing.recompute_settlement(db, "saving_goal", [deposit.goal_id])
+
+    await db.commit()
+    return await get_saving_goal(db, deposit.goal_id, user_id)
 
 
 async def delete_saving_deposit(db: AsyncSession, deposit_id: UUID, user_id: UUID) -> Optional[models.SavingGoal]:
@@ -437,6 +415,8 @@ async def delete_saving_deposit(db: AsyncSession, deposit_id: UUID, user_id: UUI
         return None
 
     goal_id = deposit.goal_id
+    sync_id = deposit.sync_id or deposit.id
+    amount_label = f"{deposit.amount} {deposit.currency}"
 
     # If linked to expense, delete the expense as well
     if deposit.expense_id:
@@ -445,40 +425,61 @@ async def delete_saving_deposit(db: AsyncSession, deposit_id: UUID, user_id: UUI
         if exp:
             await db.delete(exp)
 
-    # If mirror deposit exists, delete it too
-    if deposit.mirror_deposit_id:
-        mirror_res = await db.execute(select(models.SavingDeposit).where(models.SavingDeposit.id == deposit.mirror_deposit_id))
-        mirror_dep = mirror_res.scalars().first()
-        if mirror_dep:
-            await db.delete(mirror_dep)
+    membership = await sharing.get_membership(db, goal_id)
 
-    await db.delete(deposit)
-    await db.commit()
+    if membership:
+        share, member = membership
+        if not sharing.can_edit_child(member, deposit.paid_by_user_id):
+            raise HTTPException(status_code=403, detail="Solo puedes eliminar tus propios aportes o debes ser administrador")
 
-    # Re-evaluate goal status
-    updated_goal = await get_saving_goal(db, goal_id, user_id)
-    if updated_goal and updated_goal.is_completed:
-        goal_currency = updated_goal.currency
-        total_deposited = Decimal('0')
-        for d in updated_goal.deposits:
-            if d.currency == goal_currency:
-                total_deposited += Decimal(str(d.amount))
-            elif goal_currency in ['USD_BCV', 'USD_CASH'] and d.amount_usd:
-                total_deposited += Decimal(str(d.amount_usd))
-            elif goal_currency == 'BS' and d.amount_bs:
-                total_deposited += Decimal(str(d.amount_bs))
-            elif goal_currency == 'EUR_BCV' and d.amount_eur:
-                total_deposited += Decimal(str(d.amount_eur))
-            elif goal_currency == 'USDT' and d.amount_usdt:
-                total_deposited += Decimal(str(d.amount_usdt))
+        user_prof_res = await db.execute(select(models.Profile).where(models.Profile.id == user_id))
+        user_prof = user_prof_res.scalars().first()
+        user_name = user_prof.display_name if user_prof and user_prof.display_name else "Usuario"
+
+        g_res = await db.execute(select(models.SavingGoal).where(models.SavingGoal.id == goal_id))
+        g_obj = g_res.scalars().first()
+        goal_name = g_obj.name if g_obj else "Fondo"
+
+        if deposit.sync_id:
+            await sharing.fan_out_child_delete(db, models.SavingDeposit, deposit.sync_id)
+        
+        res_chk = await db.execute(select(models.SavingDeposit).where(models.SavingDeposit.id == deposit_id))
+        dep_chk = res_chk.scalars().first()
+        if dep_chk:
+            if dep_chk.goal and hasattr(dep_chk.goal, 'deposits') and dep_chk in dep_chk.goal.deposits:
+                dep_chk.goal.deposits.remove(dep_chk)
             else:
-                total_deposited += Decimal(str(d.amount))
+                await db.delete(dep_chk)
+        await db.flush()
+        if deposit.goal:
+            db.expire(deposit.goal, ['deposits'])
 
-        if total_deposited < Decimal(str(updated_goal.target_amount)):
-            updated_goal.is_completed = False
-            updated_goal.completed_at = None
-            await db.commit()
+        siblings = await sharing.sibling_entity_ids(db, share.id)
+        all_goal_ids = list(siblings.values()) + [goal_id]
+        await sharing.recompute_settlement(db, "saving_goal", all_goal_ids)
 
+        await sharing.notify_members(
+            db=db,
+            share_id=share.id,
+            exclude_user_id=user_id,
+            title="Aporte eliminado de fondo",
+            body=f"{user_name} eliminó un aporte de {amount_label} del fondo '{goal_name}'",
+            type="savings",
+            url="/herramientas/ahorros"
+        )
+    else:
+        if deposit.goal and hasattr(deposit.goal, 'deposits') and deposit in deposit.goal.deposits:
+            deposit.goal.deposits.remove(deposit)
+        else:
+            await db.delete(deposit)
+        await db.flush()
+        if deposit.goal:
+            db.expire(deposit.goal, ['deposits'])
+        await sharing.recompute_settlement(db, "saving_goal", [goal_id])
+
+    await db.commit()
+    if deposit.goal:
+        db.expire(deposit.goal, ['deposits'])
     return await get_saving_goal(db, goal_id, user_id)
 
 

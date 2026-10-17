@@ -120,6 +120,35 @@ async def add_saving_deposit(
         raise HTTPException(status_code=404, detail="Meta de ahorro no encontrada")
     return db_goal
 
+@router.put("/deposits/{deposit_id}", response_model=schemas.SavingGoalResponse)
+async def update_saving_deposit(
+    deposit_id: UUID,
+    deposit_update: schemas.SavingDepositUpdate,
+    db: AsyncSession = Depends(get_db),
+    user_id: UUID = Depends(get_current_user)
+):
+    equivalents = None
+    if deposit_update.amount is not None and deposit_update.currency is not None:
+        rates = await bcv_service.get_all_rates()
+        curr_val = deposit_update.currency.value if hasattr(deposit_update.currency, "value") else str(deposit_update.currency)
+        equivalents = bcv_service.convert_amount(
+            amount=deposit_update.amount,
+            currency=curr_val,
+            rates=rates,
+            manual_rate=deposit_update.manual_rate
+        )
+    db_goal = await crud_savings.update_saving_deposit(
+        db=db,
+        deposit_id=deposit_id,
+        user_id=user_id,
+        deposit_update=deposit_update,
+        extra_data=equivalents
+    )
+    if not db_goal:
+        raise HTTPException(status_code=404, detail="Aporte no encontrado")
+    return db_goal
+
+
 @router.delete("/deposits/{deposit_id}", response_model=schemas.SavingGoalResponse)
 async def delete_saving_deposit(
     deposit_id: UUID,

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
 import type { SavingDepositCreate, CurrencyType } from '../types';
+import { CURRENCY_OPTIONS } from '../types';
 
 interface SavingDepositFormProps {
   goalName: string;
@@ -181,11 +182,9 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
                 value={formData.currency}
                 onChange={handleChange}
               >
-                <option value="USD_BCV">USD (BCV)</option>
-                <option value="BS">Bolívares (Bs.)</option>
-                <option value="USDT">USDT (Binance)</option>
-                <option value="EUR_BCV">EUR (BCV)</option>
-                <option value="USD_CASH">USD Efectivo</option>
+                {CURRENCY_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
               </select>
             </div>
           </div>

@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import type { Expense, Category } from '../types';
+import { CURRENCY_OPTIONS } from '../types';
 import ExpenseItem from './ExpenseItem';
 import AmountRangeFilter from './AmountRangeFilter';
 import { Filter, ChevronDown, ChevronUp, Search } from 'lucide-react';
@@ -231,11 +232,9 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ expenses, categories, onEdit,
               style={{...selectStyle, maxWidth: '100%'}}
             >
               <option value="All">Todas las Monedas</option>
-              <option value="USD_BCV">Dólar BCV</option>
-              <option value="EUR_BCV">Euro BCV</option>
-              <option value="BS">Bolívares</option>
-              <option value="USDT">USDT (Binance)</option>
-              <option value="USD_CASH">Dólares en Efectivo</option>
+              {CURRENCY_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
             </select>
           </div>
         </div>

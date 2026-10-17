@@ -186,6 +186,31 @@ async def uncheck_fixed_expense(
     return {"message": "Check removed successfully"}
 
 
+@router.put("/checks/{check_id}", response_model=schemas.FixedExpenseCheckResponse)
+async def update_fixed_expense_check(
+    check_id: UUID,
+    check_update: schemas.FixedExpenseCheckUpdate,
+    db: AsyncSession = Depends(get_db),
+    user_id: UUID = Depends(get_current_user),
+):
+    """Update a fixed expense check (amount, currency, notes, etc.)."""
+    equivalents = None
+    if check_update.paid_amount is not None and check_update.currency is not None:
+        rates = await bcv_service.get_all_rates()
+        equivalents = bcv_service.convert_amount(
+            amount=check_update.paid_amount,
+            currency=check_update.currency.value if hasattr(check_update.currency, "value") else str(check_update.currency),
+            rates=rates,
+            manual_rate=check_update.manual_rate,
+        )
+    updated = await crud_fixed_expenses.update_fixed_expense_check(
+        db, check_id=check_id, check_update=check_update, user_id=user_id, extra_data=equivalents
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Check not found")
+    return updated
+
+
 # ── Legacy mark-paid endpoint (kept for backward compat) ─────────────
 
 @router.post("/{expense_id}/mark-paid", response_model=schemas.FixedExpenseResponse)

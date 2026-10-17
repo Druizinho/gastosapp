@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 
 import { checkIncome } from '../api';
 import type { EstimatedIncome, IncomeCheckCreate, CurrencyType } from '../types';
+import { CURRENCY_OPTIONS } from '../types';
 
 interface IncomeCheckFormProps {
   income: EstimatedIncome;
@@ -113,11 +114,9 @@ const IncomeCheckForm: React.FC<IncomeCheckFormProps> = ({ income, monthYear, on
                 onChange={(e) => setCurrency(e.target.value as CurrencyType)}
                 required
               >
-                <option value="USD_CASH">Dólares Efectivo</option>
-                <option value="USDT">USDT (Binance)</option>
-                <option value="USD_BCV">Dólar BCV</option>
-                <option value="EUR_BCV">Euro BCV</option>
-                <option value="BS">Bolívares</option>
+                {CURRENCY_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
               </select>
             </div>
           </div>

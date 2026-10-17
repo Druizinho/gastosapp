@@ -47,6 +47,17 @@ async def request_connection(
         raise HTTPException(status_code=400, detail=error)
     return conn
 
+@router.post("/request-by-user/{target_user_id}", response_model=schemas.ConnectionResponse)
+async def request_connection_by_user(
+    target_user_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user_id: UUID = Depends(auth.get_current_user)
+):
+    conn, error = await crud_connections.create_connection_request_by_user_id(db, user_id, target_user_id)
+    if error:
+        raise HTTPException(status_code=400, detail=error)
+    return conn
+
 @router.put("/{connection_id}/accept", response_model=schemas.ConnectionResponse)
 async def accept_connection(
     connection_id: UUID,

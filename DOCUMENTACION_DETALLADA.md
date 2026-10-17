@@ -117,19 +117,24 @@ El hub central (`/herramientas`) agrupa funciones financieras avanzadas:
    - Permite proyectar el flujo de ingresos que se esperan recibir en el mes (sueldos, trabajos freelance, dividendos).
    - Registro de confirmación (`income_checks`): Permite indicar si el ingreso ya fue cobrado en su totalidad o de manera parcial, dejando constancia de la fecha en que se espera el saldo restante.
 
-## 3.5 Finanzas Colaborativas ("Panas")
-Permite vincular a dos usuarios de GastosApp para gestionar finanzas compartidas:
-- **Flujo de Conexión:**
-  1. Usuario A busca a Usuario B mediante su correo electrónico.
-  2. Se crea una conexión en estado `pending` y se envía una notificación push a Usuario B.
-  3. Usuario B puede aceptar (`accepted`) o rechazar (`rejected`) la solicitud.
-- **Deudas Espejo Sincronizadas (`shared_debts`):**
-  - Si el Usuario A registra una deuda indicando que le debe $50 a su amigo B, el backend automáticamente crea en la cuenta de B una deuda espejo de tipo "Por cobrar" de $50 asociada a A.
-  - Si cualquiera de los dos registra un abono de $20, el abono se duplica simétricamente en ambas cuentas, manteniendo el saldo idéntico en tiempo real.
-  - Al liquidarse la deuda por completo, ambas cuentas se marcan como saldadas y se notifica al compañero.
-- **Gastos Fijos Compartidos (`shared_fixed_expenses`):**
-  - Permite a dos usuarios tener el mismo gasto fijo en sus pantallas.
-  - Si uno registra el pago mensual de un servicio, el check de pago se refleja en la cuenta de ambos con el nombre de quién realizó el pago.
+## 3.5 Finanzas Colaborativas ("Panas" y Grupos Compartidos)
+Permite vincular a múltiples usuarios de GastosApp para gestionar finanzas compartidas en deudas, gastos fijos y fondos de ahorro:
+- **Flujo de Conexión de Panas:**
+  1. Usuario A busca a Usuario B mediante su correo electrónico (o mediante el botón rápido `+ Conectar` dentro de cualquier ítem compartido).
+  2. Se crea una conexión en estado `pending` y se envía una notificación push al destinatario.
+  3. El usuario puede aceptar (`accepted`) o rechazar (`rejected`) la solicitud.
+- **Arquitectura Multimiembro (`shares` y `share_members`):**
+  - **Sin entidad "Grupo" aislada:** Los miembros se asocian directamente al ítem compartido (deuda, gasto fijo o fondo de ahorro). Si una deuda se salda o se elimina, no quedan grupos residuales vacíos.
+  - **Visibilidad total y transparente:** Todos los miembros ven el monto global del ítem, todos los abonos, pagos o depósitos registrados y quién los realizó.
+  - **Conexión entre miembros:** El creador debe ser pana aceptado de todos los que invita inicialmente. Dentro del ítem, los miembros que aún no son panas entre sí pueden enviarse solicitudes directas de amistad con un solo toque (`+ Conectar`).
+- **Jerarquía y Sistema de Permisos:**
+  - 👑 **Creador / Dueño (Owner):** Control total del ítem. Puede promover o degradar administradores, expulsar a cualquier miembro y editar/eliminar el ítem. Si decide salir voluntariamente, la propiedad se transfiere automáticamente al administrador más antiguo.
+  - 🛡️ **Administrador (Admin):** Puede invitar a sus propios panas al ítem, editar datos principales (monto, concepto, fechas), promover miembros a administradores y expulsar a miembros comunes. **No puede** expulsar ni degradar a otros administradores ni al dueño.
+  - 👤 **Miembro Común (Member):** Participante del ítem. Puede registrar abonos, checks de pago y aportes al ahorro, y editar o eliminar exclusivamente sus propios registros. No puede modificar las condiciones generales del ítem ni expulsar a nadie.
+- **Salida Voluntaria y Disolución:**
+  - Cualquier participante puede salir libremente en cualquier momento. Si tras la salida queda un único miembro, el ítem se convierte automáticamente en personal para ese integrante restante.
+  - Totalmente retrocompatible con los registros 1:1 creados anteriormente.
+
 
 ## 3.6 Sistema de Notificaciones Push y Alertas Programadas
 - **Tecnología:** Firebase Cloud Messaging (FCM) + Web Push API.
@@ -190,9 +195,11 @@ Permite vincular a dos usuarios de GastosApp para gestionar finanzas compartidas
 | `backend/app/auth.py` | Middleware de seguridad que descarga el JWKS de Supabase y valida los tokens JWT de las peticiones para obtener el `user_id`. |
 | `backend/app/bcv_service.py` | Módulo encargado de obtener las tasas oficiales del BCV y Binance P2P con caché de 30 minutos y conversor multimoneda. |
 | `backend/app/push_service.py` | Servicio de despacho de notificaciones Web Push vía Firebase Admin SDK, limpieza de tokens inválidos y registro in-app. |
+| `backend/app/sharing.py` | Motor unificado de finanzas colaborativas multicuentas (N panas). Gestiona ciclos de vida de grupos, reglas de jerarquía de roles (Owner > Admin > Member), expulsiones y bajas voluntarias, fan-out de pagos/checks/aportes y liquidación compartida. |
 | `backend/app/crud.py` | Consultas y operaciones de base de datos para gastos diarios, resúmenes estadísticos y categorías. |
-| `backend/app/crud_debts.py` | Lógica de base de datos para crear deudas, registrar abonos, liquidarlas y sincronizar deudas espejo entre "Panas". |
+| `backend/app/crud_debts.py` | Lógica de base de datos para crear deudas, registrar abonos, liquidarlas y sincronizar deudas compartidas entre Panas. |
 | `backend/app/crud_fixed_expenses.py` | Lógica para gestionar gastos fijos, checks mensuales y sincronización de gastos fijos compartidos. |
+| `backend/app/crud_savings.py` | Lógica para fondos y metas de ahorro colaborativos o personales, depósitos y porcentaje de cumplimiento. |
 | `backend/app/crud_incomes.py` | Lógica para gestionar ingresos proyectados del mes y confirmaciones de cobro real. |
 | `backend/app/crud_connections.py` | Lógica para buscar usuarios por correo, enviar solicitudes de conexión, aceptarlas, rechazarlas o borrarlas. |
 
@@ -204,6 +211,8 @@ Permite vincular a dos usuarios de GastosApp para gestionar finanzas compartidas
 | `backend/app/routers/profiles.py` | Rutas `/api/profile` para leer y actualizar datos del perfil y preferencias de notificación. |
 | `backend/app/routers/fixed_expenses.py` | Rutas `/api/fixed-expenses` para administrar gastos fijos y checks mensuales de pago. |
 | `backend/app/routers/debts.py` | Rutas `/api/debts` para registrar deudas propias o por cobrar y añadir abonos. |
+| `backend/app/routers/savings.py` | Rutas `/api/savings` para fondos de ahorro personales y colaborativos, depósitos y progreso. |
+| `backend/app/routers/shares.py` | Rutas `/api/shares` para inspeccionar metadatos de ítems compartidos, invitar panas, actualizar roles jerárquicos y expulsar o salir de un ítem. |
 | `backend/app/routers/incomes.py` | Rutas `/api/incomes` para registrar ingresos proyectados y marcar cobros reales. |
 | `backend/app/routers/connections.py` | Rutas `/api/connections` para buscar y gestionar conexiones con otros usuarios. |
 | `backend/app/routers/notifications.py` | Rutas `/api/notifications` para listar notificaciones in-app y marcarlas como leídas. |
@@ -218,6 +227,7 @@ Permite vincular a dos usuarios de GastosApp para gestionar finanzas compartidas
 | `backend/insert_notification.py` | Script CLI para insertar manualmente una notificación de prueba en la base de datos. |
 | `backend/migrate_*.py` | Scripts auxiliares de migración de base de datos para ajustes puntuales. |
 | `backend/test_*.py` | Scripts unitarios para probar de forma aislada la conexión con BCV, Binance, o creación de gastos y deudas. |
+| `backend/scripts/test_sharing_hierarchy.py` | Suite de pruebas unitarias para validar las reglas de jerarquía (Owner > Admin > Member), expulsiones y roles. |
 
 ---
 
@@ -250,19 +260,25 @@ Permite vincular a dos usuarios de GastosApp para gestionar finanzas compartidas
 ### Páginas y Componentes (`frontend/src/components/` y `frontend/src/pages/`)
 | Archivo | Descripción detallada |
 | :--- | :--- |
-| `frontend/src/pages/ConnectionsPage.tsx` | Vista para gestionar la red de contactos ("Panas"): enviar invitaciones, aceptar o rechazar solicitudes. |
+| `frontend/src/pages/ConnectionsPage.tsx` | Vista para gestionar la red de contactos ("Panas"): resumen colaborativo deduplicado, invitaciones y detalles por pana. |
 | `frontend/src/components/Dashboard.tsx` | Vista principal con métricas financieras, selector de periodos, filtros y lista de gastos. |
 | `frontend/src/components/Summary.tsx` | Tarjeta con el total gastado en cada una de las 4 divisas, promedio diario y desglose por categorías. |
 | `frontend/src/components/ExpenseForm.tsx` | Formulario modal para registrar o editar un gasto con selector de divisa y tasa manual. |
 | `frontend/src/components/ExpenseList.tsx` | Componente de lista que muestra los gastos con barra de búsqueda y paginación. |
 | `frontend/src/components/ExpenseItem.tsx` | Fila o tarjeta de gasto individual con desglose de importes y acciones rápidas. |
-| `frontend/src/components/ToolsHub.tsx` | Menú principal que da acceso a Gastos Fijos, Deudas, Ingresos Estimados y Panas. |
-| `frontend/src/components/FixedExpenses.tsx` | Vista mensual de gastos recurrentes con barra de progreso de pagos y selector de meses. |
-| `frontend/src/components/FixedExpenseForm.tsx` | Formulario para crear un gasto fijo, asignar su día de corte y compartirlo con un Pana. |
+| `frontend/src/components/ToolsHub.tsx` | Menú principal que da acceso a Gastos Fijos, Deudas, Fondos de Ahorro, Ingresos Estimados y Panas. |
+| `frontend/src/components/FixedExpenses.tsx` | Vista mensual de gastos recurrentes con barra de progreso de pagos, selector de meses y soporte para grupos de panas. |
+| `frontend/src/components/FixedExpenseForm.tsx` | Formulario para crear un gasto fijo, asignar su día de corte y compartirlo con múltiples panas. |
 | `frontend/src/components/FixedExpensePayForm.tsx` | Formulario para marcar el pago mensual de un gasto fijo con opción de reflejarlo en gastos diarios. |
-| `frontend/src/components/DebtList.tsx` | Vista de deudas (propias o por cobrar) con estados "Pendientes" y "Liquidadas", y barra de avance de abonos. |
-| `frontend/src/components/DebtForm.tsx` | Formulario para registrar una deuda con contraparte, concepto, monto y opción de compartirla. |
-| `frontend/src/components/DebtPaymentForm.tsx` | Formulario modal para registrar un abono a una deuda existente. |
+| `frontend/src/components/DebtList.tsx` | Vista de deudas (propias o por cobrar) con estados "Pendientes" y "Liquidadas", y gestión multimiembro. |
+| `frontend/src/components/DebtForm.tsx` | Formulario para registrar una deuda con contraparte, concepto, monto y selector multimiembro de panas. |
+| `frontend/src/components/DebtPaymentForm.tsx` | Formulario modal para registrar un abono a una deuda existente sincronizado con el grupo. |
+| `frontend/src/components/SavingGoals.tsx` | Vista de metas y fondos de ahorro (personales y grupales) con desglose de aportes por integrante. |
+| `frontend/src/components/SavingGoalForm.tsx` | Formulario para registrar metas de ahorro con selector múltiple de participantes y administradores. |
+| `frontend/src/components/SavingDepositForm.tsx` | Formulario modal para registrar aportes al fondo de ahorro con sincronización automática. |
+| `frontend/src/components/panas/ParticipantPicker.tsx` | Componente reutilizable de selección múltiple de contactos con alternador de rol de administrador. |
+| `frontend/src/components/panas/MemberAvatars.tsx` | Insignias superpuestas de avatares con coronas de creador y escudos de administrador. |
+| `frontend/src/components/panas/ShareMembersModal.tsx` | Modal de gestión del grupo: lista de participantes, roles, expulsiones por jerarquía, salida voluntaria y conexión directa (`+ Conectar`). |
 | `frontend/src/components/EstimatedIncomeList.tsx` | Vista de ingresos proyectados mensuales con seguimiento de cobros reales recibidos. |
 | `frontend/src/components/EstimatedIncomeForm.tsx` | Formulario para registrar una fuente de ingresos esperada recurrente. |
 | `frontend/src/components/IncomeCheckForm.tsx` | Formulario para marcar el cobro real de un ingreso estimado (total o saldo parcial). |

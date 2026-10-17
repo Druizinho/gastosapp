@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Expense, ExpenseCreate, ExpenseUpdate, SummaryResponse, ExchangeRates, RangeSummaryResponse, FixedExpense, FixedExpenseCreate, FixedExpenseUpdate, FixedExpenseSummary, FixedExpenseCheck, FixedExpenseCheckCreate, Debt, DebtCreate, DebtUpdate, DebtPaymentCreate, EstimatedIncome, EstimatedIncomeCreate, EstimatedIncomeUpdate, IncomeCheckCreate, IncomeCheck, Connection, SavingGoal, SavingGoalCreate, SavingGoalUpdate, SavingDepositCreate, SavingSummaryResponse, PanasGlobalOverview, PanaDetail } from './types';
+import type { Expense, ExpenseCreate, ExpenseUpdate, SummaryResponse, ExchangeRates, RangeSummaryResponse, FixedExpense, FixedExpenseCreate, FixedExpenseUpdate, FixedExpenseSummary, FixedExpenseCheck, FixedExpenseCheckCreate, FixedExpenseCheckUpdate, Debt, DebtCreate, DebtUpdate, DebtPaymentCreate, DebtPaymentUpdate, EstimatedIncome, EstimatedIncomeCreate, EstimatedIncomeUpdate, IncomeCheckCreate, IncomeCheck, Connection, SavingGoal, SavingGoalCreate, SavingGoalUpdate, SavingDepositCreate, SavingDepositUpdate, SavingSummaryResponse, PanasGlobalOverview, PanaDetail, ShareRole, ShareInfoOut } from './types';
 import { supabase } from './supabaseClient';
 
 const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
@@ -317,4 +317,46 @@ export const deleteSavingDeposit = async (depositId: string): Promise<SavingGoal
   const response = await api.delete(`/savings/deposits/${depositId}`);
   return response.data;
 };
+
+// Shares & Multi-member groups
+export const getShareByEntity = async (entityId: string): Promise<ShareInfoOut> => {
+  const response = await api.get(`/shares/by-entity/${entityId}`);
+  return response.data;
+};
+
+export const addShareMembers = async (shareId: string, userIds: string[], adminIds: string[] = []): Promise<ShareInfoOut> => {
+  const response = await api.post(`/shares/${shareId}/members`, { user_ids: userIds, admin_ids: adminIds });
+  return response.data;
+};
+
+export const updateShareMemberRole = async (shareId: string, targetUserId: string, role: ShareRole): Promise<ShareInfoOut> => {
+  const response = await api.patch(`/shares/${shareId}/members/${targetUserId}`, { role });
+  return response.data;
+};
+
+export const removeShareMember = async (shareId: string, targetUserId: string): Promise<{ message: string; voluntary: boolean }> => {
+  const response = await api.delete(`/shares/${shareId}/members/${targetUserId}`);
+  return response.data;
+};
+
+export const requestConnectionByUserId = async (targetUserId: string): Promise<Connection> => {
+  const response = await api.post(`/connections/request-by-user/${targetUserId}`);
+  return response.data;
+};
+
+export const updateDebtPayment = async (paymentId: string, paymentUpdate: DebtPaymentUpdate): Promise<Debt> => {
+  const response = await api.put(`/debts/payments/${paymentId}`, paymentUpdate);
+  return response.data;
+};
+
+export const updateFixedExpenseCheck = async (checkId: string, checkUpdate: FixedExpenseCheckUpdate): Promise<FixedExpenseCheck> => {
+  const response = await api.put(`/fixed-expenses/checks/${checkId}`, checkUpdate);
+  return response.data;
+};
+
+export const updateSavingDeposit = async (depositId: string, depositUpdate: SavingDepositUpdate): Promise<SavingGoal> => {
+  const response = await api.put(`/savings/deposits/${depositId}`, depositUpdate);
+  return response.data;
+};
+
 
