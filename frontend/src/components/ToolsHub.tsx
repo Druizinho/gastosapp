@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Receipt, TrendingDown, TrendingUp, Wallet, ChevronRight, Lock, Users, PiggyBank } from 'lucide-react';
+import { Receipt, TrendingDown, TrendingUp, Wallet, ChevronRight, Lock, Users, PiggyBank, Target } from 'lucide-react';
 
 interface ToolCard {
   id: string;
@@ -14,6 +14,16 @@ interface ToolCard {
 }
 
 const tools: ToolCard[] = [
+  {
+    id: 'budgets',
+    title: 'Presupuestos',
+    description: 'Límites mensuales globales y por categoría',
+    icon: <Target size={28} />,
+    color: '#6366F1',
+    bgColor: 'rgba(99, 102, 241, 0.1)',
+    path: '/herramientas/presupuestos',
+    enabled: true,
+  },
   {
     id: 'fixed-expenses',
     title: 'Gastos Fijos',

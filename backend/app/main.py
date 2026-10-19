@@ -7,7 +7,7 @@ from firebase_admin import credentials
 import asyncio
 import datetime
 
-from .routers import expenses, categories, profiles, fixed_expenses, debts, incomes, push, notifications, connections, savings, shares
+from .routers import expenses, categories, profiles, fixed_expenses, debts, incomes, push, notifications, connections, savings, shares, budgets
 from .database import engine, Base
 
 import base64
@@ -108,6 +108,7 @@ app.include_router(notifications.router)
 app.include_router(connections.router)
 app.include_router(savings.router)
 app.include_router(shares.router)
+app.include_router(budgets.router)
 
 @app.get("/")
 def read_root():

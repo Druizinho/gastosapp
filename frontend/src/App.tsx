@@ -9,6 +9,7 @@ import FixedExpenses from './components/FixedExpenses';
 import DebtList from './components/DebtList';
 import EstimatedIncomeList from './components/EstimatedIncomeList.tsx';
 import SavingGoals from './components/SavingGoals';
+import Budgets from './components/Budgets';
 import { RatesPage } from './components/RatesPage';
 import { SettingsPage } from './components/SettingsPage';
 import { PanasPage } from './pages/PanasPage';
@@ -64,10 +65,12 @@ const AppRoutes = () => {
             <Route path="/herramientas/deudas-por-cobrar" element={<DebtList type="receivable" onBack={() => navigate(-1)} />} />
             <Route path="/herramientas/ingresos-estimados" element={<EstimatedIncomeList onBack={() => navigate(-1)} />} />
             <Route path="/herramientas/ahorros" element={<SavingGoals onBack={() => navigate(-1)} />} />
+            <Route path="/herramientas/presupuestos" element={<Budgets onBack={() => navigate(-1)} />} />
             <Route path="/herramientas/panas" element={<PanasPage />} />
             <Route path="/herramientas/conexiones" element={<Navigate to="/herramientas/panas" replace />} />
             <Route path="/conexiones" element={<Navigate to="/herramientas/panas" replace />} />
             <Route path="/panas" element={<Navigate to="/herramientas/panas" replace />} />
+            <Route path="/presupuestos" element={<Navigate to="/herramientas/presupuestos" replace />} />
             <Route path="/deudas" element={<Navigate to="/herramientas/deudas-nuestras" replace />} />
             <Route path="/gastos-fijos" element={<Navigate to="/herramientas/gastos-fijos" replace />} />
             <Route path="/ahorros" element={<Navigate to="/herramientas/ahorros" replace />} />

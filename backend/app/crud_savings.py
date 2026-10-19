@@ -10,6 +10,7 @@ from fastapi import HTTPException
 
 from . import models, schemas, sharing, bcv_service
 from .push_service import send_notification_to_user
+from .crud_budgets import check_and_notify_budget_thresholds
 
 
 async def get_saving_goals(
@@ -356,6 +357,9 @@ async def add_saving_deposit(
             )
 
     await db.commit()
+    if register_as_expense:
+        dep_date = data.get("deposit_date") or datetime.date.today()
+        await check_and_notify_budget_thresholds(db, user_id, dep_date, allow_notify=True)
     return await get_saving_goal(db, goal_id, user_id)
 
 
@@ -427,7 +431,12 @@ async def update_saving_deposit(
     else:
         await sharing.recompute_settlement(db, "saving_goal", [deposit.goal_id])
 
+    had_expense = deposit.expense_id is not None
+    dep_date = deposit.deposit_date
+
     await db.commit()
+    if had_expense:
+        await check_and_notify_budget_thresholds(db, user_id, dep_date, allow_notify=True)
     return await get_saving_goal(db, deposit.goal_id, user_id)
 
 
@@ -509,9 +518,14 @@ async def delete_saving_deposit(db: AsyncSession, deposit_id: UUID, user_id: UUI
             db.expire(deposit.goal, ['deposits'])
         await sharing.recompute_settlement(db, "saving_goal", [goal_id])
 
+    had_expense = deposit.expense_id is not None
+    dep_date = deposit.deposit_date
+
     await db.commit()
     if deposit.goal:
         db.expire(deposit.goal, ['deposits'])
+    if had_expense:
+        await check_and_notify_budget_thresholds(db, user_id, dep_date, allow_notify=False)
     return await get_saving_goal(db, goal_id, user_id)
 
 

@@ -10,6 +10,7 @@ from datetime import datetime, timezone, date
 
 from . import models, schemas, sharing, bcv_service
 from .push_service import send_notification_to_user
+from .crud_budgets import check_and_notify_budget_thresholds
 
 
 def _debt_url(debt_type: Optional[str]) -> str:
@@ -314,6 +315,9 @@ async def add_debt_payment(db: AsyncSession, debt_id: UUID, user_id: UUID, payme
         await sharing.recompute_settlement(db, "debt", [debt_id])
 
     await db.commit()
+    if register_as_expense:
+        pay_date = data.get("payment_date") or date.today()
+        await check_and_notify_budget_thresholds(db, user_id, pay_date, allow_notify=True)
     return await get_debt(db, debt_id, user_id)
 
 

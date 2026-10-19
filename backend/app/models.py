@@ -357,3 +357,49 @@ class ShareMember(Base):
     share = relationship("Share", back_populates="members")
     profile = relationship("Profile", foreign_keys=[user_id])
 
+
+class MonthlyBudget(Base):
+    __tablename__ = "monthly_budgets"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    month_year = Column(String(7), nullable=False, index=True) # YYYY-MM
+    currency = Column(String(10), nullable=False, default='USD_BCV')
+    income_mode = Column(String(20), nullable=False, default='manual') # 'manual', 'single_income', 'all_incomes'
+    linked_income_id = Column(UUID(as_uuid=True), ForeignKey("estimated_incomes.id", ondelete="SET NULL"), nullable=True, index=True)
+    manual_global_limit = Column(Numeric(12, 4), nullable=True)
+    effective_global_limit = Column(Numeric(12, 4), nullable=True)
+    is_confirmed = Column(Boolean, nullable=False, server_default='false')
+    notified_month_start = Column(Boolean, nullable=False, server_default='false')
+    notified_global_80 = Column(Boolean, nullable=False, server_default='false')
+    notified_global_100 = Column(Boolean, nullable=False, server_default='false')
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    category_limits = relationship("BudgetCategoryLimit", back_populates="budget", cascade="all, delete-orphan", lazy="selectin")
+    linked_income = relationship("EstimatedIncome", foreign_keys=[linked_income_id], lazy="selectin")
+
+    __table_args__ = (
+        UniqueConstraint('user_id', 'month_year', name='_user_month_budget_uc'),
+    )
+
+
+class BudgetCategoryLimit(Base):
+    __tablename__ = "budget_category_limits"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    budget_id = Column(UUID(as_uuid=True), ForeignKey("monthly_budgets.id", ondelete="CASCADE"), nullable=False, index=True)
+    category_name = Column(String(100), nullable=False)
+    limit_amount = Column(Numeric(12, 4), nullable=False)
+    currency = Column(String(10), nullable=False, default='USD_BCV', server_default='USD_BCV')
+    notified_80 = Column(Boolean, nullable=False, server_default='false')
+    notified_100 = Column(Boolean, nullable=False, server_default='false')
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    budget = relationship("MonthlyBudget", back_populates="category_limits")
+
+    __table_args__ = (
+        UniqueConstraint('budget_id', 'category_name', name='_budget_category_limit_uc'),
+    )
+

@@ -1,205 +1,538 @@
-# Guía Definitiva y Análisis Crítico de Skills en Modelos Modernos
+# Guía Completa de Skills y Herramientas en Antigravity
 
-Este documento es una investigación exhaustiva y referencia técnica de todas las skills, plugins y herramientas de desarrollo instaladas en tu entorno global (`~/.gemini/config/skills/` y `~/.gemini/config/plugins/`).
+Esta guía contiene la referencia exhaustiva de todas las skills, plugins y herramientas instaladas en tu entorno global (`~/.gemini/config/skills/` y `~/.gemini/config/plugins/`).
 
-Incluye un **análisis profundo sobre su comportamiento en modelos de frontera actuales** (Gemini 2.5/Flash/Pro/Argon, Claude 3.5/3.7 Sonnet con Extended Thinking, Claude Opus, OpenAI o1/o3-mini) frente a modelos de generaciones anteriores.
+Incluye **cómo se activa cada una**, **ejemplos prácticos**, y el **análisis de efectividad en modelos de frontera actuales** (Gemini 2.5/Argon, Claude 3.5/3.7 Sonnet con Extended Thinking, Claude Opus, OpenAI o1/o3-mini) frente a modelos de generaciones previas.
 
 ---
 
 ## 📑 Tabla de Contenidos
 
-1. [Matriz Comparativa: Modelos Anteriores vs. Modelos Actuales](#1-matriz-comparativa-modelos-anteriores-vs-modelos-actuales)
-2. [Análisis Profundo por Herramienta](#2-análisis-profundo-por-herramienta)
+1. [Cuadro Comparativo Resumen](#1-cuadro-comparativo-resumen)
+2. [Tabla Rápida de Comandos y Activación](#2-tabla-rápida-de-comandos-y-activación)
+3. [Herramientas de Optimización y Flujo](#3-herramientas-de-optimización-y-flujo)
    - [RTK (Rust Token Killer)](#rtk-rust-token-killer)
-   - [Ponytail (Lazy Senior Dev) — El dilema de la sub-ingeniería](#ponytail-lazy-senior-dev--el-dilema-de-la-sub-ingeniería)
-   - [Caveman — ¿Ahorro real o pérdida de razonamiento?](#caveman--ahorro-real-o-pérdida-de-razonamiento)
-   - [Cocoindex-code (CCC) — Precisión AST vs. Ventanas de 1M tokens](#cocoindex-code-ccc--precisión-ast-vs-ventanas-de-1m-tokens)
-   - [Better-UI & Impeccable — Eliminando el "AI Slop" visual](#better-ui--impeccable--eliminando-el-ai-slop-visual)
-   - [Grill-me & Grill-with-ui — Frenar el entusiasmo precipitado](#grill-me--grill-with-ui--frenar-el-entusiasmo-precipitado)
-   - [Deepsec (Vercel Labs) — Diseñado nativamente para modelos de razonamiento](#deepsec-vercel-labs--diseñado-nativamente-para-modelos-de-razonamiento)
-   - [Security-Audit (Cloudflare) & SecuritySkills (UnitOneAI) — Blindaje contra alucinaciones](#security-audit-cloudflare--securityskills-unitoneai--blindaje-contra-alucinaciones)
-3. [Recomendación Estratégica de Uso Diario](#3-recomendación-estratégica-de-uso-diario)
+   - [Ponytail (Lazy Senior Developer)](#ponytail-lazy-senior-developer)
+   - [Caveman (Voz Ultra-Concisa)](#caveman-voz-ultra-concisa)
+4. [Herramientas de Búsqueda y Navegación](#4-herramientas-de-búsqueda-y-navegación)
+   - [Cocoindex-code (CCC)](#cocoindex-code-ccc)
+5. [Herramientas de Diseño y Frontend](#5-herramientas-de-diseño-y-frontend)
+   - [Better-UI Suite](#better-ui-suite)
+   - [Impeccable](#impeccable)
+6. [Herramientas de Arquitectura y Validación](#6-herramientas-de-arquitectura-y-validación)
+   - [Grill-me & Grill-with-docs](#grill-me--grill-with-docs)
+   - [Grill-with-ui](#grill-with-ui)
+7. [Auditoría y Ciberseguridad](#7-auditoría-y-ciberseguridad)
+   - [Deepsec (Vercel Labs)](#deepsec-vercel-labs)
+   - [Security-Audit (Cloudflare)](#security-audit-cloudflare)
+   - [SecuritySkills (UnitOneAI - 45 Skills)](#securityskills-unitoneai---45-skills)
+8. [Metodología e Ingeniería de Software](#8-metodología-e-ingeniería-de-software)
+   - [Agent-Skills (Addy Osmani - 25 Skills)](#agent-skills-addy-osmani---25-skills)
+9. [Diagrama de Flujo: Cuándo usar cada herramienta](#9-diagrama-de-flujo-cuándo-usar-cada-herramienta)
 
 ---
 
-## 1. Matriz Comparativa: Modelos Anteriores vs. Modelos Actuales
+## 1. Cuadro Comparativo Resumen
 
-| Skill / Herramienta | Efectividad en Modelos Anteriores (GPT-3.5 / Claude 3) | Efectividad en Modelos Actuales (Gemini 2.5/Argon, Sonnet 3.7, Opus, o1) | ¿Vale la pena hoy en día? | Veredicto de Activación |
-| :--- | :--- | :--- | :--- | :--- |
-| **RTK** | ⭐⭐⭐⭐⭐ Imprescindible (contextos de 8k-32k). | ⭐⭐⭐⭐⭐ **Crítico.** Evita la dilución de atención (*needle in haystack*) y reduce latencia (TTFT). | **SÍ, 100% indispensable.** | **Activo por defecto (Regla global)** |
-| **Ponytail** | ⭐⭐⭐⭐⭐ Milagroso para frenar código inflado (*bloat*). | ⚠️ **Riesgoso si es rígido.** Puede causar *under-engineering*, atajos precarios y castrar el razonamiento arquitectónico natural. | **SÍ, pero solo bajo demanda o en modo `lite`.** | **Inactivo por defecto (Usar con `/ponytail` o `/ponytail lite`)** |
-| **Caveman** | ⭐⭐⭐⭐ Ahorraba tokens visibles valiosos. | ⚠️ **Prescindible.** En modelos de razonamiento el costo está en los *thinking tokens* internos. La voz cavernícola degrada explicaciones complejas. | **Bajo valor / Solo preferencia personal.** | **Inactivo por defecto (Solo bajo demanda)** |
-| **Cocoindex-Code (CCC)** | ⭐⭐⭐ Bueno para paliar ventanas pequeñas. | ⭐⭐⭐⭐⭐ **Muy Alto.** Aunque la ventana sea de 1M-2M tokens, volcar código masivo genera alucinaciones y búsquedas ciegas. El AST de Tree-sitter da precisión quirúrgica. | **SÍ, muy valioso en repos medianos/grandes.** | **Auto-discovery / Bajo demanda** |
-| **Better-UI & Impeccable** | ⭐⭐⭐ Ayudaba con CSS básico. | ⭐⭐⭐⭐⭐ **Imprescindibles.** Los modelos nuevos dominan Tailwind pero siguen generando "AI Slop" visual genérico. Estas skills inyectan matemática de diseño real (curvas de resorte, radios concéntricos, WCAG 2.2). | **SÍ, el estándar de oro en Frontend.** | **Auto-discovery en archivos UI** |
-| **Grill-me / Grill-with-ui** | ⭐⭐⭐⭐ Muy útil para aclarar ideas. | ⭐⭐⭐⭐⭐ **Excepcional.** Los modelos modernos razonan tanto que hacen preguntas de arquitectura e idempotencia mucho más profundas antes de programar. | **SÍ, el mejor arnés pre-código.** | **Inactivo por defecto (Usar con `/grill-with-ui`)** |
-| **Deepsec** | ❌ No funcionaba bien (requería razonamiento profundo). | ⭐⭐⭐⭐⭐ **Nativo para esta era.** Creado expresamente por Vercel para modelos de frontera a máximo nivel de *thinking*. | **SÍ, auditoría profunda real.** | **Inactivo por defecto (Bajo demanda / CI/CD)** |
-| **Security-Audit & SecuritySkills** | ⭐⭐⭐ Respuestas teóricas. | ⭐⭐⭐⭐⭐ **Obligatorio para evitar alucinaciones.** Los LLMs modernos inventan números de control normativos (NIST/ISO/SOC2); estas skills los anclan a identificadores reales. | **SÍ, rigor profesional auditable.** | **Auto-discovery / Bajo demanda** |
+| Herramienta | ¿Activar por Defecto? | ¿Recomendado en Modelos Actuales? | Rol Principal |
+| :--- | :---: | :---: | :--- |
+| **Agent-Skills** | ⚡ **Contextual** | ⭐⭐⭐⭐⭐ **Crítico para Features** | Suite de 25 skills de ingeniería senior (Addy Osmani). Cubre el ciclo SDLC completo: Define, Plan, Build, Verify, Review, Ship. |
+| **RTK** | ✅ **SÍ** | ⭐⭐⭐⭐⭐ **Crítico** | Filtra ruido en la terminal; reduce latencia y evita que el modelo pierda la atención en logs largos. |
+| **Ponytail** | ❌ **NO** | ⚠️ **Solo bajo demanda** | En modelos nuevos puede causar *sub-ingeniería* y atajos precarios si está forzado. Usar solo con `/ponytail` cuando se desmadre. |
+| **Better-UI** | ⚡ **Contextual** | ⭐⭐⭐⭐⭐ **Imprescindible** | Elimina el "AI Slop" visual. Aplica física de resortes, radios concéntricos y accesibilidad WCAG 2.2. |
+| **Impeccable** | ⚡ **Contextual** | ⭐⭐⭐⭐⭐ **Muy Alto** | Define un sistema de diseño estricto (`PRODUCT.md` y `DESIGN.md`) con 24 comandos de diseño profesional. |
+| **Cocoindex (CCC)** | ⚡ **Contextual** | ⭐⭐⭐⭐⭐ **Muy Alto** | Indexación semántica y AST con Tree-sitter para navegar repos medianos/grandes con precisión quirúrgica. |
+| **Grill-with-ui** | ❌ **NO** | ⭐⭐⭐⭐⭐ **Excepcional** | Panel web en el navegador que te desafía con preguntas arquitectónicas antes de escribir código. |
+| **Grill-me** | ❌ **NO** | ⭐⭐⭐⭐⭐ **Muy Alto** | Lo mismo que Grill-with-ui pero interactivo directamente en la terminal. |
+| **Deepsec** | ❌ **NO** | ⭐⭐⭐⭐⭐ **Nativo para Reasoning** | Escáner de 0-days lógicos de Vercel Labs; creado específicamente para modelos frontier con thinking. |
+| **Security-Audit** | ⚡ **Modo Guía** | ⭐⭐⭐⭐⭐ **Imprescindible** | Arnés de Cloudflare en 6 fases con verificadores independientes para eliminar falsos positivos. |
+| **SecuritySkills** | ⚡ **Auto-discovery** | ⭐⭐⭐⭐⭐ **Obligatorio** | 45 skills que obligan al modelo a ceñirse a marcos reales (OWASP, NIST, STRIDE), evitando alucinaciones normativas. |
+| **Caveman** | ❌ **NO** | ⚠️ **Prescindible** | Ahorra pocos tokens en modelos de razonamiento y puede omitir explicaciones técnicas importantes. |
 
 ---
 
-## 2. Análisis Profundo por Herramienta
+## 2. Tabla Rápida de Comandos y Activación
+
+| Herramienta | Comando Directo | Activación por Lenguaje Natural | Modo de Operación |
+| :--- | :--- | :--- | :--- |
+| **Agent-Skills** | `/spec`, `/plan`, `/build`, `/test`, `/review`, `/ship` | *"haz TDD de esto"*, *"especifica primero"*, *"revisa calidad"* | Auto-discovery y Comandos Slash |
+| **RTK** | `rtk <comando>` / `rtk gain` | Automático en comandos de shell | Regla global de fondo |
+| **Ponytail** | `/ponytail` o `/ponytail lite` | *"sé pragmático"*, *"evita sobreingeniería"* | Bajo demanda |
+| **Better-UI** | `/better-ui` / `/better-accessibility` | *"pule esta interfaz"*, *"revisa accesibilidad"* | Auto-discovery en Frontend |
+| **Impeccable** | `/impeccable <comando>` | *"aplica diseño impecable"*, *"revisa consistencia"* | Auto-discovery en Frontend |
+| **Cocoindex (CCC)**| `ccc search <query>` / `/ccc` | *"busca dónde se define tal función"* | Auto-discovery en búsquedas |
+| **Grill-with-ui** | `/grill-with-ui <tema>` | *"grill with ui sobre mi plan"* | Bajo demanda (abre navegador) |
+| **Grill-me** | `/grill-me <tema>` | *"hazme un grill-me sobre esta arquitectura"* | Bajo demanda (en consola) |
+| **Deepsec** | `deepsec init` | *"escanea este repo con deepsec"* | Bajo demanda / CI/CD |
+| **Security-Audit** | `/security-audit` | *"¿es seguro este endpoint?"* / *"audita el repo"* | Guía o Auditoría completa |
+| **SecuritySkills** | `/threat-modeling`, `/api-security` | *"modela amenazas STRIDE"*, *"revisa prompt injection"* | Auto-discovery por contexto |
+| **Caveman** | `/caveman` | *"modo cavernícola"*, *"sé ultra conciso"* | Bajo demanda |
+
+---
+
+## 3. Herramientas de Optimización y Flujo
 
 ---
 
 ### RTK (Rust Token Killer)
 
-#### ¿Qué decían los escépticos?
-*"Con modelos actuales que aceptan 1 o 2 millones de tokens en la ventana de contexto (como Gemini 1.5/2.5 o Claude), ¿realmente hace falta una herramienta en Rust para filtrar la salida de la terminal?"*
+#### ¿Para qué sirve?
+Filtra y compacta las salidas verbose de comandos de consola (`git status`, `git diff`, `npm test`, `pytest`, `cargo build`). Oculta logs repetitivos, spinners y pruebas que pasaron con éxito, conservando intactos errores, advertencias y rutas de archivos.
 
-#### Lo que demostró la investigación técnica:
-**Es completamente indispensable.** La creencia de que "como el contexto es infinito, ya no importa el ruido" es un grave error de ingeniería:
-1. **Dilución de la Atención (*Needle in a Haystack Effect*):** Cuando un comando como `npm test` o `cargo test` vuelca 3,000 líneas de tests que pasaron con éxito, el modelo sufre fatiga de atención y pierde de vista las 4 líneas del error real. RTK colapsa los tests verdes y muestra solo el stack trace del fallo.
-2. **Latencia (*Time to First Token - TTFT*):** Procesar 40,000 tokens de logs en cada llamada incrementa los tiempos de espera entre 5 y 15 segundos por turno en la API.
-3. **Costo acumulado en bucles agénticos:** Un agente autónomo que corre 20 comandos durante una refactorización puede quemar millones de tokens solo leyendo barras de progreso de Docker o advertencias de compilador repetidas.
+#### ¿Cómo funciona?
+Interpreta los flujos de texto en milisegundos mediante un binario en Rust antes de que los datos ingresen a la ventana de contexto del LLM.
 
-> **Conclusión en Modelos Modernos:** **100% Recomendado.** Mantener activo por defecto en todos tus proyectos.
+#### Comportamiento en Modelos Actuales vs. Antiguos:
+- **En modelos antiguos:** Era útil para no reventar ventanas de 8k o 32k tokens.
+- **En modelos actuales (Gemini 2.5, Claude 3.7):** Es **crítico para evitar la "dilución de atención" (*needle in a haystack*)**. Cuando un modelo recibe 5,000 líneas de un test suite masivo, pierde el foco del error real. RTK reduce la latencia (*Time to First Token*) y ahorra miles de tokens en llamadas continuas.
 
----
+#### ¿Se puede activar por defecto?
+**Sí.** Se configura mediante la regla obligatoria en `~/.gemini/config/plugins/rtk/rules/AGENTS.md`.
 
-### Ponytail (Lazy Senior Dev) — El dilema de la sub-ingeniería
+#### ¿Lo recomendarías por defecto y en qué casos?
+**Sí, 100% recomendado en todos los proyectos.** No altera la calidad de las respuestas y hace que el asistente trabaje más rápido y con mayor precisión.
 
-#### El origen del problema:
-Ponytail nació para combatir el vicio de los primeros LLMs de sobrediseñar cosas simples (ej. instalar 3 paquetes de npm para formatear una fecha en lugar de usar `Intl.DateTimeFormat`). Su lema: *"El mejor código es el que nunca se escribe"*.
+#### ¿Cómo se activa normalmente?
+- Prefijando comandos en terminal: `rtk git status`, `rtk npm test`, `rtk git diff`.
+- Ver estadísticas de ahorro: `rtk gain` o `rtk gain --history`.
+- Ejecutar comando sin filtro en caso de necesitar la salida pura: `rtk proxy <comando>`.
 
-#### ¿Por qué en modelos actuales (Gemini Argon, Claude Opus, Sonnet 3.7) los limita si está activo por defecto?
-Los modelos de última generación con razonamiento profundo (*extended thinking*) dedican miles de tokens internos a analizar arquitecturas, prever condiciones de carrera, garantizar tipificación estricta y diseñar para mantenibilidad.
-
-Cuando Ponytail se impone como **regla permanente e inflexible**, provoca tres efectos adversos graves:
-1. **Sub-ingeniería forzada (*Under-engineering*):** El modelo interpreta que *"el diff más corto siempre gana"*. En lugar de crear un patrón desacoplado (por ejemplo, una interfaz de pagos limpia para soportar múltiples pasarelas a futuro), el modelo mete un `if/else` hardcodeado y acoplado en un archivo existente para "ahorrar líneas".
-2. **Abuso de "Deuda Técnica Documentada":** Ponytail tiene una regla que ordena: *si tomas un atajo, añade un comentario `shortcut: <el límite>, <cuándo actualizar>`*. En modelos de frontera, esto los induce a dejar código parcheado con advertencias en vez de implementar la solución arquitectónica robusta que el modelo **sí era capaz de construir**.
-3. **Terquedad y condescendencia en modo `ultra`:** Al exigirle al modelo que *"cuestione si el requerimiento realmente debe existir antes de picar código"*, los modelos con alto razonamiento se vuelven obstinados, discutiendo requerimientos válidos de producto en vez de ejecutarlos.
-
-> **Conclusión en Modelos Modernos:**
-> - **NO lo actives por defecto como regla global permanente.**
-> - **Úsalo bajo demanda con `/ponytail` o `/ponytail lite`:** Es una herramienta fantástica cuando notas que el modelo se está complicando la vida innecesariamente, o cuando ejecutas `/ponytail-audit` para limpiar código muerto y dependencias infladas en un repositorio maduro.
+#### Casos de ejemplo prácticos:
+1. **Tests unitarios masivos:** Ejecutas `rtk npm test`. Si pasaron 200 tests y falló 1, RTK oculta los 200 tests exitosos y le pasa al modelo únicamente el stack trace del que falló.
+2. **Revisión de cambios antes de commit:** `rtk git status` te muestra el resumen compacto de ramas y archivos modificados sin cabeceras redundantes.
 
 ---
 
-### Caveman — ¿Ahorro real o pérdida de razonamiento?
+### Ponytail (Lazy Senior Developer)
 
-#### ¿Cómo opera en modelos modernos?
-Caveman fuerza al modelo a responder sin saludos, cortesías ni explicaciones, hablando en estilo telegráfico (*"Modo cavernícola"*).
+#### ¿Para qué sirve?
+Obliga al modelo a actuar con mentalidad de programador senior pragmático: resolver el problema con el menor código nuevo posible, evitar meter dependencias de terceros si el lenguaje ya tiene la solución nativa, y respetar la filosofía YAGNI (*You Aren't Gonna Need It*).
 
-#### La realidad técnica en modelos actuales:
-1. **El costo ya no está en el texto visible:** En los modelos de razonamiento (OpenAI o1/o3, Claude con thinking), el mayor consumo de tiempo y cómputo ocurre en el razonamiento interno (*hidden thinking tokens*), el cual Caveman **no reduce**.
-2. **Pérdida de matices críticos:** Cuando un modelo moderno te advierte sobre una condición de carrera o un efecto secundario en la base de datos, forzarlo a hablar en 5 palabras telegráficas puede hacer que pases por alto advertencias técnicas de seguridad o arquitectura.
+#### ¿Cómo funciona?
+Aplica una "escalera de decisiones" de 7 niveles antes de escribir código: ¿esta función debe existir? ¿ya existe algo similar en el repo? ¿se resuelve con la librería estándar? ¿se puede resolver en una línea?
 
-> **Conclusión en Modelos Modernos:** **Prescindible.** Es divertido y útil si trabajas desde una terminal muy pequeña en el móvil o tienes prisa extrema, pero no aporta un valor arquitectónico real en modelos de frontera.
+#### Comportamiento en Modelos Actuales vs. Antiguos:
+- **En modelos antiguos:** Era imprescindible porque los LLMs tendían a sobrediseñar e instalar librerías para cualquier tontería.
+- **En modelos actuales con razonamiento profundo (Argon, Opus, o1):** **Puede ser perjudicial si se deja activo por defecto.** Los modelos de frontera razonan mucho mejor sobre arquitectura. Si les fuerzas la regla de *"el diff más corto siempre gana"*, caen en **sub-ingeniería (*under-engineering*)**: meten un `if/else` espagueti en vez de una clase desacoplada o dejan atajos con comentarios (`shortcut:`) en lugar de construir la arquitectura que sí saben hacer.
 
----
+#### ¿Se puede activar por defecto?
+**Técnicamente sí, pero NO se recomienda por defecto.**
 
-### Cocoindex-Code (CCC) — Precisión AST vs. Ventanas de 1M tokens
+#### ¿Lo recomendarías por defecto y en qué casos?
+**No por defecto.** Es excelente **bajo demanda** cuando notas que el modelo está inventando dependencias innecesarias o cuando quieres auditar código muerto con `/ponytail-audit`. Si deseas usarlo habitualmente, usa el modo `/ponytail lite`.
 
-#### ¿Por qué no basta con `grep` o volcar todo el repositorio al contexto?
-Aunque modelos como Gemini procesan más de 1 millón de tokens, volcar todo el repositorio a la ventana de contexto tiene dos problemas severos:
-- Cuesta decenas de dólares por cada consulta.
-- Sufre de degradación de recuperación (*retrieval degradation* en la zona media del contexto).
-- El comando clásico `grep` es ciego a la sintaxis: si buscas `execute`, te devolverá 400 líneas de comentarios, strings y llamadas irrelevantes.
+#### ¿Cómo se activa normalmente?
+- Comando directo: `/ponytail` (modo full), `/ponytail lite`, `/ponytail ultra`.
+- Frases clave: *"ponytail"*, *"sé pragmático"*, *"dame la solución más simple que funcione"*, *"nada de sobreingeniería"*.
+- Desactivar: `"stop ponytail"` o `"normal mode"`.
 
-#### El valor diferencial de CCC:
-CCC utiliza **Tree-sitter** para parsear el código fuente en un **Árbol Sintáctico Abstracto (AST)**:
-- Entiende la diferencia entre una definición de clase, una llamada a un método y un comentario.
-- Realiza búsquedas semánticas incrementales impulsadas por Rust y SQLite local.
-- Le entrega al modelo **únicamente el bloque de código exacto** que necesita para resolver la tarea, ahorrando hasta un 70% de tokens de contexto y eliminando alucinaciones de archivos que no vienen al caso.
-
-> **Conclusión en Modelos Modernos:** **Muy Alto Valor.** Es la mejor forma de que modelos potentes naveguen bases de código reales de más de 50 archivos.
+#### Casos de ejemplo prácticos:
+1. **Frenar dependencias innecesarias:** Le pides un selector de fechas con `/ponytail` y el modelo usará `<input type="date">` nativo en lugar de proponerte instalar una librería pesada de React.
+2. **Limpieza de deuda técnica:** Ejecutas `/ponytail-audit` para que revise tu proyecto y señale qué funciones auxiliares o abstracciones complejas están de más.
 
 ---
 
-### Better-UI & Impeccable — Eliminando el "AI Slop" visual
+### Caveman (Voz Ultra-Concisa)
 
-#### El problema endémico del diseño con IA:
-Incluso los modelos más avanzados (Claude 3.5 Sonnet, Gemini 2.0/Flash) sufren de sesgos de entrenamiento visual que producen lo que la industria llama **"AI Slop"**:
-- Tipografías genéricas (Inter para absolutamente todo).
-- Degradados cliché morado-azul o tarjetas anidadas sin criterio de padding.
-- Botones con radios de borde arbitrarios que desentonan con los contenedores.
-- Cero accesibilidad (olvido de `aria-label`, contraste bajo para personas con daltonismo, ausencia de anillos de foco por teclado).
+#### ¿Para qué sirve?
+Elimina saludos, introducciones amables, conclusiones y explicaciones obvias. Comunica las respuestas en estilo telegráfico técnico ("modo cavernícola").
 
-#### Lo que aportan estas dos skills:
-1. **`better-ui` (Jakub Krehel):** Inyecta reglas de ingeniería de diseño matemática:
-   - **Radio concéntrico:** $R_{\text{interno}} = R_{\text{externo}} - \text{padding}$ (evita que las esquinas interiores se vean deformes).
-   - **Física de resortes (*Spring physics*):** Curvas de animación y micro-interacciones (`scale(0.96)` en clic).
-   - **Alineación óptica:** Ajusta iconos cuando el centro matemático se ve torcido respecto a la tipografía adyacente.
-2. **`impeccable` (Paul Bakaus):** Crea un sistema de diseño persistente en tu repositorio (`PRODUCT.md` y `DESIGN.md`) con un vocabulario de 24 comandos de diseño (`/impeccable polish`, `/impeccable critique`, `/impeccable audit`).
+#### ¿Cómo funciona?
+Restringe el prompt de salida forzando al modelo a responder primero con el código y comandos, omitiendo palabras superfluas.
 
-> **Conclusión en Modelos Modernos:** **Imprescindibles en Frontend.** Convierten prototipos burdos generados por IA en interfaces de software comercial pulidas.
+#### Comportamiento en Modelos Actuales vs. Antiguos:
+- **En modelos antiguos:** Ahorraba bastantes tokens de salida cuando los límites eran estrictos.
+- **En modelos actuales:** **Pierde gran parte de su valor.** En modelos de razonamiento (como o1 o Claude con thinking), el mayor coste ocurre en los tokens de pensamiento interno, que Caveman no reduce. Además, al forzar respuestas telegráficas se pueden perder advertencias de seguridad o matices de concurrencia importantes.
 
----
+#### ¿Se puede activar por defecto?
+**Sí, pero no es recomendable para trabajo diario.**
 
-### Grill-me & Grill-with-ui — Frenar el entusiasmo precipitado
+#### ¿Lo recomendarías por defecto y en qué casos?
+**Solo si programas desde una terminal muy reducida o buscas velocidad pura sin explicaciones.**
 
-#### El defecto número 1 de los modelos de IA:
-Todos los LLMs, sin excepción, sufren del sesgo del **"entusiasmo complaciente" (*eager execution*)**: en cuanto les planteas una idea vaga (*"agrega un sistema de roles"*, *"migra este endpoint"*), asumen 20 cosas en silencio y empiezan a escribir código inmediatamente sin consultar dependencias o casos límite.
+#### ¿Cómo se activa normalmente?
+- Comando: `/caveman`
+- Frases clave: *"caveman mode"*, *"habla como cavernícola"*, *"sé telegráfico, cero relleno"*.
+- Desactivar: `"stop caveman"` o `"normal mode"`.
 
-#### Por qué `grill-me` es aún MEJOR con modelos modernos:
-1. **Inversión de roles:** El modelo deja de ser un ejecutor sumiso y se convierte en un **arquitecto senior que te entrevista**.
-2. **Preguntas mucho más inteligentes:** En modelos como Gemini Argon o Claude Opus, las preguntas del interrogatorio no son triviales: detectan condiciones de carrera en microservicios, problemas de idempotencia en webhooks, o fugas de concurrencia en bases de datos.
-3. **`grill-with-ui` como solución ergonómica:** En lugar de saturar la consola con 15 preguntas en cascada, levanta un panel web interactivo local para revisar preguntas en tarjetas, debatir en hilos individuales y enviar todo en un único lote estructurado (*batch*).
-
-> **Conclusión en Modelos Modernos:** **Máximo Valor.** Es la mejor práctica recomendada para cualquier feature grande o decisión arquitectónica antes de tocar código.
+#### Casos de ejemplo prácticos:
+1. **Revisión relámpago de PR:** Ejecutas `/caveman-review` y el modelo te devuelve una única línea por cada bug detectado: `archivo.js:45 -> falta validar null -> pon if (!user) return`.
 
 ---
 
-### Deepsec (Vercel Labs) — Diseñado nativamente para modelos de razonamiento
-
-#### Por qué Deepsec es una excepción:
-A diferencia de herramientas que intentan simplificar al modelo, **Deepsec nació expresamente para modelos de frontera**. De hecho, los modelos antiguos no eran capaces de ejecutarlo eficazmente.
-
-#### Cómo opera:
-1. **Fase 1 (Patrones estáticos, gratis):** Mapea la superficie de ataque del repositorio.
-2. **Fase 2 (Revisión con Reasoning LLMs):** Envía fragmentos sospechosos a modelos frontier con máxima capacidad de pensamiento (`--thinking-level`) para identificar vulnerabilidades lógicas complejas (BOLA, IDOR, bypass de autenticación) que ningún analizador sintáctico tradicional (SonarQube, ESLint) puede detectar.
-3. **Aislamiento y Reanudación:** Guarda todo en `.deepsec/` sin tocar tu código fuente y te permite pausar o reanudar según tu presupuesto.
-
-> **Conclusión en Modelos Modernos:** **Excelente herramienta bajo demanda.** Esencial antes de lanzar a producción o en auditorías programadas.
+## 4. Herramientas de Búsqueda y Navegación
 
 ---
 
-### Security-Audit (Cloudflare) & SecuritySkills (UnitOneAI) — Blindaje contra alucinaciones
+### Cocoindex-code (CCC)
 
-#### El problema de la seguridad sin skills estructuradas:
-Si le pides a un modelo moderno genérico *"audita la seguridad de esta API según OWASP y NIST"*, el modelo:
-- **Alucinará números de control** (inventará artículos de normativas ISO 27001 o secciones de SOC 2).
-- Producirá **falsos positivos** para parecer minucioso.
-- Olvidará categorías enteras de amenazas si no tiene una lista de verificación formal.
+#### ¿Para qué sirve?
+Búsqueda de código inteligente basada en sintaxis real (AST) y significado semántico, superando las limitaciones de `grep` o búsquedas de texto plano.
 
-#### Lo que aportan estas skills:
-1. **Security-Audit (Cloudflare):** Implementa el arnés de descubrimiento de Cloudflare en 6 fases, donde cada hallazgo candidato es asignado a un "verificador independiente" que intenta **desmentirlo activamente** antes de confirmarlo en el reporte final.
-2. **SecuritySkills (UnitOneAI - 45 skills):** Contiene la taxonomía exacta de controles reales de OWASP, STRIDE, NIST SP 800-53 y MITRE ATT&CK, blindada contra inyecciones de prompt.
+#### ¿Cómo funciona?
+Usa el motor **Tree-sitter** para trocear el código fuente en bloques semánticos (funciones, clases, interfaces, tipos) y genera un índice local con SQLite y embeddings en Rust. Solo le envía al modelo el bloque exacto que necesita.
 
-> **Conclusión en Modelos Modernos:** **Obligatorio para auditorías profesionales.** Elimina alucinaciones normativas y proporciona informes listos para auditorías reales de cumplimiento.
+#### Comportamiento en Modelos Actuales vs. Antiguos:
+- **En modelos antiguos:** Evitaba que el modelo se desbordara por falta de contexto.
+- **En modelos actuales:** **Sigue siendo de altísimo valor.** Aunque modelos como Gemini procesen 1 millón de tokens, volcar 100 archivos en cada consulta es carísimo, lento y sufre de degradación de atención. CCC permite búsquedas semánticas precisas (*"dónde se maneja el refresh token"*) entregando el nodo exacto del AST.
+
+#### ¿Se puede activar por defecto?
+**Sí, como herramienta de búsqueda contextual.**
+
+#### ¿Lo recomendarías por defecto y en qué casos?
+**Muy recomendado en proyectos medianos y grandes (más de 30-50 archivos).**
+
+#### ¿Cómo se activa normalmente?
+- Detección automática al pedir: *"busca dónde se gestionan los pagos"*.
+- Comandos CLI:
+  ```bash
+  ccc init -f      # Inicializa el índice
+  ccc index        # Actualiza el índice local
+  ccc search "texto o concepto"
+  ```
+
+#### Casos de ejemplo prácticos:
+1. **Rastreo de interfaces:** `ccc search "clases que implementan BaseAuthService"` encuentra la definición y sus subclases ignorando menciones en documentación.
+2. **Refactorización sin grep ciego:** Buscas un método genérico como `process()` y CCC localiza únicamente las definiciones del método en clases de servicio, no las 500 llamadas irrelevantes.
 
 ---
 
-## 3. Recomendación Estratégica de Uso Diario
+## 5. Herramientas de Diseño y Frontend
 
-Para sacar el máximo provecho a modelos avanzados como **Gemini 2.5/Argon, Claude 3.7 Sonnet y Claude Opus**:
+---
+
+### Better-UI Suite
+
+#### ¿Para qué sirve?
+Corrige los defectos típicos de las interfaces generadas por IA (*"AI Slop"*), dotando a componentes web y móviles de calidad de ingeniería de diseño profesional.
+
+#### Habilidades que componen la suite:
+- **`better-ui`:** Detalles de micro-interacciones, sombras estructuradas y física de movimiento.
+- **`better-accessibility`:** Cumplimiento de WCAG 2.2, contraste para daltonismo y navegación por teclado.
+- **`better-colors`:** Paletas semánticas y tokens de color con soporte OKLCH.
+- **`better-layout`:** Flexbox, Grid y espaciado proporcional adaptativo.
+- **`better-typography`:** Escalas tipográficas, jerarquía e interlineado armónico.
+- **`better-interface`:** Auditoría integral que combina todas las anteriores.
+
+#### Comportamiento en Modelos Actuales vs. Antiguos:
+- **En modelos antiguos:** Corregía errores básicos de CSS.
+- **En modelos actuales:** **Imprescindible.** Aunque los modelos de hoy dominan Tailwind CSS, tienden a generar interfaces visualmente monótonas (Inter font, bordes arbitrarios, sombras planas). Better-UI inyecta fórmulas matemáticas reales (como el radio concéntrico $R_{\text{interno}} = R_{\text{externo}} - \text{padding}$).
+
+#### ¿Se puede activar por defecto?
+**Sí, en proyectos Frontend.**
+
+#### ¿Lo recomendarías por defecto y en qué casos?
+**Totalmente recomendado siempre que crees o edites componentes visuales (React, Flutter, Vue, CSS).**
+
+#### ¿Cómo se activa normalmente?
+- Auto-discovery al pedir diseñar o retocar componentes UI.
+- Comandos directos: `/better-ui`, `/better-accessibility`.
+- Frases clave: *"pule este botón con better-ui"*, *"revisa la accesibilidad de este modal"*.
+
+#### Casos de ejemplo prácticos:
+1. **Creación de un botón interactivo:** Configura el estado hover con elevación sutil, transición de resorte (*spring physics*), área táctil de al menos 44x44px y feedback táctil de escala (`scale(0.96)`) en el estado activo.
+2. **Auditoría de formularios:** Detecta si los inputs carecen de atributos ARIA, si los mensajes de error tienen bajo contraste o si se rompe la navegación con la tecla Tab.
+
+---
+
+### Impeccable
+
+#### ¿Para qué sirve?
+Garantiza coherencia estética y disciplina matemática en el diseño frontend. Previene el desorden visual mediante un sistema de diseño persistente en dos archivos: `PRODUCT.md` (objetivo del producto) y `DESIGN.md` (tokens, tipografías y reglas de layout).
+
+#### ¿Cómo funciona?
+Cuenta con un vocabulario de 24 comandos de diseño (`/impeccable polish`, `/impeccable critique`, `/impeccable audit`) y unas 60 reglas heurísticas que prohíben patrones trillados de IA (como degradados morados genéricos o tarjetas dentro de tarjetas sin sentido).
+
+#### Comportamiento en Modelos Actuales vs. Antiguos:
+- **En modelos actuales:** **Muy Alto Valor.** Proporciona el marco conceptual y los tokens que impiden que el modelo improvise estilos aleatorios entre distintas pantallas.
+
+#### ¿Se puede activar por defecto?
+**Sí, en proyectos con interfaz gráfica.**
+
+#### ¿Lo recomendarías por defecto y en qué casos?
+**Sí, en combinación con `better-ui`.**
+
+#### ¿Cómo se activa normalmente?
+- Comandos CLI y de agente:
+  ```bash
+  /impeccable init          # Crea PRODUCT.md y DESIGN.md
+  /impeccable polish        # Refina espaciados y jerarquía visual
+  /impeccable audit         # Audita consistencia y accesibilidad
+  /impeccable bolder        # Da más carácter a un diseño plano
+  /impeccable quieter       # Suaviza un diseño recargado
+  ```
+- Frases clave: *"aplica diseño impecable"*, *"mantén la consistencia visual del sistema de diseño"*.
+
+#### Casos de ejemplo prácticos:
+1. **Unificación de un Dashboard:** `/impeccable polish este dashboard` ajusta los múltiplos de espaciado a una escala estricta de 4px/8px y aplica números tabulares a las métricas financieras.
+
+---
+
+## 6. Herramientas de Arquitectura y Validación
+
+---
+
+### Grill-me & Grill-with-docs
+
+#### ¿Para qué sirve?
+Frena el impulso de la IA de programar inmediatamente. Transforma al modelo en un arquitecto de software exigente que te interroga sobre decisiones de diseño, casos límite y requisitos antes de escribir una sola línea de código.
+
+#### ¿Cómo funciona?
+Formula preguntas incisivas una a una en la consola, desafiando tus suposiciones sobre concurrencia, idempotencia, fallos de red y modelos de datos.
+
+#### Comportamiento en Modelos Actuales vs. Antiguos:
+- **En modelos antiguos:** Planteaba preguntas lógicas básicas.
+- **En modelos actuales:** **Excepcional.** Modelos como Gemini Argon o Claude Opus razonan a un nivel tan profundo que descubren huecos de arquitectura complejos (condiciones de carrera distribuidas, fallos de coherencia en caché, problemas de rollback en transacciones) antes de que empieces a codificar.
+
+#### ¿Se puede activar por defecto?
+**NO.** (Bloquearía cada tarea menor con un interrogatorio).
+
+#### ¿Lo recomendarías por defecto y en qué casos?
+**No por defecto; solo bajo demanda para diseñar funcionalidades grandes o refactorizaciones de fondo.**
+
+#### ¿Cómo se activa normalmente?
+- Comando: `/grill-me <idea o propuesta>`
+- Frases clave: *"hazme un grill-me sobre esta arquitectura"*, *"desafía mi plan de diseño"*, *"pon a prueba mi propuesta"*.
+
+#### Casos de ejemplo prácticos:
+1. **Migración de base de datos:** `/grill-me Quiero migrar de Firebase Auth a Supabase sin desconectar a los usuarios activos`. El modelo te preguntará cómo manejarás la sincronización de contraseñas con hash, tokens JWT caducados y fallbacks en caso de caída.
+
+---
+
+### Grill-with-ui
+
+#### ¿Para qué sirve?
+La misma metodología de interrogatorio de `grill-me`, pero **levantando un servidor local en Node.js y abriendo una interfaz gráfica en tu navegador web** en lugar de forzarte a leer bloques largos de preguntas en la consola.
+
+#### ¿Cómo funciona?
+1. Ejecuta `server.mjs` y abre `page.html` en el navegador.
+2. Presenta cada pregunta en una tarjeta interactiva con recomendaciones sugeridas.
+3. Te permite contestar en cualquier orden, debatir preguntas individuales en hilos y enviar todas las respuestas en un único lote al pulsar *"Send to Agent"*.
+
+#### Comportamiento en Modelos Actuales vs. Antiguos:
+- **En modelos actuales:** **Máximo confort ergonómico.** Permite explorar las preguntas profundas de los modelos modernos sin saturar la ventana de la terminal.
+
+#### ¿Se puede activar por defecto?
+**NO.** Se usa conscientemente al planificar.
+
+#### ¿Cómo se activa normalmente?
+- Comando: `/grill-with-ui <tema>`
+- Reanudar sesión: `/grill-with-ui resume`
+- Frases clave: *"grill with ui sobre el sistema de cobros"*.
+
+#### Casos de ejemplo prácticos:
+1. **Diseño de arquitectura en pantalla grande:** `/grill-with-ui arquitectura de autenticación multifactor (MFA)`. Se abre el navegador, seleccionas las opciones recomendadas en las tarjetas y envías el lote completo al agente con un clic.
+
+---
+
+## 7. Auditoría y Ciberseguridad
+
+---
+
+### Deepsec (Vercel Labs)
+
+#### ¿Para qué sirve?
+Escáner y auditor de seguridad de código abierto creado por **Vercel Labs**. Detecta vulnerabilidades lógicas profundas (BOLA/IDOR, derivaciones de autenticación, fallos de aislamiento entre tenants) que los linters estáticos convencionales no pueden ver.
+
+#### ¿Cómo funciona?
+1. Realiza un mapeo rápido de patrones de superficie de ataque (gratuito).
+2. Envía áreas de riesgo a modelos de frontera configurados con razonamiento profundo (`--thinking-level`).
+3. Guarda todo su estado en una carpeta `.deepsec/` en el proyecto.
+4. Es **reanudable**: si se corta por límite de presupuesto o tiempo, continúa exactamente donde quedó.
+
+#### Comportamiento en Modelos Actuales vs. Antiguos:
+- **En modelos antiguos:** Apenas funcionaba bien porque carecían de razonamiento extendido.
+- **En modelos actuales:** **Fue diseñado nativamente para esta generación de modelos.** Aprovecha el razonamiento profundo de modelos como o1 o Claude Sonnet para encontrar vulnerabilidades lógicas en código real.
+
+#### ¿Se puede activar por defecto?
+**NO.** Consume tiempo de cómputo y presupuesto de tokens significativo.
+
+#### ¿Cómo se activa normalmente?
+- Desde la consola:
+  ```bash
+  deepsec init                                    # Asistente interactivo guiado
+  deepsec init --max-cost-usd 20 --max-duration 30m # Con límites de costo/tiempo
+  ```
+- Exportar reporte:
+  ```bash
+  cd .deepsec
+  pnpm deepsec export --format md-dir --out ./findings
+  ```
+- Pidiéndoselo al agente: *"audita la seguridad de este backend con deepsec"*.
+
+#### Casos de ejemplo prácticos:
+1. **Auditoría antes de lanzamiento:** Ejecutas `deepsec init` en un backend de Node/Python para verificar que ningún usuario pueda acceder a datos de otro manipulando parámetros de consulta (`?userId=123`).
+
+---
+
+### Security-Audit (Cloudflare)
+
+#### ¿Para qué sirve?
+El arnés oficial de auditoría de seguridad defensiva en 6 fases desarrollado por el equipo de ciberseguridad de **Cloudflare**.
+
+#### ¿Cómo funciona?
+- **Modo Guía (*Guidance mode*):** Responde preguntas sobre seguridad de código o revisa un archivo puntual sin generar carpetas ni auditorías pesadas.
+- **Modo Full Audit:** Ejecuta un flujo estructurado: mapeo de límites de confianza (`coverage-ledger.json`), caza por vectores de ataque, verificación independiente (agentes separados intentan refutar cada hallazgo para matar falsos positivos) y generación de reportes validados (`findings.json`).
+
+#### Comportamiento en Modelos Actuales vs. Antiguos:
+- **En modelos actuales:** **Excelente.** La fase de verificación independiente es clave en modelos actuales para filtrar alucinaciones y confirmar únicamente vulnerabilidades reales con pruebas de reproducción.
+
+#### ¿Se puede activar por defecto?
+- El **Modo Guía sí** (está listo para resolver dudas).
+- El **Modo Full Audit no** (solo bajo demanda explícita).
+
+#### ¿Cómo se activa normalmente?
+- Consultas puntuales: *"¿Es seguro este endpoint de login?"*
+- Auditoría completa: *"Realiza una auditoría completa de seguridad con security-audit"*.
+
+#### Casos de ejemplo prácticos:
+1. **Revisión de trust boundaries:** Le pides auditar cómo se comunican dos servicios internos para verificar que los datos no viajen sin cifrar ni validar firmas.
+
+---
+
+### SecuritySkills (UnitOneAI - 45 Skills)
+
+#### ¿Para qué sirve?
+Un catálogo de **45 habilidades estructuradas** respaldadas por marcos oficiales de la industria (OWASP Top 10, NIST CSF, MITRE ATT&CK, CIS Controls, STRIDE, ISO 27001, SOC 2, HIPAA, PCI-DSS).
+
+#### Distribución de las 45 habilidades:
+
+| Área | Skills Incluidas | Marco Oficial |
+| :--- | :--- | :--- |
+| **🤖 IA y LLMs** | `agent-security`, `agentic-top-10`, `ai-data-privacy`, `llm-top-10`, `model-supply-chain`, `prompt-injection` | OWASP Top 10 for LLMs / MITRE ATLAS |
+| **🌐 AppSec** | `api-security`, `dependency-scanning`, `owasp-top-10-web`, `secure-code-review`, `threat-modeling` | OWASP Top 10, ASVS, STRIDE |
+| **☁️ Cloud & Infra** | `aws-review`, `azure-review`, `container-security`, `gcp-review`, `iac-security` | CIS Benchmarks, NIST SP 800-145 |
+| **📜 Compliance** | `hipaa-review`, `iso27001-gap`, `nist-csf-assessment`, `pci-dss-review`, `soc2-gap` | HIPAA, PCI-DSS v4, SOC 2 Type II, ISO 27001 |
+| **⚙️ DevSecOps** | `dast-config`, `pipeline-security`, `sast-config`, `secrets-management` | SLSA v1.0, OWASP SAMM |
+| **🔑 IAM & Accesos** | `access-review`, `iam-review`, `privileged-access`, `rbac-design`, `zero-trust-assessment` | NIST SP 800-63, NIST SP 800-162 |
+| **🚨 Incidentes** | `containment`, `forensics-checklist`, `ir-playbook`, `post-incident-review` | NIST SP 800-61, MITRE ATT&CK |
+| **🌐 Redes** | `dns-security`, `firewall-review`, `segmentation` | CIS Controls v8 (Redes) |
+| **📊 SecOps** | `alert-triage`, `detection-engineering`, `log-analysis`, `siem-rules` | SIGMA, MITRE ATT&CK Detections |
+| **🔍 Vulnerabilidades**| `cve-triage`, `patch-prioritization`, `sbom-analysis`, `scanner-tuning` | CVSS v4.0, SSVC, EPSS, CISA KEV |
+
+#### Comportamiento en Modelos Actuales vs. Antiguos:
+- **En modelos actuales:** **Obligatorio.** Sin estas skills, los modelos modernos alucinan identificadores de normativas (inventan artículos de ISO o controles de NIST). Estas skills anclan las respuestas a controles reales y verificables.
+
+#### ¿Se puede activar por defecto?
+**Operan mediante auto-discovery por contexto.** Se cargan solas únicamente cuando tocas código relevante.
+
+#### ¿Cómo se activa normalmente?
+- **Automáticamente por contexto:** Si editas un Dockerfile entra `container-security`; si tocas un prompt de IA entra `prompt-injection`.
+- **Por comando directo:**
+  - `/threat-modeling`
+  - `/secure-code-review`
+  - `/api-security`
+  - `/prompt-injection`
+  - `/cve-triage CVE-2024-XXXX`
+  - `/soc2-gap`
+
+#### Casos de ejemplo prácticos:
+1. **Defensa contra inyecciones de prompt:** Usas `/prompt-injection` sobre tu código de integración con Gemini para asegurar que un usuario malintencionado no pueda burlar las instrucciones del sistema.
+2. **Priorización de parches con EPSS:** Usas `/cve-triage CVE-2023-4863` y el modelo consulta las métricas de explotación real en lugar de alarmarse innecesariamente por el número CVSS en solitario.
+
+---
+
+## 8. Metodología e Ingeniería de Software
+
+---
+
+### Agent-Skills (Addy Osmani - 25 Skills)
+
+#### ¿Para qué sirve?
+Es la suite de referencia para **transformar a un agente de código de un programador junior apresurado a un equipo de ingeniería senior disciplinado**. Creada por **Addy Osmani** (Director de Ingeniería en Google Chrome), codifica los flujos de trabajo, contratos de calidad (*quality gates*) y metodologías rigurosas que siguen los equipos de software de alto rendimiento.
+
+Evita el problema más común de los asistentes de código: lanzarse a escribir archivos de inmediato sin entender los requisitos, sin escribir pruebas automatizadas y dejando deuda técnica o regresiones inadvertidas.
+
+```
+  DEFINE          PLAN           BUILD          VERIFY         REVIEW          SHIP
+ ┌──────┐      ┌──────┐      ┌──────┐      ┌──────┐      ┌──────┐      ┌──────┐
+ │ Idea │ ───▶ │ Spec │ ───▶ │ Code │ ───▶ │ Test │ ───▶ │  QA  │ ───▶ │  Go  │
+ │Refine│      │  PRD │      │ Impl │      │Debug │      │ Gate │      │ Live │
+ └──────┘      └──────┘      └──────┘      └──────┘      └──────┘      └──────┘
+  /spec          /plan          /build        /test         /review       /ship
+```
+
+#### ¿Cómo funciona?
+1. **Progressive Disclosure:** Las 25 skills **no se cargan completas en el contexto por defecto**. Antigravity mantiene en memoria únicamente un índice ligero con sus nombres y descripciones. El archivo exhaustivo `SKILL.md` (con checklists y reglas) se inyecta en la conversación de manera transparente solo cuando se invoca un comando o cuando la tarea entra en su ámbito.
+2. **Quality Gates Inquebrantables:** Cada habilidad establece condiciones de parada obligatorias. Por ejemplo, en `/test` (`test-driven-development`) el agente tiene prohibido escribir código de producción hasta que un test automatizado falle primero demostrando el bug (*red*), y luego escribe el mínimo código para que pase (*green*).
+3. **Comandos Slash Integrados:** Mapea 9 comandos directos que cubren el ciclo de vida del software.
+4. **Modo Autónomo Aprobado (`/build auto`):** Para cuando ya existe una especificación (`/spec`), `/build auto` elabora el plan detallado, te pide confirmación una única vez y después ejecuta cada tarea secuencialmente: escribe el test, implementa el código, verifica que pase y hace el commit atómico correspondiente, deteniéndose únicamente si una prueba falla o si se topa con una decisión ambigua.
+
+#### Comportamiento en Modelos Actuales vs. Antiguos:
+- **En modelos antiguos (GPT-3.5, Gemini 1.0):** Les costaba mantener la disciplina de 6 etapas; solían alucinar pasos intermedios o perder la atención tras dos o tres iteraciones.
+- **En modelos actuales de frontera (Gemini 2.5 Pro/Flash, Claude 3.7 Sonnet con Extended Thinking, OpenAI o1/o3):** **Es su mejor complemento.** Los modelos modernos poseen una capacidad de razonamiento sobresaliente, pero tienden a ser demasiado entusiastas (*eager*) y asumir requisitos no especificados. Agent-Skills les impone una estructura de ingeniería formal que aprovecha al máximo su razonamiento sin desperdiciar tokens en código innecesario.
+
+#### ¿Se puede activar por defecto?
+- **Como catálogo global de Auto-discovery:** **SÍ, y ya está activo.** Cada vez que el agente detecta que diseñas una API, optimizas webperf o debugueas un error, la skill apropiada se activa automáticamente.
+- **Como pipeline obligatorio forzado para cada mensaje:** **NO se recomienda.** Si obligaras al modelo a pasar por `/spec` -> `/plan` -> `/test` para responder una pregunta rápida de sintaxis o para cambiar un texto en la UI, el entorno se volvería burocrático e ineficiente.
+
+#### ¿Lo recomendarías por defecto y en qué casos?
+**Recomendado 100% en modo Contextual / Por Demanda.**
+
+- **Usa sus comandos activamente cuando:**
+  - Vas a construir un feature nuevo o arquitectura no trivial (`/spec` y `/plan`).
+  - Arreglas un bug crítico donde no puedes permitirte regresiones (`/test`).
+  - Vas a abrir un Pull Request o hacer merge (`/review`).
+  - El código funciona pero terminó enredado y poco legible (`/code-simplify`).
+  - Vas a desplegar cambios con migraciones de datos a producción (`/ship`).
+
+#### Catálogo de las 25 Skills por Etapa:
+
+| Etapa | Comando Directo | Skills Incluidas | Propósito Principal |
+| :--- | :--- | :--- | :--- |
+| **1. Definir** | `/spec` | `spec-driven-development`<br>`interview-me`<br>`idea-refine` | Escribe especificaciones y PRD antes de programar; interroga dudas una a una hasta tener 95% de certeza. |
+| **2. Planificar** | `/plan` | `planning-and-task-breakdown`<br>`context-engineering` | Divide el trabajo en tareas atómicas y prepara el contexto del agente para la sesión. |
+| **3. Construir** | `/build` / `/build auto` | `incremental-implementation`<br>`api-and-interface-design`<br>`frontend-ui-engineering` | Implementación en rebanadas delgadas (*thin slices*), diseño de contratos de API estables e interfaces accesibles. |
+| **4. Verificar** | `/test` | `test-driven-development`<br>`browser-testing-with-devtools`<br>`debugging-and-error-recovery` | TDD estricto (Red-Green-Refactor), pruebas en navegadores reales vía DevTools y diagnóstico sistemático de raíz. |
+| **5. Calidad** | `/constraints`<br>`/review`<br>`/code-simplify` | `constraint-driven-development`<br>`code-review-and-quality`<br>`code-simplification`<br>`doubt-driven-development`<br>`source-driven-development` | Fija restricciones no negociables, revisión multidimensional (seguridad, legibilidad, performance) y simplificación radical. |
+| **6. Producción** | `/webperf`<br>`/ship` | `performance-optimization`<br>`shipping-and-launch`<br>`security-and-hardening`<br>`ci-cd-and-automation`<br>`observability-and-instrumentation`<br>`deprecation-and-migration`<br>`git-workflow-and-versioning`<br>`documentation-and-adrs`<br>`using-agent-skills` | Auditoría de Core Web Vitals, checklist de pre-lanzamiento, migraciones de base de datos sin downtime y observabilidad. |
+
+#### Casos de ejemplo prácticos:
+
+1. **Construcción de una funcionalidad completa con `/spec` y `/build auto`:**
+   - Escribes: `/spec Sistema de exportación de reportes mensuales en PDF y Excel`.
+   - El modelo define entradas, salidas, manejo de errores y compatibilidad.
+   - Ejecutas `/build auto` para que despiece el plan y lo ejecute tarea por tarea con tests y commits limpios.
+2. **Corrección de un bug escurridizo con `/test` (TDD):**
+   - Escribes: `/test El cálculo de impuestos falla cuando el usuario tiene descuentos combinados`.
+   - El modelo escribe primero el test unitario que reproduce el fallo con números reales (rojo). Luego ajusta la fórmula matemática hasta que el test pase (verde), garantizando que el bug nunca vuelva a ocurrir.
+3. **Revisión antes de Pull Request con `/review`:**
+   - Escribes: `/review este branch contra main`.
+   - El modelo audita el diff en 5 ejes: corrección funcional, legibilidad, arquitectura, seguridad y rendimiento, entregando un reporte accionable.
+
+---
+
+## 9. Diagrama de Flujo: Cuándo usar cada herramienta
 
 ```mermaid
 flowchart TD
-    A["Nueva Tarea o Feature"] --> B{"¿Es arquitectura o diseño grande?"}
-    B -- Sí --> C["Inicia /grill-with-ui o /grill-me<br/>(Resuelve requisitos antes de codificar)"]
-    B -- No --> D["Codificación Diaria Normal"]
+    Inicio["Inicio de Tarea"] --> Decision1{"¿Es una feature grande o arquitectura nueva?"}
     
-    C --> D
+    Decision1 -- Sí --> Spec["Agent-Skills: /spec o /grill-me<br/>(Define requisitos y casos borde)"]
+    Decision1 -- No --> Trabajo["Codificación normal"]
     
-    D --> E["RTK siempre activo en fondo<br/>(Ahorra tokens y evita saturar la atención)"]
+    Spec --> Plan["Agent-Skills: /plan<br/>(Desglose en tareas atómicas)"]
+    Plan --> BuildAuto{"¿Quieres ejecución autónoma?"}
+    BuildAuto -- Sí --> ExecAuto["Agent-Skills: /build auto<br/>(TDD + commits atómicos paso a paso)"]
+    BuildAuto -- No --> Trabajo
     
-    D --> F{"¿Tocando Frontend o UI?"}
-    F -- Sí --> G["Auto-discovery: Better-UI & Impeccable<br/>(Elimina AI Slop y añade rigor visual)"]
-    F -- No --> H["Lógica Backend / Sistema"]
+    Trabajo --> RTK["RTK actúa siempre en segundo plano<br/>(Filtra logs de git, npm, pruebas)"]
+    ExecAuto --> RTK
     
-    D --> I{"¿El modelo se está sobre-complicando?"}
-    I -- Sí --> J["Aplica /ponytail lite o /ponytail<br/>(Frena abstracciones innecesarias)"]
-    I -- No --> K["Deja actuar el razonamiento natural"]
+    Trabajo --> UI{"¿Estás trabajando en Frontend o UI?"}
+    UI -- Sí --> Diseno["Auto-discovery: Better-UI + Impeccable<br/>(Métricas de diseño, accesibilidad WCAG 2.2)"]
+    UI -- No --> Logica["Lógica de backend o sistema"]
     
-    D --> L{"¿Fase previa a Producción o Auditoría?"}
-    L -- Sí --> M["Ejecuta deepsec init o /security-audit<br/>(Búsqueda de 0-days y cumplimiento normativo)"]
+    Trabajo --> Bug{"¿Es un bug fix o cambio de lógica?"}
+    Bug -- Sí --> TDD["Agent-Skills: /test<br/>(TDD estricto: Red-Green-Refactor)"]
+    Bug -- No --> Continuar["Continuar desarrollo"]
+    
+    Trabajo --> Complejidad{"¿El código quedó enredado o sobreingeniado?"}
+    Complejidad -- Sí --> Simplify["Agent-Skills: /code-simplify o /ponytail<br/>(Clarity over cleverness)"]
+    Complejidad -- No --> Razonamiento["Permite su arquitectura natural"]
+    
+    Trabajo --> PreMerge{"¿Listo para PR o Producción?"}
+    PreMerge -- Sí --> Review["Agent-Skills: /review + /webperf + Security-Audit<br/>(Auditoría multidimensional, rendimiento y seguridad)"]
+    Review --> Ship["Agent-Skills: /ship<br/>(Checklist de lanzamiento y migraciones)"]
 ```
 
-### Reglas de Oro:
-1. **Activo siempre por defecto:** Solo **RTK** (y las reglas de hot-reload que correspondan a tu stack).
-2. **Auto-discovery contextual:** Deja que **`better-ui`**, **`impeccable`**, **`ccc`** y **`SecuritySkills`** se activen solo cuando toques sus respectivos dominios.
-3. **Bajo demanda:**
-   - Usa **`grill-with-ui`** antes de escribir sistemas nuevos.
-   - Usa **`ponytail`** como antídoto cuando notes que el modelo se vuelve redundante o infla dependencias.
-   - Usa **`deepsec`** y **`security-audit`** para revisiones de seguridad periódicas.

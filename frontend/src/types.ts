@@ -632,3 +632,75 @@ export interface SavingSummaryResponse {
   total_saved_eur: number;
   total_saved_usdt: number;
 }
+
+// Presupuestos (Budgets)
+export type BudgetIncomeMode = 'manual' | 'single_income' | 'all_incomes';
+export type BudgetTrafficLight = 'green' | 'yellow' | 'red';
+
+export interface BudgetCategoryLimitInput {
+  category_name: string;
+  limit_amount: number;
+  currency?: CurrencyType;
+}
+
+export interface BudgetCategorySummaryOut {
+  category_name: string;
+  limit_amount: number;
+  spent_amount: number;
+  remaining_amount: number;
+  currency: CurrencyType;
+  spent_percentage: number;
+  traffic_light: BudgetTrafficLight;
+  spent_usd: number;
+  spent_bs: number;
+  spent_eur: number;
+  spent_usdt: number;
+  limit_usd: number;
+  limit_bs: number;
+  limit_eur: number;
+  limit_usdt: number;
+}
+
+export interface MonthlyBudgetUpsert {
+  currency: CurrencyType;
+  income_mode: BudgetIncomeMode;
+  linked_income_id?: string | null;
+  manual_global_limit?: number | null;
+  category_limits?: BudgetCategoryLimitInput[] | null;
+}
+
+export interface MonthlyBudgetResponse {
+  id?: string | null;
+  month_year: string;
+  currency: CurrencyType;
+  income_mode: BudgetIncomeMode;
+  linked_income_id?: string | null;
+  manual_global_limit?: number | null;
+  effective_global_limit?: number | null;
+  global_limit_usd?: number | null;
+  global_limit_bs?: number | null;
+  global_limit_eur?: number | null;
+  global_limit_usdt?: number | null;
+  total_spent_budget_currency: number;
+  total_spent_usd: number;
+  total_spent_bs: number;
+  total_spent_eur: number;
+  total_spent_usdt: number;
+  global_spent_percentage: number;
+  global_traffic_light: BudgetTrafficLight;
+  is_confirmed: boolean;
+  allocated_budget_currency: number;
+  allocated_usd: number;
+  allocated_bs: number;
+  allocated_eur: number;
+  allocated_usdt: number;
+  category_limits: BudgetCategorySummaryOut[];
+  unbudgeted_spent_budget_currency: number;
+  unbudgeted_spent_usd: number;
+  unbudgeted_spent_bs: number;
+  unbudgeted_spent_eur: number;
+  unbudgeted_spent_usdt: number;
+  unbudgeted_categories: string[];
+  exists: boolean;
+}
+

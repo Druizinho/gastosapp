@@ -680,3 +680,83 @@ class SavingSummaryResponse(BaseModel):
     total_saved_eur: Decimal
     total_saved_usdt: Decimal
 
+
+# Budgets schemas
+
+class BudgetIncomeMode(str, Enum):
+    manual = "manual"
+    single_income = "single_income"
+    all_incomes = "all_incomes"
+
+class BudgetTrafficLight(str, Enum):
+    green = "green"
+    yellow = "yellow"
+    red = "red"
+
+class BudgetCategoryLimitInput(BaseModel):
+    category_name: str = Field(..., min_length=1)
+    limit_amount: Decimal = Field(..., ge=0)
+    currency: CurrencyType = Field(default=CurrencyType.USD_BCV)
+
+class MonthlyBudgetUpsert(BaseModel):
+    currency: CurrencyType = Field(default=CurrencyType.USD_BCV)
+    income_mode: BudgetIncomeMode = Field(default=BudgetIncomeMode.manual)
+    linked_income_id: Optional[UUID] = None
+    manual_global_limit: Optional[Decimal] = Field(None, ge=0)
+    category_limits: Optional[List[BudgetCategoryLimitInput]] = None
+
+class BudgetCategorySummaryOut(BaseModel):
+    category_name: str
+    limit_amount: Decimal
+    spent_amount: Decimal
+    remaining_amount: Decimal = Decimal("0")
+    currency: CurrencyType = CurrencyType.USD_BCV
+    spent_percentage: float
+    traffic_light: BudgetTrafficLight
+    spent_usd: Decimal = Decimal("0")
+    spent_bs: Decimal = Decimal("0")
+    spent_eur: Decimal = Decimal("0")
+    spent_usdt: Decimal = Decimal("0")
+    limit_usd: Decimal = Decimal("0")
+    limit_bs: Decimal = Decimal("0")
+    limit_eur: Decimal = Decimal("0")
+    limit_usdt: Decimal = Decimal("0")
+
+    model_config = ConfigDict(from_attributes=True)
+
+class MonthlyBudgetResponse(BaseModel):
+    id: Optional[UUID] = None
+    month_year: str
+    currency: CurrencyType = Field(default=CurrencyType.USD_BCV)
+    income_mode: BudgetIncomeMode = Field(default=BudgetIncomeMode.manual)
+    linked_income_id: Optional[UUID] = None
+    manual_global_limit: Optional[Decimal] = None
+    effective_global_limit: Optional[Decimal] = None
+    global_limit_usd: Optional[Decimal] = None
+    global_limit_bs: Optional[Decimal] = None
+    global_limit_eur: Optional[Decimal] = None
+    global_limit_usdt: Optional[Decimal] = None
+    total_spent_budget_currency: Decimal = Decimal("0")
+    total_spent_usd: Decimal = Decimal("0")
+    total_spent_bs: Decimal = Decimal("0")
+    total_spent_eur: Decimal = Decimal("0")
+    total_spent_usdt: Decimal = Decimal("0")
+    global_spent_percentage: float = 0.0
+    global_traffic_light: BudgetTrafficLight = BudgetTrafficLight.green
+    is_confirmed: bool = False
+    allocated_budget_currency: Decimal = Decimal("0")
+    allocated_usd: Decimal = Decimal("0")
+    allocated_bs: Decimal = Decimal("0")
+    allocated_eur: Decimal = Decimal("0")
+    allocated_usdt: Decimal = Decimal("0")
+    category_limits: List[BudgetCategorySummaryOut] = []
+    unbudgeted_spent_budget_currency: Decimal = Decimal("0")
+    unbudgeted_spent_usd: Decimal = Decimal("0")
+    unbudgeted_spent_bs: Decimal = Decimal("0")
+    unbudgeted_spent_eur: Decimal = Decimal("0")
+    unbudgeted_spent_usdt: Decimal = Decimal("0")
+    unbudgeted_categories: List[str] = []
+    exists: bool = False
+
+    model_config = ConfigDict(from_attributes=True)
+

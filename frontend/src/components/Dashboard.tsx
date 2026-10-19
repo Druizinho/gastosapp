@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { getExpenses, getSummaryRange, createExpense, updateExpense, deleteExpense, getCategories } from '../api';
-import type { Expense, RangeSummaryResponse, ExpenseCreate, ExpenseUpdate, DateFilter, DatePreset, Category } from '../types';
+import { getExpenses, getSummaryRange, createExpense, updateExpense, deleteExpense, getCategories, getMonthlyBudget } from '../api';
+import type { Expense, RangeSummaryResponse, ExpenseCreate, ExpenseUpdate, DateFilter, DatePreset, Category, MonthlyBudgetResponse } from '../types';
 import { useAuth } from '../context/AuthContext';
 import Summary from './Summary';
 import PeriodSelector from './PeriodSelector';
@@ -26,6 +26,7 @@ const Dashboard: React.FC = () => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [summary, setSummary] = useState<RangeSummaryResponse | null>(null);
+  const [monthlyBudget, setMonthlyBudget] = useState<MonthlyBudgetResponse | null>(null);
   
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
@@ -78,14 +79,22 @@ const Dashboard: React.FC = () => {
         return;
       }
 
-      const [expensesData, summaryData, categoriesData] = await Promise.all([
+      const fetchPromises: [Promise<any>, Promise<any>, Promise<any>, Promise<any>?] = [
         getExpenses(resolved.from, resolved.to),
         getSummaryRange(resolved.from, resolved.to),
-        getCategories()
-      ]);
+        getCategories(),
+      ];
+
+      if (dateFilter.preset === 'month') {
+        const monthYear = resolved.from ? resolved.from.slice(0, 7) : new Date().toISOString().slice(0, 7);
+        fetchPromises.push(getMonthlyBudget(monthYear).catch(() => null));
+      }
+
+      const [expensesData, summaryData, categoriesData, budgetData] = await Promise.all(fetchPromises);
       setExpenses(expensesData);
       setSummary(summaryData);
       setCategories(categoriesData);
+      setMonthlyBudget(budgetData || null);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -198,7 +207,7 @@ const Dashboard: React.FC = () => {
         ) : (
           <>
             <PeriodSelector filter={dateFilter} onChange={setDateFilter} />
-            <Summary summary={summary} dateFilter={dateFilter} categories={categories} />
+            <Summary summary={summary} dateFilter={dateFilter} categories={categories} monthlyBudget={monthlyBudget} />
             <div className="list-header mt-8 mb-4" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Gastos del Período</h2>
             </div>
