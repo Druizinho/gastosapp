@@ -9,11 +9,7 @@ import {
   SlidersHorizontal,
   Layers,
   Sparkles,
-  Package,
   X,
-  Receipt,
-  CreditCard,
-  PiggyBank,
   Wallet,
   AlertTriangle,
   Star,
@@ -31,7 +27,6 @@ import type {
 import {
   getMonthlyBudget,
   confirmMonthlyBudget,
-  getCategories,
   getEstimatedIncomes,
   createMonthlyBudget,
   updateMonthlyBudgetById,
@@ -40,7 +35,8 @@ import {
   deleteCategoryLimitByBudgetId,
   setPrimaryMonthlyBudget
 } from '../api';
-import { ICON_MAP } from './CategoryManager';
+import { resolveCategoryVisuals } from '../utils/categoryVisuals';
+import { useCategories } from '../context/CategoriesContext';
 import ConfirmModal from './ConfirmModal';
 
 interface BudgetsProps {
@@ -82,9 +78,10 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
   // Master-Detail navigation: selected budget ID (null = master view, string = detail view)
   const [selectedBudgetId, setSelectedBudgetId] = useState<string | null>(null);
 
+  const { categories: allCategories, refreshCategories } = useCategories();
+
   // Data states
   const [budgetResponse, setBudgetResponse] = useState<MonthlyBudgetResponse | null>(null);
-  const [allCategories, setAllCategories] = useState<Category[]>([]);
   const [estimatedIncomes, setEstimatedIncomes] = useState<EstimatedIncome[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isConfirmingBudget, setIsConfirmingBudget] = useState<boolean>(false);
@@ -170,13 +167,12 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const [bRes, userCats, incomes] = await Promise.all([
+      const [bRes, incomes] = await Promise.all([
         getMonthlyBudget(currentMonthYear),
-        getCategories(),
         getEstimatedIncomes(true),
+        refreshCategories(),
       ]);
       setBudgetResponse(bRes);
-      setAllCategories(userCats);
       setEstimatedIncomes(incomes);
     } catch (error) {
       console.error('Error fetching budget data:', error);
@@ -235,10 +231,12 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
       (cl) => cl.category_name.toLowerCase() === categoryName.toLowerCase()
     ) || null;
 
-    // Check if category is already budgeted in other budgets
-    const otherBudgets = (budgetResponse?.budgets || [])
-      .filter((b) => b.id !== selectedBudget.id && b.category_limits.some((cl) => cl.category_name.toLowerCase() === categoryName.toLowerCase()))
-      .map((b) => b.name);
+    // Check if category is already budgeted in other budgets (only alert on non-primary budgets)
+    const otherBudgets = selectedBudget.is_primary
+      ? []
+      : (budgetResponse?.budgets || [])
+          .filter((b) => b.id !== selectedBudget.id && b.category_limits.some((cl) => cl.category_name.toLowerCase() === categoryName.toLowerCase()))
+          .map((b) => b.name);
 
     setCategoryModal({
       isOpen: true,
@@ -318,18 +316,11 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
   const prefixMap = { bs: 'Bs. ', usd: '$ ', eur: '€ ', usdt: '' };
   const suffixMap = { bs: '', usd: '', eur: '', usdt: ' USDT' };
 
-  // Render system category icon fallback
+  // Render category icon with color using resolveCategoryVisuals
   const renderCategoryIcon = (categoryName: string) => {
-    if (categoryName === 'Gastos Fijos') return <Receipt size={18} />;
-    if (categoryName === 'Deudas') return <CreditCard size={18} />;
-    if (categoryName === 'Ahorro') return <PiggyBank size={18} />;
-
     const catObj = categoryMap[categoryName];
-    if (catObj && catObj.color && ICON_MAP[catObj.color]) {
-      const CustomIcon = ICON_MAP[catObj.color];
-      return <CustomIcon size={18} />;
-    }
-    return <Package size={18} />;
+    const { IconComponent, hexColor } = resolveCategoryVisuals(catObj, categoryName);
+    return <IconComponent size={18} color={hexColor} />;
   };
 
   // Check if any budget is unconfirmed
@@ -1444,15 +1435,17 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
               selectedBudget.category_limits.map((cl) => {
                 const catName = cl.category_name;
                 const hasLimit = Number(cl.limit_amount) > 0;
-                const otherBudgets =
-                  cl.also_in_budgets ||
-                  (budgetResponse?.budgets || [])
-                    .filter(
-                      (b) =>
-                        b.id !== selectedBudget.id &&
-                        b.category_limits.some((c) => c.category_name.toLowerCase() === catName.toLowerCase())
-                    )
-                    .map((b) => b.name);
+                const otherBudgets = selectedBudget.is_primary
+                  ? []
+                  : (cl.also_in_budgets && cl.also_in_budgets.length > 0)
+                    ? cl.also_in_budgets
+                    : (budgetResponse?.budgets || [])
+                        .filter(
+                          (b) =>
+                            b.id !== selectedBudget.id &&
+                            b.category_limits.some((c) => c.category_name.toLowerCase() === catName.toLowerCase())
+                        )
+                        .map((b) => b.name);
 
                 if (hasLimit) {
                   // Category WITH configured limit in this budget
@@ -1828,8 +1821,8 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
               </button>
             </div>
 
-            {/* Warning if category is already in other budgets */}
-            {categoryModal.otherBudgetsWithCat.length > 0 && (
+            {/* Warning if category is already in other budgets (only alert on non-primary budgets) */}
+            {categoryModal.otherBudgetsWithCat.length > 0 && !selectedBudget?.is_primary && (
               <div
                 style={{
                   display: 'flex',

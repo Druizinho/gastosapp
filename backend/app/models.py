@@ -24,8 +24,17 @@ class Category(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     name = Column(String, nullable=False)
-    color = Column(String, default='#cbd5e1')
+    color = Column(String(20), default='#6366F1')
+    icon = Column(String(50), nullable=True, default='Package')
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Dynamically populated counts (for response serialization)
+    usage_count: int = 0
+    expense_count: int = 0
+    fixed_count: int = 0
+    debt_count: int = 0
+    saving_count: int = 0
+    budget_count: int = 0
     
     __table_args__ = (UniqueConstraint('user_id', 'name', name='_user_category_uc'),)
 
@@ -132,6 +141,7 @@ class Debt(Base):
     concept = Column(String, nullable=False)
     total_amount = Column(Numeric(12, 4), nullable=False)
     currency = Column(String(10), nullable=False, default='BS')
+    category = Column(String(100), nullable=True, default=None)
     start_date = Column(Date, nullable=False, server_default=func.current_date())
     due_date = Column(Date, nullable=True)
     is_settled = Column(Boolean, nullable=False, server_default='false')
@@ -165,6 +175,9 @@ class DebtPayment(Base):
     rate_usdt_bs = Column(Numeric(12, 4), nullable=True)
     payment_date = Column(Date, nullable=False, server_default=func.current_date())
     note = Column(String, nullable=True)
+    category = Column(String(100), nullable=True)
+    create_expense = Column(Boolean, nullable=False, server_default='false', default=False)
+    expense_id = Column(UUID(as_uuid=True), ForeignKey("expenses.id", ondelete="SET NULL"), nullable=True)
     paid_by_name = Column(String, nullable=True)
     paid_by_user_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="SET NULL"), nullable=True, index=True)
     sync_id = Column(UUID(as_uuid=True), nullable=True, index=True)

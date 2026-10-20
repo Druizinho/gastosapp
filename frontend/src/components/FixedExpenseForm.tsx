@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import type { FixedExpenseCreate, FixedExpenseUpdate, FixedExpense, CurrencyType, ExchangeRates, Category, Connection } from '../types';
+import type { FixedExpenseCreate, FixedExpenseUpdate, FixedExpense, CurrencyType, ExchangeRates, Connection } from '../types';
 import { CURRENCY_OPTIONS } from '../types';
-import { getRates, getCategories, getConnections } from '../api';
+import { getRates, getConnections } from '../api';
 import { Info, Users } from 'lucide-react';
 import { ParticipantPicker } from './panas/ParticipantPicker';
+import CategorySelect from './CategorySelect';
 
 interface FixedExpenseFormProps {
   initialData?: FixedExpense | null;
@@ -26,8 +27,6 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
   const [adminPartnerIds, setAdminPartnerIds] = useState<string[]>([]);
 
   const [rates, setRates] = useState<ExchangeRates | null>(null);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [isLoadingCats, setIsLoadingCats] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -63,13 +62,10 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [ratesData, catsData] = await Promise.all([getRates(), getCategories()]);
+        const ratesData = await getRates();
         setRates(ratesData);
-        setCategories(catsData);
       } catch (error) {
-        console.error("Failed to fetch data", error);
-      } finally {
-        setIsLoadingCats(false);
+        console.error("Failed to fetch rates", error);
       }
     };
     fetchData();
@@ -195,11 +191,13 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
 
           <div className="form-group row">
             <div className="form-group half">
-              <label>Categoría</label>
-              <select value={category} onChange={(e) => setCategory(e.target.value)} disabled={isLoadingCats}>
-                <option value="">Sin Categoría</option>
-                {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-              </select>
+              <CategorySelect
+                label="Categoría"
+                value={category}
+                onChange={(newCat) => setCategory(newCat)}
+                allowEmpty={true}
+                emptyLabel="Sin Categoría"
+              />
             </div>
             <div className="form-group half">
               <label style={{ display: 'flex', justifyContent: 'space-between' }}>

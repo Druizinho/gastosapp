@@ -286,6 +286,7 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ expenses, categories, onEdit,
                 onEdit={onEdit}
                 onDelete={onDelete}
                 categoryColor={color}
+                categoryObj={cat}
               />
             );
           })}

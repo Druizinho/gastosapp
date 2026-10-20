@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { RangeSummaryResponse, DateFilter, Category, MonthlyBudgetResponse } from '../types';
-import { Eye, EyeOff, Coins, PieChart, Package } from 'lucide-react';
-import { ICON_MAP } from './CategoryManager';
+import { Eye, EyeOff, Coins, PieChart } from 'lucide-react';
+import { resolveCategoryVisuals } from '../utils/categoryVisuals';
 
 interface SummaryProps {
   summary: RangeSummaryResponse | null;
@@ -263,14 +263,25 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [],
               const percentage = totalUsd > 0 ? ((val / totalUsd) * 100).toFixed(1) : '0.0';
               
               const categoryData = categories.find(cat => cat.name === c.category);
-              const IconComponent = categoryData && categoryData.color && ICON_MAP[categoryData.color] ? ICON_MAP[categoryData.color] : Package;
+              const { IconComponent, hexColor } = resolveCategoryVisuals(categoryData, c.category);
               const cl = budgetLimitsMap.get(c.category.trim().toLowerCase());
 
               return (
                 <div key={c.category} style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'var(--surface-color)', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-color)', flexShrink: 0 }}>
+                      <div style={{
+                        width: '28px',
+                        height: '28px',
+                        borderRadius: '8px',
+                        background: `${hexColor}18`,
+                        border: `1px solid ${hexColor}35`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: hexColor,
+                        flexShrink: 0
+                      }}>
                         <IconComponent size={14} />
                       </div>
                       <span style={{ fontSize: '0.9rem', fontWeight: 500, color: 'var(--text-primary)' }}>{c.category}</span>

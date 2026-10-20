@@ -497,10 +497,13 @@ async def fan_out_child_update(
 ):
     if not sync_id or not fields:
         return
+    clean_fields = {k: v for k, v in fields.items() if k not in ("expense_id", "create_expense", "register_as_expense")}
+    if not clean_fields:
+        return
     res = await db.execute(select(child_model).where(child_model.sync_id == sync_id))
     rows = res.scalars().all()
     for row in rows:
-        for k, v in fields.items():
+        for k, v in clean_fields.items():
             if hasattr(row, k):
                 setattr(row, k, v)
     await db.flush()

@@ -3,10 +3,12 @@ import { Users, X, Receipt } from 'lucide-react';
 import type { DebtPayment, DebtPaymentCreate, DebtPaymentUpdate } from '../types';
 import { CURRENCY_OPTIONS } from '../types';
 import ConfirmModal from './ConfirmModal';
+import CategorySelect from './CategorySelect';
 
 interface DebtPaymentFormProps {
   initialData?: DebtPayment;
   debtConcept?: string;
+  debtCategory?: string | null;
   type: 'owed' | 'receivable';
   debtCurrency: string;
   debtTotalAmount: number;
@@ -29,6 +31,7 @@ const formatCurrency = (amount: number, currency: string = 'USD_BCV') => {
 const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({ 
   initialData,
   debtConcept,
+  debtCategory,
   type, 
   debtCurrency, 
   debtTotalAmount, 
@@ -41,12 +44,19 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
 }) => {
   const isEditing = !!initialData;
   const remaining = Math.max(debtTotalAmount - debtPaidAmount, 0);
-  const [formData, setFormData] = useState<DebtPaymentCreate>({
+
+  const initialRegExpense = initialData
+    ? Boolean(initialData.create_expense || initialData.expense_id)
+    : type === 'owed';
+  const initialCategory = initialData?.category || debtCategory || '';
+
+  const [formData, setFormData] = useState<DebtPaymentCreate & { register_as_expense?: boolean; category?: string }>({
     amount: (initialData ? initialData.amount : '') as any,
     currency: (initialData?.currency || debtCurrency) as any,
     payment_date: initialData?.payment_date || new Date().toISOString().split('T')[0],
     note: initialData?.note || '',
-    register_as_expense: type === 'owed'
+    register_as_expense: initialRegExpense,
+    category: initialCategory,
   });
   const [showConfirm, setShowConfirm] = useState(false);
 
@@ -57,10 +67,11 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
         currency: initialData.currency,
         payment_date: initialData.payment_date,
         note: initialData.note || '',
-        register_as_expense: false
+        register_as_expense: Boolean(initialData.create_expense || initialData.expense_id),
+        category: initialData.category || debtCategory || '',
       });
     }
-  }, [initialData]);
+  }, [initialData, debtCategory]);
 
   // Check if user is paying in the same currency as the debt
   const isSameCurrency = formData.currency === debtCurrency;
@@ -81,9 +92,7 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
     e.preventDefault();
     const submitData: any = { ...formData };
     submitData.amount = Number(submitData.amount);
-    if (isEditing) {
-      delete submitData.register_as_expense;
-    }
+    submitData.category = submitData.register_as_expense ? (submitData.category || debtCategory || 'Sin Categoría') : null;
     
     if (!isEditing && isSameCurrency && submitData.amount > remaining) {
       setShowConfirm(true);
@@ -97,9 +106,7 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
     setShowConfirm(false);
     const submitData: any = { ...formData };
     submitData.amount = Number(submitData.amount);
-    if (isEditing) {
-      delete submitData.register_as_expense;
-    }
+    submitData.category = submitData.register_as_expense ? (submitData.category || debtCategory || 'Sin Categoría') : null;
     onSubmit(submitData);
   };
 
@@ -310,26 +317,40 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
             />
           </div>
 
-          {type === 'owed' && !isEditing && (
+          {type === 'owed' && (
             <div style={{
               display: 'flex',
-              alignItems: 'center',
-              gap: '0.6rem',
+              flexDirection: 'column',
+              gap: '0.75rem',
               background: 'var(--surface-muted)',
-              padding: '0.75rem 0.9rem',
+              padding: '0.85rem 1rem',
               borderRadius: 'var(--radius-md)'
             }}>
-              <input
-                type="checkbox"
-                id="register_as_expense"
-                name="register_as_expense"
-                checked={formData.register_as_expense}
-                onChange={handleChange}
-                style={{ width: '18px', height: '18px', accentColor: themeColor, cursor: 'pointer' }}
-              />
-              <label htmlFor="register_as_expense" style={{ fontSize: '0.85rem', color: 'var(--text-primary)', cursor: 'pointer', userSelect: 'none' }}>
-                Registrar como gasto del mes
-              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <input
+                  type="checkbox"
+                  id="register_as_expense"
+                  name="register_as_expense"
+                  checked={Boolean(formData.register_as_expense)}
+                  onChange={handleChange}
+                  style={{ width: '18px', height: '18px', accentColor: themeColor, cursor: 'pointer' }}
+                />
+                <label htmlFor="register_as_expense" style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', cursor: 'pointer', userSelect: 'none' }}>
+                  Registrar como gasto del mes
+                </label>
+              </div>
+
+              {Boolean(formData.register_as_expense) && (
+                <div style={{ paddingTop: '0.25rem' }}>
+                  <CategorySelect
+                    label="Categoría del gasto"
+                    value={formData.category || debtCategory || ''}
+                    onChange={(newCat) => setFormData(prev => ({ ...prev, category: newCat }))}
+                    allowEmpty={true}
+                    emptyLabel="Sin Categoría"
+                  />
+                </div>
+              )}
             </div>
           )}
 

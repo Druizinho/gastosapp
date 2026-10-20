@@ -82,6 +82,13 @@ async def lifespan(app: FastAPI):
         await ensure_budget_schema()
     except Exception as e:
         print(f"Error asegurando esquema de presupuestos: {e}")
+
+    # Asegurar migración de esquema para categorías y deudas
+    try:
+        from .crud import ensure_categories_and_debts_schema
+        await ensure_categories_and_debts_schema()
+    except Exception as e:
+        print(f"Error asegurando esquema de categorías y deudas: {e}")
     
     yield
     

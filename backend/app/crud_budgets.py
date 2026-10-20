@@ -38,13 +38,10 @@ async def ensure_budget_schema() -> None:
         _schema_ensured = True
 
 
-SYSTEM_BUDGET_CATEGORIES = ["Gastos Fijos", "Deudas", "Ahorro"]
-
-
 async def get_available_budget_categories(db: AsyncSession, user_id: UUID) -> List[str]:
     """
     Returns the list of categories available for budgeting:
-    User categories + fixed categories ["Gastos Fijos", "Deudas", "Ahorro"].
+    Strictly user categories defined in the categories table.
     """
     res = await db.execute(
         select(models.Category.name).where(models.Category.user_id == user_id).order_by(models.Category.name.asc())
@@ -56,15 +53,9 @@ async def get_available_budget_categories(db: AsyncSession, user_id: UUID) -> Li
     # Add user categories
     for c in user_cats:
         c_clean = c.strip()
-        if c_clean and c_clean not in seen:
-            seen.add(c_clean)
+        if c_clean and c_clean.lower() not in seen:
+            seen.add(c_clean.lower())
             result.append(c_clean)
-            
-    # Add system categories if not already present
-    for sc in SYSTEM_BUDGET_CATEGORIES:
-        if sc not in seen:
-            seen.add(sc)
-            result.append(sc)
             
     return result
 
@@ -576,7 +567,8 @@ async def get_monthly_budget_view(
             tl = _calc_traffic_light(pct)
             remaining = (limit_amt - cat_spent_cl) if limit_amt > 0 else Decimal("0")
 
-            also_in = [name for name in cat_to_budget_names.get(cl.category_name.strip().lower(), []) if name != b.name]
+            # If this is the primary budget, do not show 'also in other budgets' alert; only show on non-primary budgets
+            also_in = [] if b.is_primary else [name for name in cat_to_budget_names.get(cl.category_name.strip().lower(), []) if name != b.name]
 
             sum_out = schemas.BudgetCategorySummaryOut(
                 category_name=cl.category_name,

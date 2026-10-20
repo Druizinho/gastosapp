@@ -4,6 +4,7 @@ import type { Debt, DebtCreate, DebtUpdate, Connection } from '../types';
 import { CURRENCY_OPTIONS } from '../types';
 import { getConnections } from '../api';
 import { ParticipantPicker } from './panas/ParticipantPicker';
+import CategorySelect from './CategorySelect';
 
 interface DebtFormProps {
   initialData?: Debt;
@@ -27,6 +28,7 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
     type,
     counterpart: '',
     concept: '',
+    category: initialData?.category || '',
     total_amount: '' as any,
     currency: 'USD_BCV',
     start_date: new Date().toISOString().split('T')[0],
@@ -52,6 +54,7 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
     if (initialData) {
       setFormData({
         ...initialData,
+        category: initialData.category || '',
         due_date: initialData.due_date || '',
         notes: initialData.notes || '',
         shared_with: null
@@ -72,6 +75,7 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
     e.preventDefault();
     const submitData: any = { ...formData };
     submitData.total_amount = Number(submitData.total_amount);
+    submitData.category = submitData.category || 'Sin Categoría';
     if (!submitData.due_date) submitData.due_date = null;
     if (isSharedChecked && selectedPartnerIds.length > 0) {
       submitData.shared_with_ids = selectedPartnerIds;
@@ -218,6 +222,17 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
               onChange={handleChange}
               style={{ ...inputStyle, ...(isReadOnlyMember ? { opacity: 0.65, cursor: 'not-allowed' } : {}) }}
               placeholder="Ej: Préstamo personal, Compra de equipos..."
+            />
+          </div>
+
+          <div>
+            <CategorySelect
+              label="Categoría"
+              value={formData.category || ''}
+              onChange={(newCat) => setFormData(prev => ({ ...prev, category: newCat }))}
+              disabled={isReadOnlyMember}
+              allowEmpty={true}
+              emptyLabel="Sin Categoría"
             />
           </div>
 

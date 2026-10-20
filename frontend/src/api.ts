@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Expense, ExpenseCreate, ExpenseUpdate, SummaryResponse, ExchangeRates, RangeSummaryResponse, FixedExpense, FixedExpenseCreate, FixedExpenseUpdate, FixedExpenseSummary, FixedExpenseCheck, FixedExpenseCheckCreate, FixedExpenseCheckUpdate, Debt, DebtCreate, DebtUpdate, DebtPaymentCreate, DebtPaymentUpdate, EstimatedIncome, EstimatedIncomeCreate, EstimatedIncomeUpdate, IncomeCheckCreate, IncomeCheck, Connection, SavingGoal, SavingGoalCreate, SavingGoalUpdate, SavingDepositCreate, SavingDepositUpdate, SavingSummaryResponse, PanasGlobalOverview, PanaDetail, ShareRole, ShareInfoOut, MonthlyBudgetResponse, MonthlyBudgetUpsert, BudgetCategoryLimitInput, MonthlyBudgetCreate, MonthlyBudgetUpdate } from './types';
+import type { Expense, ExpenseCreate, ExpenseUpdate, SummaryResponse, ExchangeRates, RangeSummaryResponse, FixedExpense, FixedExpenseCreate, FixedExpenseUpdate, FixedExpenseSummary, FixedExpenseCheck, FixedExpenseCheckCreate, FixedExpenseCheckUpdate, Debt, DebtCreate, DebtUpdate, DebtPaymentCreate, DebtPaymentUpdate, EstimatedIncome, EstimatedIncomeCreate, EstimatedIncomeUpdate, IncomeCheckCreate, IncomeCheck, Connection, SavingGoal, SavingGoalCreate, SavingGoalUpdate, SavingDepositCreate, SavingDepositUpdate, SavingSummaryResponse, PanasGlobalOverview, PanaDetail, ShareRole, ShareInfoOut, MonthlyBudgetResponse, MonthlyBudgetUpsert, BudgetCategoryLimitInput, MonthlyBudgetCreate, MonthlyBudgetUpdate, Category, CategoryCreate } from './types';
 import { supabase } from './supabaseClient';
 
 const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
@@ -65,23 +65,30 @@ export const deleteExpense = async (id: string): Promise<void> => {
   await api.delete(`/expenses/${id}`);
 };
 
-export const getCategories = async (): Promise<any[]> => {
+export const getCategories = async (): Promise<Category[]> => {
   const response = await api.get('/categories/');
   return response.data;
 };
 
-export const createCategory = async (category: any): Promise<any> => {
+export const createCategory = async (category: CategoryCreate): Promise<Category> => {
   const response = await api.post('/categories/', category);
   return response.data;
 };
 
-export const updateCategory = async (id: string, category: any): Promise<any> => {
+export const updateCategory = async (id: string, category: Partial<CategoryCreate>): Promise<Category> => {
   const response = await api.put(`/categories/${id}`, category);
   return response.data;
 };
 
-export const deleteCategory = async (id: string): Promise<void> => {
-  await api.delete(`/categories/${id}`);
+export const deleteCategory = async (id: string, reassignTo?: string): Promise<void> => {
+  await api.delete(`/categories/${id}`, {
+    params: reassignTo ? { reassign_to: reassignTo } : undefined,
+  });
+};
+
+export const seedDefaultCategories = async (): Promise<Category[]> => {
+  const response = await api.post('/categories/seed-defaults');
+  return response.data;
 };
 
 // Profile

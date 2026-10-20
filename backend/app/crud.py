@@ -1,10 +1,13 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import extract, func, case
+from sqlalchemy import extract, func, case, text
+from sqlalchemy.exc import IntegrityError
+from fastapi import HTTPException
 from typing import Optional, List
 from datetime import date
 from uuid import UUID
 from . import models, schemas
+from .database import engine
 from decimal import Decimal
 from .crud_budgets import check_and_notify_budget_thresholds
 
@@ -179,23 +182,257 @@ async def get_summary_range(db: AsyncSession, user_id: UUID, date_from: date, da
         by_category=by_category
     )
 
-# Category CRUD
+# Category CRUD, Defaults & Migrations
+
+DEFAULT_CATEGORIES = [
+    {"name": "Alimentación", "icon": "Utensils", "color": "#F59E0B"},
+    {"name": "Transporte", "icon": "Car", "color": "#3B82F6"},
+    {"name": "Vivienda", "icon": "Home", "color": "#8B5CF6"},
+    {"name": "Servicios", "icon": "Zap", "color": "#06B6D4"},
+    {"name": "Salud", "icon": "HeartPulse", "color": "#EF4444"},
+    {"name": "Ocio", "icon": "Tv", "color": "#EC4899"},
+    {"name": "Compras", "icon": "ShoppingCart", "color": "#10B981"},
+    {"name": "Educación", "icon": "GraduationCap", "color": "#6366F1"},
+    {"name": "Gastos Fijos", "icon": "Receipt", "color": "#14B8A6"},
+    {"name": "Deudas", "icon": "CreditCard", "color": "#F97316"},
+    {"name": "Ahorro", "icon": "PiggyBank", "color": "#22C55E"},
+]
+
+_categories_debts_schema_ensured = False
+
+async def ensure_categories_and_debts_schema() -> None:
+    global _categories_debts_schema_ensured
+    if _categories_debts_schema_ensured:
+        return
+    try:
+        async with engine.begin() as conn:
+            # 1. categories columns
+            await conn.execute(
+                text("ALTER TABLE categories ADD COLUMN IF NOT EXISTS icon VARCHAR(50) DEFAULT 'Package'")
+            )
+            # 2. debts columns
+            await conn.execute(
+                text("ALTER TABLE debts ADD COLUMN IF NOT EXISTS category VARCHAR(100) DEFAULT 'Deudas'")
+            )
+            # 3. debt_payments columns
+            await conn.execute(
+                text("ALTER TABLE debt_payments ADD COLUMN IF NOT EXISTS category VARCHAR(100)")
+            )
+            await conn.execute(
+                text("ALTER TABLE debt_payments ADD COLUMN IF NOT EXISTS create_expense BOOLEAN NOT NULL DEFAULT FALSE")
+            )
+            await conn.execute(
+                text("ALTER TABLE debt_payments ADD COLUMN IF NOT EXISTS expense_id UUID REFERENCES expenses(id) ON DELETE SET NULL")
+            )
+            # 4. Migrate legacy categories rows where color holds an icon name
+            await conn.execute(
+                text("""
+                    UPDATE categories 
+                    SET icon = color 
+                    WHERE (icon IS NULL OR icon = 'Package' OR icon = '') 
+                      AND color IS NOT NULL 
+                      AND color NOT LIKE '#%'
+                """)
+            )
+            await conn.execute(
+                text("""
+                    UPDATE categories 
+                    SET color = CASE 
+                        WHEN lower(name) = 'alimentación' OR lower(color) = 'utensils' THEN '#F59E0B'
+                        WHEN lower(name) = 'transporte' OR lower(color) = 'car' THEN '#3B82F6'
+                        WHEN lower(name) = 'vivienda' OR lower(color) = 'home' THEN '#8B5CF6'
+                        WHEN lower(name) = 'servicios' OR lower(color) = 'zap' THEN '#06B6D4'
+                        WHEN lower(name) = 'salud' OR lower(color) = 'heartpulse' THEN '#EF4444'
+                        WHEN lower(name) = 'ocio' OR lower(color) = 'tv' THEN '#EC4899'
+                        WHEN lower(name) = 'compras' OR lower(color) = 'shoppingcart' THEN '#10B981'
+                        WHEN lower(name) = 'educación' OR lower(color) = 'graduationcap' THEN '#6366F1'
+                        WHEN lower(name) = 'gastos fijos' OR lower(color) = 'receipt' THEN '#14B8A6'
+                        WHEN lower(name) = 'deudas' OR lower(color) = 'creditcard' THEN '#F97316'
+                        WHEN lower(name) = 'ahorro' OR lower(color) = 'piggybank' THEN '#22C55E'
+                        ELSE '#6366F1'
+                    END
+                    WHERE color IS NULL OR color NOT LIKE '#%'
+                """)
+            )
+            await conn.execute(
+                text("UPDATE categories SET icon = 'Package' WHERE icon IS NULL OR icon = ''")
+            )
+        _categories_debts_schema_ensured = True
+    except Exception as e:
+        print(f"Aviso asegurando esquema de categorías y deudas: {e}")
+
+def _normalize_category_instance(cat: models.Category) -> None:
+    if not cat.icon or cat.icon.strip() == "":
+        if cat.color and not cat.color.startswith("#"):
+            cat.icon = cat.color
+        else:
+            cat.icon = "Package"
+    if not cat.color or not cat.color.startswith("#"):
+        name_lower = (cat.name or "").strip().lower()
+        color_lower = (cat.color or "").strip().lower()
+        mapping = {
+            "alimentación": "#F59E0B",
+            "utensils": "#F59E0B",
+            "transporte": "#3B82F6",
+            "car": "#3B82F6",
+            "vivienda": "#8B5CF6",
+            "home": "#8B5CF6",
+            "servicios": "#06B6D4",
+            "zap": "#06B6D4",
+            "salud": "#EF4444",
+            "heartpulse": "#EF4444",
+            "ocio": "#EC4899",
+            "tv": "#EC4899",
+            "compras": "#10B981",
+            "shoppingcart": "#10B981",
+            "educación": "#6366F1",
+            "graduationcap": "#6366F1",
+            "gastos fijos": "#14B8A6",
+            "receipt": "#14B8A6",
+            "deudas": "#F97316",
+            "creditcard": "#F97316",
+            "ahorro": "#22C55E",
+            "piggybank": "#22C55E",
+        }
+        cat.color = mapping.get(name_lower, mapping.get(color_lower, "#6366F1"))
+
+async def seed_default_categories(db: AsyncSession, user_id: UUID, only_if_empty: bool = False) -> List[models.Category]:
+    res = await db.execute(select(models.Category).where(models.Category.user_id == user_id).order_by(models.Category.created_at.asc()))
+    existing = res.scalars().all()
+    if only_if_empty and len(existing) > 0:
+        return existing
+        
+    existing_names = {c.name.strip().lower() for c in existing}
+    to_add = []
+    for item in DEFAULT_CATEGORIES:
+        if item["name"].strip().lower() not in existing_names:
+            to_add.append(
+                models.Category(
+                    user_id=user_id,
+                    name=item["name"],
+                    icon=item["icon"],
+                    color=item["color"]
+                )
+            )
+            
+    if to_add:
+        try:
+            db.add_all(to_add)
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
+        except Exception:
+            await db.rollback()
+            raise
+
+    res = await db.execute(
+        select(models.Category).where(models.Category.user_id == user_id).order_by(models.Category.created_at.asc())
+    )
+    return res.scalars().all()
 
 async def get_categories(db: AsyncSession, user_id: UUID):
     result = await db.execute(
         select(models.Category).filter(models.Category.user_id == user_id).order_by(models.Category.created_at.asc())
     )
-    return result.scalars().all()
+    cats = list(result.scalars().all())
+    if not cats:
+        cats = list(await seed_default_categories(db, user_id=user_id, only_if_empty=True))
+
+    for cat in cats:
+        _normalize_category_instance(cat)
+
+    # Grouped counts across 5 tables (no N+1 queries)
+    exp_res = await db.execute(
+        select(models.Expense.category, func.count(models.Expense.id))
+        .where(models.Expense.user_id == user_id)
+        .group_by(models.Expense.category)
+    )
+    exp_counts = {row[0].strip().lower(): row[1] for row in exp_res.all() if row[0]}
+
+    fe_res = await db.execute(
+        select(models.FixedExpense.category, func.count(models.FixedExpense.id))
+        .where(models.FixedExpense.user_id == user_id)
+        .group_by(models.FixedExpense.category)
+    )
+    fe_counts = {row[0].strip().lower(): row[1] for row in fe_res.all() if row[0]}
+
+    debt_res = await db.execute(
+        select(models.Debt.category, func.count(models.Debt.id))
+        .where(models.Debt.user_id == user_id)
+        .group_by(models.Debt.category)
+    )
+    debt_counts = {row[0].strip().lower(): row[1] for row in debt_res.all() if row[0]}
+
+    saving_res = await db.execute(
+        select(models.SavingGoal.category, func.count(models.SavingGoal.id))
+        .where(models.SavingGoal.user_id == user_id)
+        .group_by(models.SavingGoal.category)
+    )
+    saving_counts = {row[0].strip().lower(): row[1] for row in saving_res.all() if row[0]}
+
+    budget_res = await db.execute(
+        select(models.BudgetCategoryLimit.category_name, func.count(models.BudgetCategoryLimit.id))
+        .join(models.MonthlyBudget, models.BudgetCategoryLimit.budget_id == models.MonthlyBudget.id)
+        .where(models.MonthlyBudget.user_id == user_id)
+        .group_by(models.BudgetCategoryLimit.category_name)
+    )
+    budget_counts = {row[0].strip().lower(): row[1] for row in budget_res.all() if row[0]}
+
+    for cat in cats:
+        k = (cat.name or "").strip().lower()
+        ec = exp_counts.get(k, 0)
+        fc = fe_counts.get(k, 0)
+        dc = debt_counts.get(k, 0)
+        sc = saving_counts.get(k, 0)
+        bc = budget_counts.get(k, 0)
+        cat.expense_count = ec
+        cat.fixed_count = fc
+        cat.debt_count = dc
+        cat.saving_count = sc
+        cat.budget_count = bc
+        cat.usage_count = ec + fc + dc + sc
+
+    return cats
 
 async def get_category(db: AsyncSession, category_id: UUID, user_id: UUID):
     result = await db.execute(select(models.Category).filter(models.Category.id == category_id, models.Category.user_id == user_id))
-    return result.scalars().first()
+    cat = result.scalars().first()
+    if cat:
+        _normalize_category_instance(cat)
+    return cat
 
 async def create_category(db: AsyncSession, category: schemas.CategoryCreate, user_id: UUID):
-    db_category = models.Category(**category.model_dump(), user_id=user_id)
+    norm_name = category.name.strip()
+    existing = await db.execute(
+        select(models.Category.id).where(
+            models.Category.user_id == user_id,
+            func.lower(models.Category.name) == func.lower(norm_name)
+        )
+    )
+    if existing.scalars().first():
+        raise HTTPException(status_code=400, detail="Ya existe una categoría con ese nombre")
+
+    cat_data = category.model_dump()
+    cat_data["name"] = norm_name
+
+    raw_color = cat_data.get("color")
+    raw_icon = cat_data.get("icon")
+    if raw_color and not raw_color.startswith("#"):
+        if not raw_icon or raw_icon == "Package":
+            cat_data["icon"] = raw_color
+        cat_data["color"] = "#6366F1"
+    elif not raw_icon:
+        cat_data["icon"] = "Package"
+
+    db_category = models.Category(**cat_data, user_id=user_id)
     db.add(db_category)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="Ya existe una categoría con ese nombre")
     await db.refresh(db_category)
+    _normalize_category_instance(db_category)
     return db_category
 
 async def update_category(db: AsyncSession, category_id: UUID, category_update: schemas.CategoryCreate, user_id: UUID):
@@ -203,11 +440,33 @@ async def update_category(db: AsyncSession, category_id: UUID, category_update: 
     if not db_category:
         return None
     
-    # Check if there's a name change and we need to update existing expenses & budgets
     old_name = db_category.name
-    new_name = category_update.name
+    new_name = category_update.name.strip()
+
+    if old_name.lower() != new_name.lower():
+        existing = await db.execute(
+            select(models.Category.id).where(
+                models.Category.user_id == user_id,
+                func.lower(models.Category.name) == func.lower(new_name),
+                models.Category.id != category_id
+            )
+        )
+        if existing.scalars().first():
+            raise HTTPException(status_code=400, detail="Ya existe una categoría con ese nombre")
     
-    for key, value in category_update.model_dump().items():
+    update_data = category_update.model_dump(exclude_unset=True)
+    update_data["name"] = new_name
+
+    raw_color = update_data.get("color")
+    raw_icon = update_data.get("icon")
+    if raw_color and not raw_color.startswith("#"):
+        if not raw_icon or raw_icon == "Package":
+            update_data["icon"] = raw_color
+        update_data["color"] = "#6366F1"
+    elif not raw_icon and "icon" in update_data:
+        update_data["icon"] = "Package"
+
+    for key, value in update_data.items():
         setattr(db_category, key, value)
         
     if old_name != new_name:
@@ -219,7 +478,44 @@ async def update_category(db: AsyncSession, category_id: UUID, category_update: 
             .values(category=new_name)
         )
 
-        # 2. Synchronize BudgetCategoryLimit for user's budgets
+        # 2. Update fixed expenses
+        await db.execute(
+            models.FixedExpense.__table__.update()
+            .where(models.FixedExpense.user_id == user_id)
+            .where(models.FixedExpense.category == old_name)
+            .values(category=new_name)
+        )
+
+        # 3. Update saving goals
+        await db.execute(
+            models.SavingGoal.__table__.update()
+            .where(models.SavingGoal.user_id == user_id)
+            .where(models.SavingGoal.category == old_name)
+            .values(category=new_name)
+        )
+
+        # 4. Update debts
+        await db.execute(
+            models.Debt.__table__.update()
+            .where(models.Debt.user_id == user_id)
+            .where(models.Debt.category == old_name)
+            .values(category=new_name)
+        )
+
+        # 5. Update debt payments belonging to user's debts
+        user_debt_ids_res = await db.execute(
+            select(models.Debt.id).where(models.Debt.user_id == user_id)
+        )
+        user_debt_ids = user_debt_ids_res.scalars().all()
+        if user_debt_ids:
+            await db.execute(
+                models.DebtPayment.__table__.update()
+                .where(models.DebtPayment.debt_id.in_(user_debt_ids))
+                .where(models.DebtPayment.category == old_name)
+                .values(category=new_name)
+            )
+
+        # 6. Synchronize BudgetCategoryLimit for user's budgets
         user_budgets_res = await db.execute(
             select(models.MonthlyBudget.id).where(models.MonthlyBudget.user_id == user_id)
         )
@@ -247,8 +543,13 @@ async def update_category(db: AsyncSession, category_id: UUID, category_update: 
                     .where(models.BudgetCategoryLimit.category_name == old_name)
                 )
         
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="Ya existe una categoría con ese nombre")
     await db.refresh(db_category)
+    _normalize_category_instance(db_category)
     return db_category
 
 async def delete_category(db: AsyncSession, category_id: UUID, user_id: UUID, reassign_to: Optional[str] = None):
@@ -257,6 +558,21 @@ async def delete_category(db: AsyncSession, category_id: UUID, user_id: UUID, re
         return False
     
     category_name = db_category.name
+    
+    if reassign_to:
+        reassign_to = reassign_to.strip()
+        if reassign_to.lower() == category_name.lower():
+            raise HTTPException(status_code=400, detail="No se puede reasignar a la categoría que se está eliminando")
+        if reassign_to != "Sin Categoría":
+            val_res = await db.execute(
+                select(models.Category.id).where(
+                    models.Category.user_id == user_id,
+                    func.lower(models.Category.name) == func.lower(reassign_to)
+                )
+            )
+            if not val_res.scalars().first():
+                raise HTTPException(status_code=400, detail=f"La categoría de destino '{reassign_to}' no existe")
+
     target_category = reassign_to if reassign_to else "Sin Categoría"
 
     # 1. Reassign expenses
@@ -267,7 +583,44 @@ async def delete_category(db: AsyncSession, category_id: UUID, user_id: UUID, re
         .values(category=target_category)
     )
 
-    # 2. Synchronize BudgetCategoryLimit rows
+    # 2. Reassign fixed expenses
+    await db.execute(
+        models.FixedExpense.__table__.update()
+        .where(models.FixedExpense.user_id == user_id)
+        .where(models.FixedExpense.category == category_name)
+        .values(category=reassign_to if reassign_to else None)
+    )
+
+    # 3. Reassign saving goals
+    await db.execute(
+        models.SavingGoal.__table__.update()
+        .where(models.SavingGoal.user_id == user_id)
+        .where(models.SavingGoal.category == category_name)
+        .values(category=reassign_to if reassign_to else None)
+    )
+
+    # 4. Reassign debts
+    await db.execute(
+        models.Debt.__table__.update()
+        .where(models.Debt.user_id == user_id)
+        .where(models.Debt.category == category_name)
+        .values(category=target_category)
+    )
+
+    # 5. Reassign debt payments belonging to user's debts
+    user_debt_ids_res = await db.execute(
+        select(models.Debt.id).where(models.Debt.user_id == user_id)
+    )
+    user_debt_ids = user_debt_ids_res.scalars().all()
+    if user_debt_ids:
+        await db.execute(
+            models.DebtPayment.__table__.update()
+            .where(models.DebtPayment.debt_id.in_(user_debt_ids))
+            .where(models.DebtPayment.category == category_name)
+            .values(category=target_category)
+        )
+
+    # 6. Synchronize BudgetCategoryLimit rows
     user_budgets_res = await db.execute(
         select(models.MonthlyBudget.id).where(models.MonthlyBudget.user_id == user_id)
     )

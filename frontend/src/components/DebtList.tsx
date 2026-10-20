@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Edit3, ArrowLeft, Wallet, Calendar, AlertCircle, CheckCircle } from 'lucide-react';
+import { Plus, Trash2, Edit3, ArrowLeft, Wallet, Calendar, AlertCircle, CheckCircle, Receipt } from 'lucide-react';
 import type { Debt, DebtCreate, DebtUpdate, DebtPayment, DebtPaymentCreate, DebtPaymentUpdate, ExchangeRates } from '../types';
 import { getDebts, createDebt, updateDebt, addDebtPayment, updateDebtPayment, deleteDebt, getRates, deleteDebtPayment } from '../api';
 import DebtForm from './DebtForm';
 import DebtPaymentForm from './DebtPaymentForm';
 import ConfirmModal from './ConfirmModal';
 import { MemberAvatars, ShareMembersModal } from './panas';
+import { useCategories } from '../context/CategoriesContext';
+import { resolveCategoryVisuals } from '../utils/categoryVisuals';
 
 const currencyLabels: Record<string, string> = {
   'USD_BCV': '$',
@@ -31,6 +33,7 @@ interface DebtListProps {
 }
 
 const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
+  const { categories } = useCategories();
   const [debts, setDebts] = useState<Debt[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -320,6 +323,28 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
                 <span>Gestionar panas ({selectedDebt.shared_members?.length || 2})</span>
               </div>
             )}
+            {selectedDebt.category && (() => {
+              const catObj = categories.find(c => c.name.toLowerCase() === selectedDebt.category?.toLowerCase());
+              const { IconComponent, hexColor } = resolveCategoryVisuals(catObj, selectedDebt.category);
+              return (
+                <div style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  padding: '0.2rem 0.55rem',
+                  borderRadius: 'var(--radius-full)',
+                  background: `${hexColor}18`,
+                  border: `1px solid ${hexColor}35`,
+                  color: hexColor,
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  marginBottom: '0.5rem',
+                }}>
+                  <IconComponent size={13} />
+                  <span>{selectedDebt.category}</span>
+                </div>
+              );
+            })()}
             <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
               {isOwed ? 'A:' : 'De:'} <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{selectedDebt.counterpart}</span>
               {selectedDebt.start_date && (
@@ -468,9 +493,21 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
                           display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
                           fontSize: '0.7rem', color: '#3B82F6', background: 'rgba(59, 130, 246, 0.1)',
                           padding: '0.1rem 0.45rem', borderRadius: 'var(--radius-full)', marginTop: '0.2rem',
+                          marginRight: '0.35rem',
                           fontWeight: 600
                         }}>
                           ✨ Pagado por {payment.paid_by_name}
+                        </span>
+                      )}
+                      {(payment.create_expense || payment.expense_id) && (
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
+                          fontSize: '0.7rem', color: '#10B981', background: 'rgba(16, 185, 129, 0.1)',
+                          padding: '0.1rem 0.45rem', borderRadius: 'var(--radius-full)', marginTop: '0.2rem',
+                          fontWeight: 600, border: '1px solid rgba(16, 185, 129, 0.25)'
+                        }} title="Registrado en la lista de gastos del mes">
+                          <Receipt size={11} />
+                          <span>Gasto{payment.category ? `: ${payment.category}` : ''}</span>
                         </span>
                       )}
                     </div>
@@ -534,6 +571,7 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
           <DebtPaymentForm
             initialData={editingPayment}
             debtConcept={payingDebt.concept}
+            debtCategory={payingDebt.category}
             type={type}
             debtCurrency={payingDebt.currency || 'USD_BCV'}
             debtTotalAmount={payingDebt.total_amount}
@@ -787,6 +825,29 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
                         Activa
                       </span>
                     )}
+                    {debt.category && (() => {
+                      const catObj = categories.find(c => c.name.toLowerCase() === debt.category?.toLowerCase());
+                      const { IconComponent, hexColor } = resolveCategoryVisuals(catObj, debt.category);
+                      return (
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.25rem',
+                          fontSize: '0.7rem',
+                          fontWeight: 600,
+                          color: hexColor,
+                          background: `${hexColor}18`,
+                          border: `1px solid ${hexColor}35`,
+                          padding: '0.12rem 0.5rem',
+                          borderRadius: 'var(--radius-full)',
+                          marginTop: '0.25rem',
+                          marginLeft: '0.4rem',
+                        }}>
+                          <IconComponent size={10} />
+                          {debt.category}
+                        </span>
+                      );
+                    })()}
                     {debt.is_shared && (
                       <div
                         onClick={(e) => {
@@ -906,6 +967,7 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
         <DebtPaymentForm
           initialData={editingPayment}
           debtConcept={payingDebt.concept}
+          debtCategory={payingDebt.category}
           type={type}
           debtCurrency={payingDebt.currency || 'USD_BCV'}
           debtTotalAmount={payingDebt.total_amount}

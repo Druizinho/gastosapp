@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Users, X, PiggyBank, SlidersHorizontal } from 'lucide-react';
-import type { SavingGoal, SavingGoalCreate, SavingGoalUpdate, Category, Connection } from '../types';
+import type { SavingGoal, SavingGoalCreate, SavingGoalUpdate, Connection } from '../types';
 import { CURRENCY_OPTIONS } from '../types';
-import { getCategories, getConnections } from '../api';
+import { getConnections } from '../api';
 import { ParticipantPicker } from './panas/ParticipantPicker';
+import CategorySelect from './CategorySelect';
 
 interface SavingGoalFormProps {
   initialData?: SavingGoal;
@@ -29,9 +30,6 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
 }) => {
   const isEditing = !!initialData;
 
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [loadingCats, setLoadingCats] = useState(true);
-
   // Panas connections
   const [connections, setConnections] = useState<Connection[]>([]);
   const [isSharedChecked, setIsSharedChecked] = useState(false);
@@ -53,11 +51,6 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
   });
 
   useEffect(() => {
-    getCategories()
-      .then((data) => setCategories(data))
-      .catch((err) => console.error('Error fetching categories:', err))
-      .finally(() => setLoadingCats(false));
-
     getConnections()
       .then((data) => {
         const accepted = data.filter(c => c.status === 'accepted');
@@ -256,23 +249,13 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
           {/* Fila: Categoría y Fecha Límite */}
           <div className="form-group row" style={{ gap: '0.75rem', marginBottom: '0.75rem' }}>
             <div className="form-group half">
-              <label style={{ fontSize: '0.82rem', marginBottom: '0.25rem', fontWeight: 600 }}>
-                Categoría
-              </label>
-              <select
-                name="category"
+              <CategorySelect
+                label="Categoría"
                 value={formData.category || ''}
-                onChange={handleChange}
-                disabled={loadingCats}
-                style={{ padding: '0.65rem 0.75rem' }}
-              >
-                <option value="">(Sin categoría)</option>
-                {categories.map((cat) => (
-                  <option key={cat.id} value={cat.name}>
-                    {cat.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(newCat) => setFormData(prev => ({ ...prev, category: newCat }))}
+                allowEmpty={true}
+                emptyLabel="(Sin categoría)"
+              />
             </div>
             <div className="form-group half">
               <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginBottom: '0.25rem', fontWeight: 600 }}>

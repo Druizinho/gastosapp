@@ -275,7 +275,7 @@ async def add_saving_deposit(
             "amount": data["amount"],
             "currency": data["currency"].value if hasattr(data["currency"], "value") else str(data["currency"]),
             "description": f"Aporte de Ahorro: {db_goal.name}",
-            "category": db_goal.category or "Ahorro",
+            "category": db_goal.category or "Sin Categoría",
             "date": data.get("deposit_date") or datetime.date.today(),
             "user_id": user_id
         }

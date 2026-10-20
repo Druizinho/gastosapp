@@ -1,26 +1,28 @@
 import { useState, useEffect } from 'react';
-import type { ExpenseCreate, ExpenseUpdate, Expense, CurrencyType, ExchangeRates, Category } from '../types';
+import type { ExpenseCreate, ExpenseUpdate, Expense, CurrencyType, ExchangeRates } from '../types';
 import { CURRENCY_OPTIONS } from '../types';
-import { getRates, getCategories } from '../api';
+import { getRates } from '../api';
 import { Info } from 'lucide-react';
+import CategorySelect from './CategorySelect';
+import { useCategories } from '../context/CategoriesContext';
 
 interface ExpenseFormProps {
   initialData?: Expense | null;
   onSubmit: (data: ExpenseCreate | ExpenseUpdate) => Promise<void>;
   onCancel: () => void;
+  onCategoriesChanged?: () => void;
 }
 
-const ExpenseForm: React.FC<ExpenseFormProps> = ({ initialData, onSubmit, onCancel }) => {
+const ExpenseForm: React.FC<ExpenseFormProps> = ({ initialData, onSubmit, onCancel, onCategoriesChanged }) => {
+  const { categories, refreshCategories } = useCategories();
   const [amount, setAmount] = useState<string>(initialData?.amount.toString() || '');
   const [description, setDescription] = useState<string>(initialData?.description || '');
-  const [category, setCategory] = useState<string>(initialData?.category || 'Sin Categoría');
+  const [category, setCategory] = useState<string>(initialData?.category || (categories[0]?.name || 'Sin Categoría'));
   const [date, setDate] = useState<string>(initialData?.date || new Date().toISOString().split('T')[0]);
   const [currency, setCurrency] = useState<CurrencyType>(initialData?.currency || 'BS');
   const [manualRate, setManualRate] = useState<string>('');
   
   const [rates, setRates] = useState<ExchangeRates | null>(null);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [isLoadingCats, setIsLoadingCats] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -39,26 +41,22 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ initialData, onSubmit, onCanc
       } else if (initialData.rate_usd_bs) {
         setManualRate(initialData.rate_usd_bs.toString());
       }
+    } else if (categories.length > 0 && (!category || category === 'Sin Categoría')) {
+      setCategory(categories[0].name);
     }
-  }, [initialData]);
+  }, [initialData, categories]);
 
   useEffect(() => {
-    const fetchRatesAndCats = async () => {
+    const fetchRates = async () => {
       try {
-        const [ratesData, catsData] = await Promise.all([getRates(), getCategories()]);
+        const ratesData = await getRates();
         setRates(ratesData);
-        setCategories(catsData);
-        if (!initialData && catsData.length > 0) {
-          setCategory(catsData[0].name);
-        }
       } catch (error) {
-        console.error("Failed to fetch data", error);
-      } finally {
-        setIsLoadingCats(false);
+        console.error("Failed to fetch rates", error);
       }
     };
-    fetchRatesAndCats();
-  }, [initialData]);
+    fetchRates();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -149,11 +147,16 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ initialData, onSubmit, onCanc
           
           <div className="form-group row">
             <div className="form-group half">
-              <label>Categoría</label>
-              <select value={category} onChange={(e) => setCategory(e.target.value)} required disabled={isLoadingCats}>
-                <option value="Sin Categoría">Sin Categoría</option>
-                {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-              </select>
+              <CategorySelect
+                label="Categoría"
+                value={category}
+                onChange={(newCat) => setCategory(newCat)}
+                onCategoryCreated={() => {
+                  refreshCategories();
+                  onCategoriesChanged?.();
+                }}
+                required
+              />
             </div>
             <div className="form-group half">
               <label>Fecha</label>

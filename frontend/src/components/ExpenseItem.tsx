@@ -1,33 +1,20 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { Expense } from '../types';
+import type { Expense, Category } from '../types';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Pencil, Trash2, ChevronDown, Package } from 'lucide-react';
-import { ICON_MAP } from './CategoryManager';
+import { Pencil, Trash2, ChevronDown } from 'lucide-react';
+import { resolveCategoryVisuals } from '../utils/categoryVisuals';
 
 interface ExpenseItemProps {
   expense: Expense;
   onEdit: (expense: Expense) => void;
   onDelete: (id: string) => void;
   categoryColor?: string;
+  categoryObj?: Category;
 }
 
-const getCategoryIcon = (category: string) => {
-  const icons: Record<string, string> = {
-    'Food': 'Utensils',
-    'Transport': 'Car',
-    'Entertainment': 'Tv',
-    'Bills': 'Home',
-    'Shopping': 'ShoppingCart',
-    'Alimentación': 'Utensils',
-    'Vivienda': 'Home',
-    'Ocio': 'Tv',
-    'Salud': 'HeartPulse',
-    'Other': 'Package'
-  };
-  return icons[category] || 'Package';
-};
+
 
 const getCurrencyBadge = (currency: string) => {
   switch (currency) {
@@ -45,10 +32,10 @@ const formatVal = (val: number | null | undefined, prefix: string) => {
   return `${prefix}${Number(val).toFixed(2)}`;
 };
 
-const ExpenseItem: React.FC<ExpenseItemProps> = ({ expense, onEdit, onDelete, categoryColor }) => {
+const ExpenseItem: React.FC<ExpenseItemProps> = ({ expense, onEdit, onDelete, categoryObj, categoryColor }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const iconName = categoryColor || getCategoryIcon(expense.category);
-  const IconComponent = ICON_MAP[iconName] || Package;
+  const effectiveCatObj = categoryObj || (categoryColor ? ({ name: expense.category, color: categoryColor } as Category) : null);
+  const { IconComponent, hexColor } = resolveCategoryVisuals(effectiveCatObj, expense.category);
 
   return (
     <div
@@ -66,15 +53,16 @@ const ExpenseItem: React.FC<ExpenseItemProps> = ({ expense, onEdit, onDelete, ca
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', width: '100%', flex: 1 }}>
         <div style={{
-          backgroundColor: 'var(--surface-color)',
-          color: 'var(--text-secondary)',
+          backgroundColor: `${hexColor}18`,
+          color: hexColor,
           width: '44px',
           height: '44px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           borderRadius: '12px',
-          border: '1px solid var(--border-color)'
+          border: `1px solid ${hexColor}35`,
+          flexShrink: 0
         }}>
           <IconComponent size={22} />
         </div>
@@ -125,7 +113,15 @@ const ExpenseItem: React.FC<ExpenseItemProps> = ({ expense, onEdit, onDelete, ca
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                <span style={{ backgroundColor: 'var(--surface-muted)', color: 'var(--text-secondary)', padding: '2px 8px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 500 }}>
+                <span style={{
+                  backgroundColor: `${hexColor}18`,
+                  color: hexColor,
+                  border: `1px solid ${hexColor}35`,
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  fontSize: '0.75rem',
+                  fontWeight: 600
+                }}>
                   {expense.category}
                 </span>
                 {getCurrencyBadge(expense.currency)}

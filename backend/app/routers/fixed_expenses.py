@@ -139,7 +139,7 @@ async def check_fixed_expense(
         expense_create = schemas.ExpenseCreate(
             amount=check_data.paid_amount,
             description=f"Gasto fijo: {db_expense.name}",
-            category=db_expense.category or "Gastos Fijos",
+            category=db_expense.category or "Sin Categoría",
             date=check_data.paid_date or date.today(),
             currency=check_data.currency or schemas.CurrencyType.BS,
         )

@@ -17,16 +17,17 @@ from sqlalchemy.future import select
 async def run_tests():
     print("--- Starting Budget Integration Tests ---")
     async with SessionLocal() as db:
-        # Use existing test user
+        # Use existing test user (must exist in profiles due to foreign key)
         test_user_id = uuid.UUID('8b04bc8a-9b52-462d-a7b1-4b86e6cc5517') # Diego Ruiz pruebas
         other_user_id = uuid.UUID('0f3c0bb0-4fff-4abe-94db-204dca8802b9')
 
+        prior_month = "2098-12"
         test_month = "2099-01"
         next_month = "2099-02"
         future_month = "2099-03"
 
         created_expense_ids = []
-        created_cat_id = None
+        created_cat_ids = []
         other_income_id = None
         my_income_id = None
 
@@ -34,17 +35,46 @@ async def run_tests():
             # 0. Clean prior leftovers if any
             clean_res = await db.execute(select(models.MonthlyBudget).where(
                 models.MonthlyBudget.user_id == test_user_id,
-                models.MonthlyBudget.month_year.in_([test_month, next_month, future_month])
+                models.MonthlyBudget.month_year.in_([prior_month, test_month, next_month, future_month])
             ))
             for b in clean_res.scalars().all():
                 await db.delete(b)
             await db.commit()
 
-            # 1. Test get_available_budget_categories
-            cat = models.Category(user_id=test_user_id, name="TestMercado", color="#10B981")
-            db.add(cat)
+            # Create clean baseline budget in prior_month so test_month clones exactly 1 budget
+            base_budget = models.MonthlyBudget(
+                user_id=test_user_id,
+                month_year=prior_month,
+                name="Presupuesto Principal",
+                currency="USD_BCV",
+                income_mode="manual",
+                manual_global_limit=Decimal("500.00"),
+                is_confirmed=True,
+                is_primary=True,
+                notified_month_start=True
+            )
+            db.add(base_budget)
             await db.commit()
-            created_cat_id = cat.id
+
+            # 1. Test get_available_budget_categories
+            test_cats_to_ensure = ["TestMercado", "Gastos Fijos", "Deudas", "Ahorro"]
+            created_cat_ids = []
+            for cname in test_cats_to_ensure:
+                existing_cat = (await db.execute(select(models.Category).where(
+                    models.Category.user_id == test_user_id,
+                    models.Category.name == cname
+                ))).scalars().first()
+                if not existing_cat:
+                    new_c = models.Category(user_id=test_user_id, name=cname, color="#10B981")
+                    db.add(new_c)
+                    await db.commit()
+                    created_cat_ids.append(new_c.id)
+
+            test_mercado_cat = (await db.execute(select(models.Category).where(
+                models.Category.user_id == test_user_id,
+                models.Category.name == "TestMercado"
+            ))).scalars().first()
+            created_cat_id = test_mercado_cat.id
 
             avail_cats = await crud_budgets.get_available_budget_categories(db, test_user_id)
             print("Available categories count:", len(avail_cats))
@@ -145,7 +175,7 @@ async def run_tests():
                 user_id=test_user_id,
                 reassign_to="Gastos Fijos"
             )
-            created_cat_id = None
+            created_cat_ids = []
             view_after_delete = await crud_budgets.get_monthly_budget_view(db, test_user_id, test_month)
             deleted_limit_names = [cl.category_name for cl in view_after_delete.category_limits]
             assert "TestSupermercado" not in deleted_limit_names
@@ -222,14 +252,19 @@ async def run_tests():
                 )
             )
 
-            # View again and verify also_in_budgets
+            # View again and verify also_in_budgets (suppressed in primary budget, active in non-primary)
             view_cross = await crud_budgets.get_monthly_budget_view(db, test_user_id, test_month)
-            # Find b2 in view
+            # Find b1 (primary) and b2 in view
+            b1_view = next(b for b in view_cross.budgets if b.is_primary)
+            b1_gf = next(cl for cl in b1_view.category_limits if cl.category_name == "Gastos Fijos")
+            assert b1_view.is_primary is True
+            assert b1_gf.also_in_budgets == [], "Primary budget must NOT show also_in_budgets alert"
+
             b2_view = next(b for b in view_cross.budgets if b.id == b2.id)
             assert len(b2_view.category_limits) == 2
             b2_gf = next(cl for cl in b2_view.category_limits if cl.category_name == "Gastos Fijos")
-            assert "Presupuesto Principal" in b2_gf.also_in_budgets
-            print("[PASS] Cross-budget also_in_budgets tracking verified!")
+            assert "Presupuesto Principal" in b2_gf.also_in_budgets, "Non-primary budget must show also_in_budgets alert"
+            print("[PASS] Cross-budget also_in_budgets tracking verified (hidden in primary, visible in other budgets)!")
 
             # 9. Test expense deduplication in consolidated view
             exp1 = schemas.ExpenseCreate(
@@ -308,8 +343,8 @@ async def run_tests():
             for eid in created_expense_ids:
                 exp_obj = await db.get(models.Expense, eid)
                 if exp_obj: await db.delete(exp_obj)
-            if created_cat_id:
-                cat_obj = await db.get(models.Category, created_cat_id)
+            for cid in created_cat_ids:
+                cat_obj = await db.get(models.Category, cid)
                 if cat_obj: await db.delete(cat_obj)
             if my_income_id:
                 inc_obj = await db.get(models.EstimatedIncome, my_income_id)
@@ -318,9 +353,9 @@ async def run_tests():
                 oinc_obj = await db.get(models.EstimatedIncome, other_income_id)
                 if oinc_obj: await db.delete(oinc_obj)
 
-            # Clean up test budgets for 2099-01, 2099-02, 2099-03
+            # Clean up test budgets for 2098-12, 2099-01, 2099-02, 2099-03
             b_res = await db.execute(select(models.MonthlyBudget).where(
-                models.MonthlyBudget.month_year.in_([test_month, next_month, future_month])
+                models.MonthlyBudget.month_year.in_([prior_month, test_month, next_month, future_month])
             ))
             for b in b_res.scalars().all():
                 await db.delete(b)

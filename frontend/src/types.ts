@@ -100,12 +100,20 @@ export interface Category {
   id: string;
   name: string;
   color: string;
+  icon?: string | null;
   user_id: string;
+  usage_count?: number;
+  expense_count?: number;
+  fixed_count?: number;
+  debt_count?: number;
+  saving_count?: number;
+  budget_count?: number;
 }
 
 export interface CategoryCreate {
   name: string;
   color?: string;
+  icon?: string;
 }
 
 export type DatePreset = 'today' | 'week' | 'month' | 'year' | 'all' | 'custom';
@@ -259,6 +267,9 @@ export interface DebtPayment {
   rate_usdt_bs?: number | null;
   payment_date: string;
   note: string | null;
+  category?: string | null;
+  create_expense?: boolean;
+  expense_id?: string | null;
   paid_by_name?: string | null;
   paid_by_user_id?: string | null;
   sync_id?: string | null;
@@ -274,6 +285,8 @@ export interface DebtPaymentCreate {
   note?: string;
   manual_rate?: number;
   register_as_expense?: boolean;
+  create_expense?: boolean;
+  category?: string | null;
 }
 
 export interface DebtPaymentUpdate {
@@ -282,6 +295,9 @@ export interface DebtPaymentUpdate {
   payment_date?: string | null;
   note?: string | null;
   manual_rate?: number;
+  category?: string | null;
+  register_as_expense?: boolean;
+  create_expense?: boolean;
 }
 
 export interface Debt {
@@ -290,6 +306,7 @@ export interface Debt {
   type: 'owed' | 'receivable';
   counterpart: string;
   concept: string;
+  category?: string | null;
   total_amount: number;
   currency: CurrencyType;
   start_date: string;
@@ -310,6 +327,7 @@ export interface DebtCreate {
   type: 'owed' | 'receivable';
   counterpart: string;
   concept: string;
+  category?: string | null;
   total_amount: number;
   currency?: CurrencyType;
   start_date?: string | null;
@@ -324,6 +342,7 @@ export interface DebtCreate {
 export interface DebtUpdate {
   counterpart?: string;
   concept?: string;
+  category?: string | null;
   total_amount?: number;
   currency?: CurrencyType;
   due_date?: string | null;

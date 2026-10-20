@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { CategoriesProvider } from './context/CategoriesContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { Auth, ResetPassword } from './components/Auth';
 import Dashboard from './components/Dashboard';
@@ -88,12 +89,14 @@ const AppRoutes = () => {
 function App() {
   return (
     <AuthProvider>
-      <NotificationProvider>
-        <Router>
-          <AppRoutes />
-          <InstallPWA />
-        </Router>
-      </NotificationProvider>
+      <CategoriesProvider>
+        <NotificationProvider>
+          <Router>
+            <AppRoutes />
+            <InstallPWA />
+          </Router>
+        </NotificationProvider>
+      </CategoriesProvider>
     </AuthProvider>
   );
 }

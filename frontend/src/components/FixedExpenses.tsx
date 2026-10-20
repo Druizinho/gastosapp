@@ -7,6 +7,7 @@ import FixedExpenseForm from './FixedExpenseForm';
 import FixedExpensePayForm from './FixedExpensePayForm';
 import ConfirmModal from './ConfirmModal';
 import { MemberAvatars, ShareMembersModal } from './panas';
+import { resolveCategoryVisuals } from '../utils/categoryVisuals';
 
 const currencyLabels: Record<string, string> = {
   'USD_BCV': '$',
@@ -208,15 +209,21 @@ const FixedExpenses: React.FC = () => {
               {expense.name}
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', alignItems: 'center', marginTop: '0.25rem' }}>
-              {expense.category && (
-                <span style={{
-                  display: 'inline-block', fontSize: '0.7rem', fontWeight: 500,
-                  color: 'var(--text-secondary)', background: 'var(--surface-muted)',
-                  padding: '0.15rem 0.5rem', borderRadius: 'var(--radius-full)',
-                }}>
-                  {expense.category}
-                </span>
-              )}
+              {expense.category && (() => {
+                const { IconComponent, hexColor } = resolveCategoryVisuals(null, expense.category);
+                return (
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
+                    fontSize: '0.7rem', fontWeight: 600,
+                    color: hexColor, background: `${hexColor}18`,
+                    border: `1px solid ${hexColor}35`,
+                    padding: '0.12rem 0.5rem', borderRadius: 'var(--radius-full)',
+                  }}>
+                    <IconComponent size={10} />
+                    {expense.category}
+                  </span>
+                );
+              })()}
               {expense.is_shared && (
                 <div
                   onClick={(e) => {

@@ -65,7 +65,8 @@ class ProfileUpdate(BaseModel):
 
 class CategoryBase(BaseModel):
     name: str = Field(..., min_length=1)
-    color: Optional[str] = Field(default="#cbd5e1")
+    color: Optional[str] = Field(default="#6366F1")
+    icon: Optional[str] = Field(default="Package")
 
 class CategoryCreate(CategoryBase):
     pass
@@ -74,6 +75,12 @@ class CategoryResponse(CategoryBase):
     id: UUID
     user_id: UUID
     created_at: datetime.datetime
+    usage_count: int = 0
+    expense_count: int = 0
+    fixed_count: int = 0
+    debt_count: int = 0
+    saving_count: int = 0
+    budget_count: int = 0
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -278,10 +285,12 @@ class DebtPaymentBase(BaseModel):
     currency: CurrencyType = Field(default=CurrencyType.BS)
     payment_date: Optional[datetime.date] = None
     note: Optional[str] = None
+    category: Optional[str] = None
 
 class DebtPaymentCreate(DebtPaymentBase):
     manual_rate: Optional[Decimal] = Field(None, gt=0)
     register_as_expense: bool = False
+    create_expense: Optional[bool] = None
 
 class DebtPaymentUpdate(BaseModel):
     amount: Optional[Decimal] = Field(None, gt=0)
@@ -289,6 +298,9 @@ class DebtPaymentUpdate(BaseModel):
     payment_date: Optional[datetime.date] = None
     note: Optional[str] = None
     manual_rate: Optional[Decimal] = Field(None, gt=0)
+    category: Optional[str] = None
+    register_as_expense: Optional[bool] = None
+    create_expense: Optional[bool] = None
 
 class DebtPaymentResponse(DebtPaymentBase):
     id: UUID
@@ -305,6 +317,8 @@ class DebtPaymentResponse(DebtPaymentBase):
     paid_by_user_id: Optional[UUID] = None
     sync_id: Optional[UUID] = None
     can_edit: bool = True
+    create_expense: bool = False
+    expense_id: Optional[UUID] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -314,6 +328,7 @@ class DebtBase(BaseModel):
     concept: str = Field(..., min_length=1)
     total_amount: Decimal = Field(..., gt=0)
     currency: CurrencyType = Field(default=CurrencyType.BS)
+    category: Optional[str] = None
     start_date: Optional[datetime.date] = None
     due_date: Optional[datetime.date] = None
     is_settled: bool = False
@@ -339,6 +354,7 @@ class DebtUpdate(BaseModel):
     concept: Optional[str] = None
     total_amount: Optional[Decimal] = Field(None, gt=0)
     currency: Optional[CurrencyType] = None
+    category: Optional[str] = None
     due_date: Optional[datetime.date] = None
     is_settled: Optional[bool] = None
     notes: Optional[str] = None

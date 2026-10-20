@@ -1,8 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List
+from typing import List, Optional
 from uuid import UUID
-import asyncpg
 
 from app.database import get_db
 from app import crud, schemas
@@ -30,9 +29,18 @@ async def create_category(
 ):
     try:
         return await crud.create_category(db=db, category=category, user_id=user_id)
+    except HTTPException:
+        raise
     except Exception as e:
-        # Pydantic or SQLAlchemy constraint errors
         raise HTTPException(status_code=400, detail="Category may already exist or is invalid")
+
+@router.post("/seed-defaults", response_model=List[schemas.CategoryResponse])
+async def restore_default_categories(
+    db: AsyncSession = Depends(get_db),
+    user_id: UUID = Depends(get_current_user)
+):
+    await crud.seed_default_categories(db, user_id=user_id, only_if_empty=False)
+    return await crud.get_categories(db, user_id=user_id)
 
 @router.put("/{category_id}", response_model=schemas.CategoryResponse)
 async def update_category(
@@ -46,16 +54,19 @@ async def update_category(
         if not updated_category:
             raise HTTPException(status_code=404, detail="Category not found")
         return updated_category
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error updating category: {str(e)}")
 
 @router.delete("/{category_id}")
 async def delete_category(
     category_id: UUID,
+    reassign_to: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
     user_id: UUID = Depends(get_current_user)
 ):
-    success = await crud.delete_category(db=db, category_id=category_id, user_id=user_id)
+    success = await crud.delete_category(db=db, category_id=category_id, user_id=user_id, reassign_to=reassign_to)
     if not success:
         raise HTTPException(status_code=404, detail="Category not found")
     return {"message": "Category deleted"}
