@@ -5,18 +5,20 @@ CREATE TABLE IF NOT EXISTS public.monthly_budgets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     month_year VARCHAR(7) NOT NULL, -- Format: YYYY-MM
+    name VARCHAR(100) NOT NULL DEFAULT 'Presupuesto Principal',
     currency VARCHAR(10) NOT NULL DEFAULT 'USD_BCV',
     income_mode VARCHAR(20) NOT NULL DEFAULT 'manual', -- 'manual', 'single_income', 'all_incomes'
     linked_income_id UUID REFERENCES estimated_incomes(id) ON DELETE SET NULL,
     manual_global_limit NUMERIC(12, 4),
     effective_global_limit NUMERIC(12, 4),
     is_confirmed BOOLEAN NOT NULL DEFAULT FALSE,
+    is_primary BOOLEAN NOT NULL DEFAULT FALSE,
     notified_month_start BOOLEAN NOT NULL DEFAULT FALSE,
     notified_global_80 BOOLEAN NOT NULL DEFAULT FALSE,
     notified_global_100 BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
-    CONSTRAINT _user_month_budget_uc UNIQUE (user_id, month_year)
+    CONSTRAINT _user_month_budget_name_uc UNIQUE (user_id, month_year, name)
 );
 
 CREATE INDEX IF NOT EXISTS idx_monthly_budgets_user_month ON public.monthly_budgets(user_id, month_year);

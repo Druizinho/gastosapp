@@ -102,3 +102,81 @@ async def delete_budget_category_limit(
     _validate_month_year(month_year)
     return await crud_budgets.delete_budget_category_limit(db, user_id, month_year, category_name)
 
+
+@router.post("/monthly/{month_year}", response_model=schemas.MonthlyBudgetResponse)
+async def create_monthly_budget(
+    month_year: str,
+    payload: schemas.MonthlyBudgetCreate,
+    db: AsyncSession = Depends(get_db),
+    user_id: UUID = Depends(get_current_user)
+):
+    """
+    Creates a new named budget in month_year.
+    """
+    _validate_month_year(month_year)
+    return await crud_budgets.create_monthly_budget(db, user_id, month_year, payload)
+
+
+@router.put("/{budget_id}", response_model=schemas.MonthlyBudgetResponse)
+async def update_monthly_budget_by_id(
+    budget_id: UUID,
+    payload: schemas.MonthlyBudgetUpdate,
+    db: AsyncSession = Depends(get_db),
+    user_id: UUID = Depends(get_current_user)
+):
+    """
+    Updates an existing monthly budget by ID.
+    """
+    return await crud_budgets.update_monthly_budget_by_id(db, user_id, budget_id, payload)
+
+
+@router.post("/{budget_id}/primary", response_model=schemas.MonthlyBudgetResponse)
+async def set_primary_monthly_budget(
+    budget_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user_id: UUID = Depends(get_current_user)
+):
+    """
+    Marks a specific budget as the primary budget for its month_year.
+    """
+    return await crud_budgets.set_primary_monthly_budget(db, user_id, budget_id)
+
+
+@router.delete("/{budget_id}", response_model=schemas.MonthlyBudgetResponse)
+async def delete_monthly_budget_by_id(
+    budget_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user_id: UUID = Depends(get_current_user)
+):
+    """
+    Deletes a monthly budget by ID.
+    """
+    return await crud_budgets.delete_monthly_budget_by_id(db, user_id, budget_id)
+
+
+@router.put("/{budget_id}/category", response_model=schemas.MonthlyBudgetResponse)
+async def upsert_category_limit_by_budget_id(
+    budget_id: UUID,
+    payload: schemas.BudgetCategoryLimitInput,
+    db: AsyncSession = Depends(get_db),
+    user_id: UUID = Depends(get_current_user)
+):
+    """
+    Upserts a category limit inside a specific budget by ID.
+    """
+    return await crud_budgets.upsert_category_limit_by_budget_id(db, user_id, budget_id, payload)
+
+
+@router.delete("/{budget_id}/category/{category_name}", response_model=schemas.MonthlyBudgetResponse)
+async def delete_category_limit_by_budget_id(
+    budget_id: UUID,
+    category_name: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: UUID = Depends(get_current_user)
+):
+    """
+    Deletes a category limit from a specific budget by ID.
+    """
+    return await crud_budgets.delete_category_limit_by_budget_id(db, user_id, budget_id, category_name)
+
+

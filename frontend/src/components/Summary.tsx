@@ -33,12 +33,27 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [],
   const totalUsdt = Number(summary.total_usdt) || 0;
   const dailyAvg = Number(summary.daily_avg_usd) || 0;
 
-  // Build map of budgeted category limits
-  const budgetLimitsMap = new Map((monthlyBudget?.category_limits || []).map(cl => [cl.category_name, cl]));
-  const globalLimitUsd = Number(monthlyBudget?.global_limit_usd) || 0;
-  const globalLimitEff = Number(monthlyBudget?.effective_global_limit) || 0;
-  const globalSpentPct = monthlyBudget?.global_spent_percentage || 0;
-  const globalTrafficLight = monthlyBudget?.global_traffic_light || 'green';
+  // Resolve primary budget and active category limits
+  const primaryBudget = monthlyBudget?.budgets?.find(b => b.is_primary)
+    || monthlyBudget?.budgets?.[0]
+    || null;
+  const activeCategoryLimits = (
+    primaryBudget
+      ? (primaryBudget.category_limits || [])
+      : (monthlyBudget?.category_limits || [])
+  ).filter(cl => Number(cl.limit_amount) > 0);
+
+  // Build map of budgeted category limits using case-insensitive trimmed keys
+  const budgetLimitsMap = new Map(
+    activeCategoryLimits.map(cl => [cl.category_name.trim().toLowerCase(), cl])
+  );
+  const globalLimitUsd = Number(primaryBudget ? primaryBudget.global_limit_usd : monthlyBudget?.global_limit_usd) || 0;
+  const globalLimitEff = Number(primaryBudget ? primaryBudget.effective_global_limit : monthlyBudget?.effective_global_limit) || 0;
+  const globalSpentPct = (primaryBudget ? primaryBudget.global_spent_percentage : monthlyBudget?.global_spent_percentage) || 0;
+  const globalTrafficLight = (primaryBudget ? primaryBudget.global_traffic_light : monthlyBudget?.global_traffic_light) || 'green';
+  const primarySpentUsd = Number(primaryBudget ? primaryBudget.total_spent_usd : monthlyBudget?.total_spent_usd) || 0;
+  const primaryCurrency = primaryBudget?.currency || monthlyBudget?.currency || 'USD';
+  const primaryName = primaryBudget?.name || monthlyBudget?.name || 'Presupuesto Principal';
 
   // 1. Only categories with actual spend from summary.by_category
   const spentSortedCategories = [...(summary.by_category || [])]
@@ -51,16 +66,17 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [],
     }))
     .sort((a, b) => b.total_usd - a.total_usd);
 
-  // 2. Expanded categories: merges zero-spent monthlyBudget.category_limits
+  // 2. Expanded categories: merges zero-spent activeCategoryLimits
   const expandedCategoriesMap = new Map<string, { category: string; total_usd: number; total_bs: number; total_eur: number; total_usdt: number }>();
   for (const c of spentSortedCategories) {
-    expandedCategoriesMap.set(c.category, c);
+    expandedCategoriesMap.set(c.category.trim().toLowerCase(), c);
   }
 
-  if (monthlyBudget?.exists && monthlyBudget.category_limits) {
-    for (const cl of monthlyBudget.category_limits) {
-      if (!expandedCategoriesMap.has(cl.category_name)) {
-        expandedCategoriesMap.set(cl.category_name, {
+  if (monthlyBudget?.exists && activeCategoryLimits) {
+    for (const cl of activeCategoryLimits) {
+      const key = cl.category_name.trim().toLowerCase();
+      if (!expandedCategoriesMap.has(key)) {
+        expandedCategoriesMap.set(key, {
           category: cl.category_name,
           total_usd: 0,
           total_bs: 0,
@@ -75,8 +91,8 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [],
   const displayedCategories = showAllCategories ? expandedSortedCategories : spentSortedCategories.slice(0, 3);
 
   // Conditions
-  const shouldShowTopCard = spentSortedCategories.length > 0 || Boolean(monthlyBudget?.exists && monthlyBudget.category_limits.length > 0);
-  const shouldShowToggle = spentSortedCategories.length > 3 || Boolean(monthlyBudget?.exists && (monthlyBudget.category_limits.length > 0 || globalLimitUsd > 0));
+  const shouldShowTopCard = spentSortedCategories.length > 0 || Boolean(monthlyBudget?.exists && activeCategoryLimits.length > 0);
+  const shouldShowToggle = spentSortedCategories.length > 3 || Boolean(monthlyBudget?.exists && (activeCategoryLimits.length > 0 || globalLimitUsd > 0));
 
   let dailyAvgText = 'Promedio Diario';
   if (dateFilter) {
@@ -211,7 +227,7 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [],
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
                 <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                  Presupuesto Global ({monthlyBudget?.currency || 'USD'})
+                  Presupuesto Principal: {primaryName} ({primaryCurrency})
                 </span>
                 <span style={{
                   fontSize: '0.75rem',
@@ -225,7 +241,7 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [],
                 </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text-primary)', marginBottom: '0.4rem', fontWeight: 600 }}>
-                <span>${Number(monthlyBudget?.total_spent_usd || 0).toFixed(2)} gastado</span>
+                <span>${primarySpentUsd.toFixed(2)} gastado</span>
                 <span style={{ color: 'var(--text-tertiary)', fontWeight: 500 }}>de ${globalLimitUsd.toFixed(2)}</span>
               </div>
               <div style={{ height: '6px', background: 'rgba(0,0,0,0.06)', borderRadius: '3px', overflow: 'hidden' }}>
@@ -248,7 +264,7 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [],
               
               const categoryData = categories.find(cat => cat.name === c.category);
               const IconComponent = categoryData && categoryData.color && ICON_MAP[categoryData.color] ? ICON_MAP[categoryData.color] : Package;
-              const cl = budgetLimitsMap.get(c.category);
+              const cl = budgetLimitsMap.get(c.category.trim().toLowerCase());
 
               return (
                 <div key={c.category} style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>

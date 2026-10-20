@@ -75,6 +75,13 @@ async def lifespan(app: FastAPI):
     # Lanzar el self-ping como tarea de fondo
     ping_task = asyncio.create_task(_self_ping_loop())
     print("✅ Tarea de self-ping lanzada en segundo plano.")
+
+    # Asegurar migración de esquema para presupuestos
+    try:
+        from .crud_budgets import ensure_budget_schema
+        await ensure_budget_schema()
+    except Exception as e:
+        print(f"Error asegurando esquema de presupuestos: {e}")
     
     yield
     

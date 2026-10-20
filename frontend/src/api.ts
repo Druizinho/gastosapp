@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Expense, ExpenseCreate, ExpenseUpdate, SummaryResponse, ExchangeRates, RangeSummaryResponse, FixedExpense, FixedExpenseCreate, FixedExpenseUpdate, FixedExpenseSummary, FixedExpenseCheck, FixedExpenseCheckCreate, FixedExpenseCheckUpdate, Debt, DebtCreate, DebtUpdate, DebtPaymentCreate, DebtPaymentUpdate, EstimatedIncome, EstimatedIncomeCreate, EstimatedIncomeUpdate, IncomeCheckCreate, IncomeCheck, Connection, SavingGoal, SavingGoalCreate, SavingGoalUpdate, SavingDepositCreate, SavingDepositUpdate, SavingSummaryResponse, PanasGlobalOverview, PanaDetail, ShareRole, ShareInfoOut, MonthlyBudgetResponse, MonthlyBudgetUpsert, BudgetCategoryLimitInput } from './types';
+import type { Expense, ExpenseCreate, ExpenseUpdate, SummaryResponse, ExchangeRates, RangeSummaryResponse, FixedExpense, FixedExpenseCreate, FixedExpenseUpdate, FixedExpenseSummary, FixedExpenseCheck, FixedExpenseCheckCreate, FixedExpenseCheckUpdate, Debt, DebtCreate, DebtUpdate, DebtPaymentCreate, DebtPaymentUpdate, EstimatedIncome, EstimatedIncomeCreate, EstimatedIncomeUpdate, IncomeCheckCreate, IncomeCheck, Connection, SavingGoal, SavingGoalCreate, SavingGoalUpdate, SavingDepositCreate, SavingDepositUpdate, SavingSummaryResponse, PanasGlobalOverview, PanaDetail, ShareRole, ShareInfoOut, MonthlyBudgetResponse, MonthlyBudgetUpsert, BudgetCategoryLimitInput, MonthlyBudgetCreate, MonthlyBudgetUpdate } from './types';
 import { supabase } from './supabaseClient';
 
 const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
@@ -389,6 +389,37 @@ export const deleteBudgetCategoryLimit = async (monthYear: string, categoryName:
   const response = await api.delete(`/budgets/monthly/${monthYear}/category/${encodeURIComponent(categoryName)}`);
   return response.data;
 };
+
+export const createMonthlyBudget = async (monthYear: string, payload: MonthlyBudgetCreate): Promise<MonthlyBudgetResponse> => {
+  const response = await api.post(`/budgets/monthly/${monthYear}`, payload);
+  return response.data;
+};
+
+export const updateMonthlyBudgetById = async (budgetId: string, payload: MonthlyBudgetUpdate): Promise<MonthlyBudgetResponse> => {
+  const response = await api.put(`/budgets/${budgetId}`, payload);
+  return response.data;
+};
+
+export const setPrimaryMonthlyBudget = async (budgetId: string): Promise<MonthlyBudgetResponse> => {
+  const response = await api.post(`/budgets/${budgetId}/primary`);
+  return response.data;
+};
+
+export const deleteMonthlyBudgetById = async (budgetId: string): Promise<MonthlyBudgetResponse> => {
+  const response = await api.delete(`/budgets/${budgetId}`);
+  return response.data;
+};
+
+export const upsertCategoryLimitByBudgetId = async (budgetId: string, item: BudgetCategoryLimitInput): Promise<MonthlyBudgetResponse> => {
+  const response = await api.put(`/budgets/${budgetId}/category`, item);
+  return response.data;
+};
+
+export const deleteCategoryLimitByBudgetId = async (budgetId: string, categoryName: string): Promise<MonthlyBudgetResponse> => {
+  const response = await api.delete(`/budgets/${budgetId}/category/${encodeURIComponent(categoryName)}`);
+  return response.data;
+};
+
 
 
 

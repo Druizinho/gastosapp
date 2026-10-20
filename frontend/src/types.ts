@@ -659,6 +659,66 @@ export interface BudgetCategorySummaryOut {
   limit_bs: number;
   limit_eur: number;
   limit_usdt: number;
+  also_in_budgets?: string[];
+}
+
+export interface CategoryMonthSpendOut {
+  category_name: string;
+  spent_usd: number;
+  spent_bs: number;
+  spent_eur: number;
+  spent_usdt: number;
+}
+
+export interface SingleBudgetOut {
+  id: string;
+  name: string;
+  month_year: string;
+  currency: CurrencyType;
+  income_mode: BudgetIncomeMode;
+  linked_income_id?: string | null;
+  manual_global_limit?: number | null;
+  effective_global_limit?: number | null;
+  global_limit_usd?: number | null;
+  global_limit_bs?: number | null;
+  global_limit_eur?: number | null;
+  global_limit_usdt?: number | null;
+  total_spent_budget_currency: number;
+  total_spent_usd: number;
+  total_spent_bs: number;
+  total_spent_eur: number;
+  total_spent_usdt: number;
+  global_spent_percentage: number;
+  global_traffic_light: BudgetTrafficLight;
+  is_confirmed: boolean;
+  is_primary: boolean;
+  allocated_budget_currency: number;
+  allocated_usd: number;
+  allocated_bs: number;
+  allocated_eur: number;
+  allocated_usdt: number;
+  category_limits: BudgetCategorySummaryOut[];
+  categories_count: number;
+}
+
+export interface MonthlyBudgetCreate {
+  name: string;
+  currency?: CurrencyType;
+  income_mode?: BudgetIncomeMode;
+  linked_income_id?: string | null;
+  manual_global_limit?: number | null;
+  is_primary?: boolean;
+  categories?: string[];
+}
+
+export interface MonthlyBudgetUpdate {
+  name?: string;
+  currency?: CurrencyType;
+  income_mode?: BudgetIncomeMode;
+  linked_income_id?: string | null;
+  manual_global_limit?: number | null;
+  is_primary?: boolean;
+  categories?: string[];
 }
 
 export interface MonthlyBudgetUpsert {
@@ -671,6 +731,7 @@ export interface MonthlyBudgetUpsert {
 
 export interface MonthlyBudgetResponse {
   id?: string | null;
+  name?: string | null;
   month_year: string;
   currency: CurrencyType;
   income_mode: BudgetIncomeMode;
@@ -702,5 +763,8 @@ export interface MonthlyBudgetResponse {
   unbudgeted_spent_usdt: number;
   unbudgeted_categories: string[];
   exists: boolean;
+  budgets?: SingleBudgetOut[];
+  available_categories?: string[];
+  category_spending?: CategoryMonthSpendOut[];
 }
 

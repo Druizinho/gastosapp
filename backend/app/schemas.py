@@ -721,11 +721,72 @@ class BudgetCategorySummaryOut(BaseModel):
     limit_bs: Decimal = Decimal("0")
     limit_eur: Decimal = Decimal("0")
     limit_usdt: Decimal = Decimal("0")
+    also_in_budgets: List[str] = []
 
     model_config = ConfigDict(from_attributes=True)
 
+class CategoryMonthSpendOut(BaseModel):
+    category_name: str
+    spent_usd: Decimal = Decimal("0")
+    spent_bs: Decimal = Decimal("0")
+    spent_eur: Decimal = Decimal("0")
+    spent_usdt: Decimal = Decimal("0")
+
+    model_config = ConfigDict(from_attributes=True)
+
+class SingleBudgetOut(BaseModel):
+    id: UUID
+    name: str
+    month_year: str
+    currency: CurrencyType = CurrencyType.USD_BCV
+    income_mode: BudgetIncomeMode = BudgetIncomeMode.manual
+    linked_income_id: Optional[UUID] = None
+    manual_global_limit: Optional[Decimal] = None
+    effective_global_limit: Optional[Decimal] = None
+    global_limit_usd: Optional[Decimal] = None
+    global_limit_bs: Optional[Decimal] = None
+    global_limit_eur: Optional[Decimal] = None
+    global_limit_usdt: Optional[Decimal] = None
+    total_spent_budget_currency: Decimal = Decimal("0")
+    total_spent_usd: Decimal = Decimal("0")
+    total_spent_bs: Decimal = Decimal("0")
+    total_spent_eur: Decimal = Decimal("0")
+    total_spent_usdt: Decimal = Decimal("0")
+    global_spent_percentage: float = 0.0
+    global_traffic_light: BudgetTrafficLight = BudgetTrafficLight.green
+    is_confirmed: bool = False
+    is_primary: bool = False
+    allocated_budget_currency: Decimal = Decimal("0")
+    allocated_usd: Decimal = Decimal("0")
+    allocated_bs: Decimal = Decimal("0")
+    allocated_eur: Decimal = Decimal("0")
+    allocated_usdt: Decimal = Decimal("0")
+    category_limits: List[BudgetCategorySummaryOut] = []
+    categories_count: int = 0
+
+    model_config = ConfigDict(from_attributes=True)
+
+class MonthlyBudgetCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    currency: CurrencyType = Field(default=CurrencyType.USD_BCV)
+    income_mode: BudgetIncomeMode = Field(default=BudgetIncomeMode.manual)
+    linked_income_id: Optional[UUID] = None
+    manual_global_limit: Optional[Decimal] = Field(None, ge=0)
+    is_primary: Optional[bool] = False
+    categories: Optional[List[str]] = None
+
+class MonthlyBudgetUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    currency: Optional[CurrencyType] = None
+    income_mode: Optional[BudgetIncomeMode] = None
+    linked_income_id: Optional[UUID] = None
+    manual_global_limit: Optional[Decimal] = Field(None, ge=0)
+    is_primary: Optional[bool] = None
+    categories: Optional[List[str]] = None
+
 class MonthlyBudgetResponse(BaseModel):
     id: Optional[UUID] = None
+    name: Optional[str] = None
     month_year: str
     currency: CurrencyType = Field(default=CurrencyType.USD_BCV)
     income_mode: BudgetIncomeMode = Field(default=BudgetIncomeMode.manual)
@@ -757,6 +818,9 @@ class MonthlyBudgetResponse(BaseModel):
     unbudgeted_spent_usdt: Decimal = Decimal("0")
     unbudgeted_categories: List[str] = []
     exists: bool = False
+    budgets: List[SingleBudgetOut] = []
+    available_categories: List[str] = []
+    category_spending: List[CategoryMonthSpendOut] = []
 
     model_config = ConfigDict(from_attributes=True)
 

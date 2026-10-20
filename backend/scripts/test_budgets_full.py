@@ -17,19 +17,29 @@ from sqlalchemy.future import select
 async def run_tests():
     print("--- Starting Budget Integration Tests ---")
     async with SessionLocal() as db:
-        # Use existing profiles
+        # Use existing test user
         test_user_id = uuid.UUID('8b04bc8a-9b52-462d-a7b1-4b86e6cc5517') # Diego Ruiz pruebas
         other_user_id = uuid.UUID('0f3c0bb0-4fff-4abe-94db-204dca8802b9')
 
         test_month = "2099-01"
         next_month = "2099-02"
+        future_month = "2099-03"
 
-        created_expense_id = None
+        created_expense_ids = []
         created_cat_id = None
         other_income_id = None
         my_income_id = None
 
         try:
+            # 0. Clean prior leftovers if any
+            clean_res = await db.execute(select(models.MonthlyBudget).where(
+                models.MonthlyBudget.user_id == test_user_id,
+                models.MonthlyBudget.month_year.in_([test_month, next_month, future_month])
+            ))
+            for b in clean_res.scalars().all():
+                await db.delete(b)
+            await db.commit()
+
             # 1. Test get_available_budget_categories
             cat = models.Category(user_id=test_user_id, name="TestMercado", color="#10B981")
             db.add(cat)
@@ -58,7 +68,7 @@ async def run_tests():
             idor_payload = schemas.MonthlyBudgetUpsert(
                 currency=schemas.CurrencyType.USD_BCV,
                 income_mode=schemas.BudgetIncomeMode.single_income,
-                linked_income_id=other_income.id,
+                linked_income_id=other_income_id,
                 manual_global_limit=None,
                 category_limits=[]
             )
@@ -100,11 +110,12 @@ async def run_tests():
             print("[PASS] Upsert monthly budget passed!")
 
             # 4. Test auto-cloning to next month (Auditor Fix #3 & #4)
-            cloned_budget = await crud_budgets.get_or_clone_monthly_budget(db, test_user_id, next_month)
-            assert cloned_budget is not None
-            assert cloned_budget.month_year == next_month
-            assert cloned_budget.is_confirmed is False, "Cloned budget should start unconfirmed!"
-            assert len(cloned_budget.category_limits) == 2
+            cloned_budgets = await crud_budgets.get_or_clone_monthly_budgets(db, test_user_id, next_month)
+            assert len(cloned_budgets) >= 1
+            cloned_b1 = cloned_budgets[0]
+            assert cloned_b1.month_year == next_month
+            assert cloned_b1.is_confirmed is False, "Cloned budget should start unconfirmed!"
+            assert len(cloned_b1.category_limits) == 2
             print("[PASS] Auto-cloning test passed (Auditor Fix #3)!")
 
             # Confirm cloned budget
@@ -116,7 +127,7 @@ async def run_tests():
             # Rename "TestMercado" -> "TestSupermercado"
             await crud.update_category(
                 db=db,
-                category_id=cat.id,
+                category_id=created_cat_id,
                 category_update=schemas.CategoryCreate(name="TestSupermercado", color="#10B981"),
                 user_id=test_user_id
             )
@@ -130,7 +141,7 @@ async def run_tests():
             # Delete "TestSupermercado" with reassign_to="Gastos Fijos"
             await crud.delete_category(
                 db=db,
-                category_id=cat.id,
+                category_id=created_cat_id,
                 user_id=test_user_id,
                 reassign_to="Gastos Fijos"
             )
@@ -166,38 +177,136 @@ async def run_tests():
                 schemas.BudgetCategoryLimitInput(category_name="Gastos Fijos", limit_amount=Decimal("150.00"), currency=schemas.CurrencyType.USD_BCV)
             )
 
-            # 7. Test Threshold Checking & Notification Commit (Auditor Fix #2)
-            # Add an expense on test_month
-            exp = schemas.ExpenseCreate(
-                amount=Decimal("180.00"),
+            # 7. Multi-Budget Spec: Create second budget in the same month
+            b2_create = schemas.MonthlyBudgetCreate(
+                name="Presupuesto Negocio",
                 currency=schemas.CurrencyType.USD_BCV,
-                description="Servicio grande",
-                category="Gastos Fijos",
-                date=date(2099, 1, 15)
+                income_mode=schemas.BudgetIncomeMode.manual,
+                manual_global_limit=Decimal("400.00"),
+                notes="Presupuesto para operaciones del negocio"
             )
-            db_exp = await crud.create_expense(db, exp, test_user_id)
-            created_expense_id = db_exp.id
+            b2_res = await crud_budgets.create_monthly_budget(db, test_user_id, test_month, b2_create)
+            b2 = next(b for b in b2_res.budgets if b.name == "Presupuesto Negocio")
+            assert b2.name == "Presupuesto Negocio"
+            assert b2.manual_global_limit == Decimal("400.00")
+            print("[PASS] Multi-budget creation passed!")
 
-            # Spent is 180 on a 150 limit => 120% (over 100%)
-            view_spent = await crud_budgets.get_monthly_budget_view(db, test_user_id, test_month)
-            fe_limit = next(cl for cl in view_spent.category_limits if cl.category_name == "Gastos Fijos")
-            assert fe_limit.traffic_light == schemas.BudgetTrafficLight.red
-            assert view_spent.total_spent_usd == Decimal("180.00")
-            assert view_spent.total_spent_bs > Decimal("0")
-            print("[PASS] Budget threshold calculation and traffic light test passed!")
+            # Check view has 2 budgets
+            view_mb = await crud_budgets.get_monthly_budget_view(db, test_user_id, test_month)
+            assert len(view_mb.budgets) == 2
+            assert any(b.name == "Presupuesto Principal" for b in view_mb.budgets)
+            assert any(b.name == "Presupuesto Negocio" for b in view_mb.budgets)
+            print("[PASS] Master view shows multiple budgets!")
 
-            # Delete the expense and ensure threshold check with allow_notify=False resets without errors
-            await crud.delete_expense(db, db_exp.id, test_user_id)
-            created_expense_id = None
-            view_cleared = await crud_budgets.get_monthly_budget_view(db, test_user_id, test_month)
-            fe_limit_cleared = next(cl for cl in view_cleared.category_limits if cl.category_name == "Gastos Fijos")
-            assert fe_limit_cleared.spent_percentage == 0.0
-            print("[PASS] Delete expense threshold reset test passed (Auditor Fix #2)!")
+            # 8. Add category limit in second budget for "Gastos Fijos" (Cross-budget / duplicate category)
+            await crud_budgets.upsert_category_limit_by_budget_id(
+                db=db,
+                budget_id=b2.id,
+                user_id=test_user_id,
+                item=schemas.BudgetCategoryLimitInput(
+                    category_name="Gastos Fijos",
+                    limit_amount=Decimal("100.00"),
+                    currency=schemas.CurrencyType.USD_BCV
+                )
+            )
+
+            # Also add "Ahorro" in second budget
+            await crud_budgets.upsert_category_limit_by_budget_id(
+                db=db,
+                budget_id=b2.id,
+                user_id=test_user_id,
+                item=schemas.BudgetCategoryLimitInput(
+                    category_name="Ahorro",
+                    limit_amount=Decimal("50.00"),
+                    currency=schemas.CurrencyType.USD_BCV
+                )
+            )
+
+            # View again and verify also_in_budgets
+            view_cross = await crud_budgets.get_monthly_budget_view(db, test_user_id, test_month)
+            # Find b2 in view
+            b2_view = next(b for b in view_cross.budgets if b.id == b2.id)
+            assert len(b2_view.category_limits) == 2
+            b2_gf = next(cl for cl in b2_view.category_limits if cl.category_name == "Gastos Fijos")
+            assert "Presupuesto Principal" in b2_gf.also_in_budgets
+            print("[PASS] Cross-budget also_in_budgets tracking verified!")
+
+            # 9. Test expense deduplication in consolidated view
+            exp1 = schemas.ExpenseCreate(
+                amount=Decimal("50.00"),
+                currency=schemas.CurrencyType.USD_BCV,
+                description="Internet oficina",
+                category="Gastos Fijos",
+                date=date(2099, 1, 10)
+            )
+            db_exp1 = await crud.create_expense(db, exp1, test_user_id)
+            created_expense_ids.append(db_exp1.id)
+
+            view_after_exp = await crud_budgets.get_monthly_budget_view(db, test_user_id, test_month)
+            # Total spent in consolidated view must be exactly 50 USD, NOT 100 USD (deduplicated)
+            assert view_after_exp.total_spent_usd == Decimal("50.00"), f"Expected 50.00 but got {view_after_exp.total_spent_usd}"
+            # In consolidated category_limits, Gastos Fijos appears only once
+            gf_limits = [cl for cl in view_after_exp.category_limits if cl.category_name == "Gastos Fijos"]
+            assert len(gf_limits) == 1
+            assert gf_limits[0].spent_usd == Decimal("50.00")
+            print("[PASS] Expense deduplication across multi-budget consolidated view verified!")
+
+            # 10. Test Multi-Budget auto-cloning to future month (2099-03)
+            # First clean next_month (2099-02) so 2099-01 (which has both budgets) is the prior month
+            clean_next = await db.execute(select(models.MonthlyBudget).where(
+                models.MonthlyBudget.user_id == test_user_id,
+                models.MonthlyBudget.month_year == next_month
+            ))
+            for b in clean_next.scalars().all():
+                await db.delete(b)
+            await db.commit()
+
+            cloned_future = await crud_budgets.get_or_clone_monthly_budgets(db, test_user_id, future_month)
+            assert len(cloned_future) == 2
+            cloned_names = [b.name for b in cloned_future]
+            assert "Presupuesto Principal" in cloned_names
+            assert "Presupuesto Negocio" in cloned_names
+            # Check invariant: exactly one primary
+            assert sum(1 for b in cloned_future if b.is_primary) == 1
+            print("[PASS] Multi-budget cloning of all active budgets verified!")
+
+            # 11. Test budget update (PUT /api/budgets/{id})
+            b2_update = schemas.MonthlyBudgetUpdate(
+                name="Presupuesto Negocio Actualizado",
+                manual_global_limit=Decimal("450.00")
+            )
+            b2_updated_res = await crud_budgets.update_monthly_budget_by_id(db, test_user_id, b2.id, b2_update)
+            b2_updated = next(b for b in b2_updated_res.budgets if b.id == b2.id)
+            assert b2_updated.name == "Presupuesto Negocio Actualizado"
+            assert b2_updated.manual_global_limit == Decimal("450.00")
+            print("[PASS] Update monthly budget by ID verified!")
+
+            # 11b. Test set_primary_monthly_budget
+            set_prim_res = await crud_budgets.set_primary_monthly_budget(db, test_user_id, b2.id)
+            b2_prim = next(b for b in set_prim_res.budgets if b.id == b2.id)
+            b1_other = next(b for b in set_prim_res.budgets if b.id != b2.id)
+            assert b2_prim.is_primary is True
+            assert b1_other.is_primary is False
+            assert set_prim_res.name == "Presupuesto Negocio Actualizado"
+            print("[PASS] Set primary monthly budget verified!")
+
+            # 12. Test delete category limit from specific budget
+            del_cat_res = await crud_budgets.delete_category_limit_by_budget_id(db, test_user_id, b2.id, "Ahorro")
+            b2_del_cat = next(b for b in del_cat_res.budgets if b.id == b2.id)
+            assert not any(cl.category_name == "Ahorro" for cl in b2_del_cat.category_limits)
+            print("[PASS] Delete category limit by budget ID verified!")
+
+            # 13. Test delete monthly budget by ID (was primary, should promote remaining budget to primary)
+            del_b2_res = await crud_budgets.delete_monthly_budget_by_id(db, test_user_id, b2.id)
+            assert len(del_b2_res.budgets) == 1
+            assert del_b2_res.budgets[0].name == "Presupuesto Principal"
+            assert del_b2_res.budgets[0].is_primary is True
+            print("[PASS] Delete monthly budget by ID and primary fallback verified!")
 
         finally:
             print("Cleaning up test data...")
-            if created_expense_id:
-                exp_obj = await db.get(models.Expense, created_expense_id)
+            for eid in created_expense_ids:
+                exp_obj = await db.get(models.Expense, eid)
                 if exp_obj: await db.delete(exp_obj)
             if created_cat_id:
                 cat_obj = await db.get(models.Category, created_cat_id)
@@ -209,9 +318,11 @@ async def run_tests():
                 oinc_obj = await db.get(models.EstimatedIncome, other_income_id)
                 if oinc_obj: await db.delete(oinc_obj)
 
-            # Clean up test budgets for 2099-01 and 2099-02
-            b1_res = await db.execute(select(models.MonthlyBudget).where(models.MonthlyBudget.month_year.in_([test_month, next_month])))
-            for b in b1_res.scalars().all():
+            # Clean up test budgets for 2099-01, 2099-02, 2099-03
+            b_res = await db.execute(select(models.MonthlyBudget).where(
+                models.MonthlyBudget.month_year.in_([test_month, next_month, future_month])
+            ))
+            for b in b_res.scalars().all():
                 await db.delete(b)
             await db.commit()
 

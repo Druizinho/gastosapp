@@ -13,10 +13,15 @@ import {
   X,
   Receipt,
   CreditCard,
-  PiggyBank
+  PiggyBank,
+  Wallet,
+  AlertTriangle,
+  Star,
+  Check
 } from 'lucide-react';
 import type {
   MonthlyBudgetResponse,
+  SingleBudgetOut,
   BudgetIncomeMode,
   CurrencyType,
   Category,
@@ -25,13 +30,15 @@ import type {
 } from '../types';
 import {
   getMonthlyBudget,
-  upsertMonthlyBudget,
   confirmMonthlyBudget,
-  getBudgetCategories,
   getCategories,
   getEstimatedIncomes,
-  upsertBudgetCategoryLimit,
-  deleteBudgetCategoryLimit
+  createMonthlyBudget,
+  updateMonthlyBudgetById,
+  deleteMonthlyBudgetById,
+  upsertCategoryLimitByBudgetId,
+  deleteCategoryLimitByBudgetId,
+  setPrimaryMonthlyBudget
 } from '../api';
 import { ICON_MAP } from './CategoryManager';
 import ConfirmModal from './ConfirmModal';
@@ -72,38 +79,61 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
     return `${y}-${m}`;
   });
 
+  // Master-Detail navigation: selected budget ID (null = master view, string = detail view)
+  const [selectedBudgetId, setSelectedBudgetId] = useState<string | null>(null);
+
   // Data states
-  const [budget, setBudget] = useState<MonthlyBudgetResponse | null>(null);
+  const [budgetResponse, setBudgetResponse] = useState<MonthlyBudgetResponse | null>(null);
   const [allCategories, setAllCategories] = useState<Category[]>([]);
-  const [availableCategoryNames, setAvailableCategoryNames] = useState<string[]>([]);
   const [estimatedIncomes, setEstimatedIncomes] = useState<EstimatedIncome[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isConfirmingBudget, setIsConfirmingBudget] = useState<boolean>(false);
 
-  // Currency cycling for hero card
+  // Currency cycling for hero card (usd, bs, eur, usdt)
   const [displayCurrency, setDisplayCurrency] = useState<'usd' | 'bs' | 'eur' | 'usdt'>('usd');
 
   // Modals state
-  const [isGlobalModalOpen, setIsGlobalModalOpen] = useState<boolean>(false);
+  const [budgetModal, setBudgetModal] = useState<{
+    isOpen: boolean;
+    budgetToEdit: SingleBudgetOut | null;
+  }>({
+    isOpen: false,
+    budgetToEdit: null,
+  });
+
   const [categoryModal, setCategoryModal] = useState<{
     isOpen: boolean;
-    mode: 'create' | 'edit';
     categoryName: string;
+    existingLimit: BudgetCategorySummaryOut | null;
+    otherBudgetsWithCat: string[];
     limitAmount: string;
     currency: CurrencyType;
   }>({
     isOpen: false,
-    mode: 'create',
     categoryName: '',
+    existingLimit: null,
+    otherBudgetsWithCat: [],
     limitAmount: '',
     currency: 'USD_BCV',
   });
 
-  const [confirmDelete, setConfirmDelete] = useState<{
+  const [confirmDeleteBudget, setConfirmDeleteBudget] = useState<{
     isOpen: boolean;
+    budgetId: string;
+    budgetName: string;
+  }>({
+    isOpen: false,
+    budgetId: '',
+    budgetName: '',
+  });
+
+  const [confirmDeleteCategoryLimit, setConfirmDeleteCategoryLimit] = useState<{
+    isOpen: boolean;
+    budgetId: string;
     categoryName: string;
   }>({
     isOpen: false,
+    budgetId: '',
     categoryName: '',
   });
 
@@ -123,19 +153,30 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
     return map;
   }, [allCategories]);
 
+  // Currently selected budget object (if in detail view)
+  const selectedBudget: SingleBudgetOut | undefined = useMemo(() => {
+    if (!selectedBudgetId || !budgetResponse?.budgets) return undefined;
+    return budgetResponse.budgets.find((b) => b.id === selectedBudgetId);
+  }, [selectedBudgetId, budgetResponse]);
+
+  // If selected budget no longer exists (e.g. deleted), revert to master view
+  useEffect(() => {
+    if (selectedBudgetId && budgetResponse?.budgets && !selectedBudget) {
+      setSelectedBudgetId(null);
+    }
+  }, [selectedBudgetId, budgetResponse, selectedBudget]);
+
   // Fetch all budget and helper data
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const [budgetData, userCats, availCats, incomes] = await Promise.all([
+      const [bRes, userCats, incomes] = await Promise.all([
         getMonthlyBudget(currentMonthYear),
         getCategories(),
-        getBudgetCategories(),
         getEstimatedIncomes(true),
       ]);
-      setBudget(budgetData);
+      setBudgetResponse(bRes);
       setAllCategories(userCats);
-      setAvailableCategoryNames(availCats);
       setEstimatedIncomes(incomes);
     } catch (error) {
       console.error('Error fetching budget data:', error);
@@ -149,6 +190,10 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
   }, [currentMonthYear]);
 
   const handleBack = () => {
+    if (selectedBudgetId) {
+      setSelectedBudgetId(null);
+      return;
+    }
     if (onBack) {
       onBack();
     } else {
@@ -166,7 +211,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
     setIsConfirmingBudget(true);
     try {
       const res = await confirmMonthlyBudget(currentMonthYear);
-      setBudget(res);
+      setBudgetResponse(res);
     } catch (error) {
       console.error('Error confirming budget:', error);
       alert('Error al confirmar presupuesto del mes');
@@ -175,49 +220,52 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
     }
   };
 
-  const openCategoryModalForAdd = (prefillName?: string) => {
-    const budgetedNames = new Set((budget?.category_limits || []).map((cl) => cl.category_name));
-    const unbudgetedOptions = availableCategoryNames.filter((name) => !budgetedNames.has(name));
-    const defaultName = prefillName || (unbudgetedOptions.length > 0 ? unbudgetedOptions[0] : availableCategoryNames[0] || '');
-
-    setCategoryModal({
+  // Open modal to create or edit a budget
+  const handleOpenBudgetModal = (budgetToEdit: SingleBudgetOut | null = null) => {
+    setBudgetModal({
       isOpen: true,
-      mode: 'create',
-      categoryName: defaultName,
-      limitAmount: '',
-      currency: budget?.currency || 'USD_BCV',
+      budgetToEdit,
     });
   };
 
-  const openCategoryModalForEdit = (item: BudgetCategorySummaryOut) => {
+  // Open category limit modal directly for a category in the selected budget
+  const handleOpenCategoryLimitModal = (categoryName: string) => {
+    if (!selectedBudget) return;
+    const existing = selectedBudget.category_limits.find(
+      (cl) => cl.category_name.toLowerCase() === categoryName.toLowerCase()
+    ) || null;
+
+    // Check if category is already budgeted in other budgets
+    const otherBudgets = (budgetResponse?.budgets || [])
+      .filter((b) => b.id !== selectedBudget.id && b.category_limits.some((cl) => cl.category_name.toLowerCase() === categoryName.toLowerCase()))
+      .map((b) => b.name);
+
     setCategoryModal({
       isOpen: true,
-      mode: 'edit',
-      categoryName: item.category_name,
-      limitAmount: String(item.limit_amount),
-      currency: item.currency || budget?.currency || 'USD_BCV',
+      categoryName,
+      existingLimit: existing,
+      otherBudgetsWithCat: otherBudgets,
+      limitAmount: existing && Number(existing.limit_amount) > 0 ? String(existing.limit_amount) : '',
+      currency: existing?.currency || selectedBudget.currency || 'USD_BCV',
     });
   };
 
   const handleSaveCategoryLimit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedBudget) return;
     const amountNum = parseFloat(categoryModal.limitAmount);
     if (isNaN(amountNum) || amountNum < 0) {
       alert('Ingresa un monto límite válido mayor o igual a 0');
       return;
     }
-    if (!categoryModal.categoryName.trim()) {
-      alert('Selecciona una categoría válida');
-      return;
-    }
 
     try {
-      const updated = await upsertBudgetCategoryLimit(currentMonthYear, {
-        category_name: categoryModal.categoryName.trim(),
+      const updated = await upsertCategoryLimitByBudgetId(selectedBudget.id, {
+        category_name: categoryModal.categoryName,
         limit_amount: amountNum,
         currency: categoryModal.currency,
       });
-      setBudget(updated);
+      setBudgetResponse(updated);
       setCategoryModal((prev) => ({ ...prev, isOpen: false }));
     } catch (error) {
       console.error('Error saving category limit:', error);
@@ -225,98 +273,50 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
     }
   };
 
-  const handleDeleteCategoryLimit = async () => {
-    if (!confirmDelete.categoryName) return;
+  const handleDeleteBudget = async () => {
+    if (!confirmDeleteBudget.budgetId) return;
     try {
-      const updated = await deleteBudgetCategoryLimit(currentMonthYear, confirmDelete.categoryName);
-      setBudget(updated);
-      setConfirmDelete({ isOpen: false, categoryName: '' });
+      const updated = await deleteMonthlyBudgetById(confirmDeleteBudget.budgetId);
+      setBudgetResponse(updated);
+      if (selectedBudgetId === confirmDeleteBudget.budgetId) {
+        setSelectedBudgetId(null);
+      }
+      setConfirmDeleteBudget({ isOpen: false, budgetId: '', budgetName: '' });
+    } catch (error) {
+      console.error('Error deleting budget:', error);
+      alert('Error al eliminar presupuesto');
+    }
+  };
+
+  const handleDeleteCategoryLimit = async () => {
+    if (!confirmDeleteCategoryLimit.budgetId || !confirmDeleteCategoryLimit.categoryName) return;
+    try {
+      const updated = await deleteCategoryLimitByBudgetId(
+        confirmDeleteCategoryLimit.budgetId,
+        confirmDeleteCategoryLimit.categoryName
+      );
+      setBudgetResponse(updated);
+      setConfirmDeleteCategoryLimit({ isOpen: false, budgetId: '', categoryName: '' });
     } catch (error) {
       console.error('Error deleting category limit:', error);
       alert('Error al eliminar límite de categoría');
     }
   };
 
-  // Currency equivalent helpers for hero card
+  const handleSetPrimary = async (budgetId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    try {
+      const updated = await setPrimaryMonthlyBudget(budgetId);
+      setBudgetResponse(updated);
+    } catch (error) {
+      console.error('Error setting primary budget:', error);
+      alert('Error al elegir presupuesto como principal');
+    }
+  };
+
+  // Currency equivalent helpers
   const prefixMap = { bs: 'Bs. ', usd: '$ ', eur: '€ ', usdt: '' };
   const suffixMap = { bs: '', usd: '', eur: '', usdt: ' USDT' };
-
-  const getHeroAmount = () => {
-    if (!budget) return '—';
-    const p = prefixMap[displayCurrency];
-    const s = suffixMap[displayCurrency];
-
-    const spentMap = {
-      usd: budget.total_spent_usd,
-      bs: budget.total_spent_bs,
-      eur: budget.total_spent_eur,
-      usdt: budget.total_spent_usdt,
-    };
-    const limitMap = {
-      usd: budget.global_limit_usd,
-      bs: budget.global_limit_bs,
-      eur: budget.global_limit_eur,
-      usdt: budget.global_limit_usdt,
-    };
-
-    const spentStr = formatAmount(spentMap[displayCurrency], p) + s;
-    const limitVal = limitMap[displayCurrency];
-    if (limitVal !== null && limitVal !== undefined && limitVal > 0) {
-      const limitStr = formatAmount(limitVal, p) + s;
-      return `${spentStr} / ${limitStr}`;
-    }
-    return spentStr;
-  };
-
-  const getGlobalBadge = () => {
-    if (!budget || !budget.effective_global_limit) {
-      return {
-        text: 'Sin límite global',
-        bg: 'var(--surface-muted)',
-        color: 'var(--text-secondary)',
-      };
-    }
-    const pct = Math.round(budget.global_spent_percentage);
-    if (budget.global_traffic_light === 'red') {
-      return {
-        text: `${pct}% excedido`,
-        bg: 'rgba(239, 68, 68, 0.12)',
-        color: '#EF4444',
-      };
-    }
-    if (budget.global_traffic_light === 'yellow') {
-      return {
-        text: `${pct}% en alerta`,
-        bg: 'rgba(245, 158, 11, 0.12)',
-        color: '#F59E0B',
-      };
-    }
-    return {
-      text: `${pct}% en rango`,
-      bg: 'rgba(16, 185, 129, 0.12)',
-      color: '#10B981',
-    };
-  };
-
-  const badge = getGlobalBadge();
-
-  const allocatedMap = {
-    usd: budget?.allocated_usd ?? 0,
-    bs: budget?.allocated_bs ?? 0,
-    eur: budget?.allocated_eur ?? 0,
-    usdt: budget?.allocated_usdt ?? 0,
-  };
-
-  const unbudgetedMap = {
-    usd: budget?.unbudgeted_spent_usd ?? 0,
-    bs: budget?.unbudgeted_spent_bs ?? 0,
-    eur: budget?.unbudgeted_spent_eur ?? 0,
-    usdt: budget?.unbudgeted_spent_usdt ?? 0,
-  };
-
-  const globalProgress = budget?.effective_global_limit && budget.effective_global_limit > 0
-    ? Math.min(budget.global_spent_percentage, 100)
-    : 0;
 
   // Render system category icon fallback
   const renderCategoryIcon = (categoryName: string) => {
@@ -332,610 +332,1457 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
     return <Package size={18} />;
   };
 
+  // Check if any budget is unconfirmed
+  const hasUnconfirmedBudgets = useMemo(() => {
+    if (!budgetResponse || !budgetResponse.exists || !budgetResponse.budgets) return false;
+    return budgetResponse.budgets.some((b) => !b.is_confirmed);
+  }, [budgetResponse]);
+
   return (
     <div style={{ padding: '1rem', paddingBottom: '6rem', maxWidth: '600px', margin: '0 auto' }}>
-      {/* Header with circular back button and compact Month Navigator */}
-      <header
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'nowrap',
-          gap: '0.5rem',
-          marginBottom: '1.25rem',
-          paddingTop: '0.5rem',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
-          <button
-            onClick={handleBack}
+      {/* ======================================================== */}
+      {/* MASTER VIEW (when selectedBudgetId === null)             */}
+      {/* ======================================================== */}
+      {!selectedBudget && (
+        <>
+          {/* Header */}
+          <header
             style={{
-              width: '40px',
-              height: '40px',
-              borderRadius: 'var(--radius-full)',
-              background: 'var(--surface-color)',
-              border: 'none',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              boxShadow: 'var(--shadow-sm)',
-              color: 'var(--text-primary)',
-              flexShrink: 0,
+              justifyContent: 'space-between',
+              flexWrap: 'nowrap',
+              gap: '0.5rem',
+              marginBottom: '1.25rem',
+              paddingTop: '0.5rem',
             }}
           >
-            <ArrowLeft size={20} />
-          </button>
-          <div style={{ minWidth: 0 }}>
-            <h1
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
+              <button
+                onClick={handleBack}
+                style={{
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: 'var(--radius-full)',
+                  background: 'var(--surface-color)',
+                  border: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  boxShadow: 'var(--shadow-sm)',
+                  color: 'var(--text-primary)',
+                  flexShrink: 0,
+                }}
+              >
+                <ArrowLeft size={20} />
+              </button>
+              <div style={{ minWidth: 0 }}>
+                <h1
+                  style={{
+                    fontSize: '1.2rem',
+                    fontWeight: 700,
+                    color: 'var(--text-primary)',
+                    margin: 0,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  Presupuestos
+                </h1>
+                <p
+                  style={{
+                    fontSize: '0.75rem',
+                    color: 'var(--text-secondary)',
+                    margin: 0,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  Planificación y techos mensuales
+                </p>
+              </div>
+            </div>
+
+            {/* Compact Month Navigator */}
+            <div
               style={{
-                fontSize: '1.2rem',
-                fontWeight: 700,
-                color: 'var(--text-primary)',
-                margin: 0,
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
+                position: 'relative',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                background: 'var(--surface-color)',
+                padding: '0.4rem 0.6rem',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--border-color)',
+                cursor: 'pointer',
+                flexShrink: 0,
               }}
             >
-              Presupuestos
-            </h1>
-            <p
+              <Calendar size={18} color="var(--text-secondary)" />
+              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                {shortMonthLabel}
+              </span>
+              <input
+                type="month"
+                value={currentMonthYear}
+                onChange={(e) => {
+                  if (e.target.value) setCurrentMonthYear(e.target.value);
+                }}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: '100%',
+                  opacity: 0,
+                  cursor: 'pointer',
+                }}
+              />
+            </div>
+          </header>
+
+          {/* Auto-clone unconfirmed banner */}
+          {hasUnconfirmedBudgets && (
+            <div
               style={{
-                fontSize: '0.75rem',
-                color: 'var(--text-secondary)',
-                margin: 0,
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '0.75rem',
+                padding: '0.85rem 1rem',
+                borderRadius: 'var(--radius-md)',
+                background: 'rgba(245, 158, 11, 0.08)',
+                border: '1px solid rgba(245, 158, 11, 0.25)',
+                marginBottom: '1.25rem',
               }}
             >
-              Planificación y límites mensuales
-            </p>
-          </div>
-        </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', minWidth: 0, flex: 1 }}>
+                <Sparkles size={18} color="#F59E0B" style={{ flexShrink: 0 }} />
+                <span style={{ fontSize: '0.825rem', color: 'var(--text-primary)', fontWeight: 500 }}>
+                  Presupuestos clonados del mes anterior. Revísalos y confirma tus límites.
+                </span>
+              </div>
+              <button
+                onClick={handleConfirmBudget}
+                disabled={isConfirmingBudget}
+                style={{
+                  padding: '0.4rem 0.85rem',
+                  borderRadius: 'var(--radius-full)',
+                  background: '#F59E0B',
+                  border: 'none',
+                  color: '#FFFFFF',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  cursor: isConfirmingBudget ? 'not-allowed' : 'pointer',
+                  whiteSpace: 'nowrap',
+                  opacity: isConfirmingBudget ? 0.7 : 1,
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                {isConfirmingBudget ? 'Confirmando...' : 'Confirmar mes'}
+              </button>
+            </div>
+          )}
 
-        {/* Compact Month Navigator matching FixedExpenses 1:1 */}
-        <div
-          style={{
-            position: 'relative',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            background: 'var(--surface-color)',
-            padding: '0.4rem 0.6rem',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--border-color)',
-            cursor: 'pointer',
-            flexShrink: 0,
-          }}
-        >
-          <Calendar size={18} color="var(--text-secondary)" />
-          <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-            {shortMonthLabel}
-          </span>
-          <input
-            type="month"
-            value={currentMonthYear}
-            onChange={(e) => {
-              if (e.target.value) setCurrentMonthYear(e.target.value);
-            }}
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              height: '100%',
-              opacity: 0,
-              cursor: 'pointer',
-            }}
-          />
-        </div>
-      </header>
-
-      {/* Auto-clone unconfirmed banner */}
-      {budget && !budget.is_confirmed && budget.exists && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '0.75rem',
-            padding: '0.85rem 1rem',
-            borderRadius: 'var(--radius-md)',
-            background: 'rgba(245, 158, 11, 0.08)',
-            border: '1px solid rgba(245, 158, 11, 0.25)',
-            marginBottom: '1.25rem',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', minWidth: 0, flex: 1 }}>
-            <Sparkles size={18} color="#F59E0B" style={{ flexShrink: 0 }} />
-            <span style={{ fontSize: '0.825rem', color: 'var(--text-primary)', fontWeight: 500 }}>
-              Presupuesto clonado del mes anterior. Revísalo y confirma tus límites.
-            </span>
-          </div>
-          <button
-            onClick={handleConfirmBudget}
-            disabled={isConfirmingBudget}
-            style={{
-              padding: '0.4rem 0.85rem',
-              borderRadius: 'var(--radius-full)',
-              background: '#F59E0B',
-              border: 'none',
-              color: '#FFFFFF',
-              fontSize: '0.75rem',
-              fontWeight: 600,
-              cursor: isConfirmingBudget ? 'not-allowed' : 'pointer',
-              whiteSpace: 'nowrap',
-              opacity: isConfirmingBudget ? 0.7 : 1,
-              transition: 'all 0.15s ease',
-            }}
-          >
-            {isConfirmingBudget ? 'Confirmando...' : 'Confirmar mes'}
-          </button>
-        </div>
-      )}
-
-      {/* Hero card with tap-to-cycle currency and global progress */}
-      <div
-        className="soft-card"
-        onClick={cycleDisplayCurrency}
-        style={{
-          marginBottom: '1.25rem',
-          padding: '1.25rem',
-          cursor: 'pointer',
-          background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.06) 0%, var(--surface-color) 100%)',
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '0.4rem',
-          }}
-        >
-          <span
-            style={{
-              fontSize: '0.75rem',
-              color: 'var(--text-secondary)',
-              fontWeight: 600,
-              textTransform: 'uppercase',
-              letterSpacing: '0.04em',
-            }}
-          >
-            Gasto Total del Mes
-          </span>
+          {/* Consolidated Hero Card */}
           <div
+            className="soft-card"
+            onClick={cycleDisplayCurrency}
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.35rem',
-              padding: '0.2rem 0.6rem',
-              borderRadius: 'var(--radius-full)',
-              background: badge.bg,
-              color: badge.color,
-              fontSize: '0.75rem',
-              fontWeight: 600,
-              whiteSpace: 'nowrap',
-              flexShrink: 0,
+              marginBottom: '1.25rem',
+              padding: '1.25rem',
+              cursor: 'pointer',
+              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.06) 0%, var(--surface-color) 100%)',
             }}
           >
-            {badge.text}
-          </div>
-        </div>
-
-        <div
-          style={{
-            fontSize: '1.85rem',
-            fontWeight: 800,
-            color: 'var(--text-primary)',
-            letterSpacing: '-0.02em',
-          }}
-        >
-          {isLoading ? '...' : getHeroAmount()}
-        </div>
-
-        <div
-          style={{
-            fontSize: '0.7rem',
-            color: 'var(--text-tertiary)',
-            marginTop: '0.2rem',
-            marginBottom: '0.75rem',
-          }}
-        >
-          Toca para alternar moneda ({displayCurrency.toUpperCase()})
-        </div>
-
-        {/* Global Limit Progress Bar */}
-        {budget && budget.effective_global_limit && budget.effective_global_limit > 0 && (
-          <div style={{ marginBottom: '0.75rem' }}>
             <div
               style={{
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                marginBottom: '0.35rem',
+                marginBottom: '0.4rem',
               }}
             >
-              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                Progreso global
-              </span>
-              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: badge.color }}>
-                {Math.round(budget.global_spent_percentage)}%
-              </span>
-            </div>
-            <div
-              style={{
-                height: '8px',
-                borderRadius: 'var(--radius-full)',
-                background: 'var(--surface-muted)',
-                overflow: 'hidden',
-              }}
-            >
-              <div
+              <span
                 style={{
-                  height: '100%',
-                  borderRadius: 'var(--radius-full)',
-                  background:
-                    budget.global_traffic_light === 'red'
-                      ? 'linear-gradient(90deg, #EF4444, #F87171)'
-                      : budget.global_traffic_light === 'yellow'
-                      ? 'linear-gradient(90deg, #F59E0B, #FBBF24)'
-                      : 'linear-gradient(90deg, #10B981, #34D399)',
-                  width: `${globalProgress}%`,
-                  transition: 'width 0.4s ease-out',
-                }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Bottom bar of Hero Card */}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            paddingTop: '0.65rem',
-            borderTop: '1px solid var(--border-color)',
-            fontSize: '0.75rem',
-            color: 'var(--text-secondary)',
-          }}
-        >
-          <span>
-            Asignado a categorías:{' '}
-            <strong style={{ color: 'var(--text-primary)' }}>
-              {formatAmount(allocatedMap[displayCurrency], prefixMap[displayCurrency])}
-              {suffixMap[displayCurrency]}
-            </strong>
-          </span>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setIsGlobalModalOpen(true);
-            }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.35rem',
-              padding: '0.3rem 0.65rem',
-              borderRadius: 'var(--radius-full)',
-              background: 'var(--surface-color)',
-              border: '1px solid var(--border-color)',
-              color: 'var(--text-primary)',
-              fontSize: '0.75rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              boxShadow: 'var(--shadow-sm)',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            <SlidersHorizontal size={13} />
-            Configurar Global
-          </button>
-        </div>
-      </div>
-
-      {/* Add Category Limit Button matching FixedExpenses 1:1 */}
-      <button
-        onClick={() => openCategoryModalForAdd()}
-        style={{
-          width: '100%',
-          padding: '0.875rem',
-          marginBottom: '1.25rem',
-          background: 'var(--surface-color)',
-          border: '2px dashed var(--accent-light)',
-          borderRadius: 'var(--radius-md)',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '0.5rem',
-          color: 'var(--text-secondary)',
-          fontFamily: 'inherit',
-          fontSize: '0.9rem',
-          fontWeight: 600,
-          transition: 'all 0.2s ease',
-        }}
-      >
-        <Plus size={18} />
-        Agregar categoría al presupuesto
-      </button>
-
-      {/* Category List */}
-      {isLoading ? (
-        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-tertiary)' }}>
-          Cargando presupuesto...
-        </div>
-      ) : !budget || budget.category_limits.length === 0 ? (
-        <div
-          className="soft-card"
-          style={{
-            padding: '2.5rem 1.5rem',
-            textAlign: 'center',
-            color: 'var(--text-secondary)',
-            marginBottom: '1rem',
-          }}
-        >
-          <Layers size={32} color="var(--text-tertiary)" style={{ margin: '0 auto 0.75rem' }} />
-          <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: '0 0 0.35rem', color: 'var(--text-primary)' }}>
-            No hay categorías presupuestadas
-          </h3>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', margin: '0 0 1rem' }}>
-            Empieza agregando un límite a tus categorías principales como Gastos Fijos, Mercado o Salidas.
-          </p>
-          <button
-            onClick={() => openCategoryModalForAdd()}
-            className="btn btn-primary"
-            style={{ fontSize: '0.85rem', padding: '0.5rem 1rem' }}
-          >
-            <Plus size={16} />
-            Asignar primer límite
-          </button>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {budget.category_limits.map((cat) => {
-            const isRed = cat.traffic_light === 'red';
-            const isYellow = cat.traffic_light === 'yellow';
-            const statusColor = isRed ? '#EF4444' : isYellow ? '#F59E0B' : '#10B981';
-            const currSym = currencyLabels[cat.currency] || '$';
-
-            return (
-              <div
-                key={cat.category_name}
-                className="soft-card"
-                style={{
-                  padding: '1rem 1.25rem',
-                  borderLeft: `4px solid ${statusColor}`,
-                  transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+                  fontSize: '0.75rem',
+                  color: 'var(--text-secondary)',
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
                 }}
               >
-                {/* Top Info Row */}
+                Gasto Total del Mes (Consolidado)
+              </span>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  padding: '0.2rem 0.6rem',
+                  borderRadius: 'var(--radius-full)',
+                  background: 'rgba(16, 185, 129, 0.12)',
+                  color: '#10B981',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
+                }}
+              >
+                {budgetResponse?.budgets?.length || 0} presupuestos
+              </div>
+            </div>
+
+            <div
+              style={{
+                fontSize: '1.85rem',
+                fontWeight: 800,
+                color: 'var(--text-primary)',
+                letterSpacing: '-0.02em',
+              }}
+            >
+              {isLoading
+                ? '...'
+                : (() => {
+                    const spentMap = {
+                      usd: budgetResponse?.total_spent_usd ?? 0,
+                      bs: budgetResponse?.total_spent_bs ?? 0,
+                      eur: budgetResponse?.total_spent_eur ?? 0,
+                      usdt: budgetResponse?.total_spent_usdt ?? 0,
+                    };
+                    const limitMap = {
+                      usd: budgetResponse?.global_limit_usd,
+                      bs: budgetResponse?.global_limit_bs,
+                      eur: budgetResponse?.global_limit_eur,
+                      usdt: budgetResponse?.global_limit_usdt,
+                    };
+                    const p = prefixMap[displayCurrency];
+                    const s = suffixMap[displayCurrency];
+                    const spentStr = formatAmount(spentMap[displayCurrency], p) + s;
+                    const lim = limitMap[displayCurrency];
+                    if (lim !== null && lim !== undefined && lim > 0) {
+                      return `${spentStr} / ${formatAmount(lim, p)}${s}`;
+                    }
+                    return spentStr;
+                  })()}
+            </div>
+
+            <div
+              style={{
+                fontSize: '0.7rem',
+                color: 'var(--text-tertiary)',
+                marginTop: '0.2rem',
+                marginBottom: '0.75rem',
+              }}
+            >
+              Toca para alternar moneda ({displayCurrency.toUpperCase()})
+            </div>
+
+            {/* Consolidated progress if limits exist */}
+            {budgetResponse?.global_limit_usd && budgetResponse.global_limit_usd > 0 && (
+              <div style={{ marginBottom: '0.75rem' }}>
                 <div
                   style={{
                     display: 'flex',
                     justifyContent: 'space-between',
-                    alignItems: 'flex-start',
-                    marginBottom: '0.5rem',
+                    alignItems: 'center',
+                    marginBottom: '0.35rem',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0, flex: 1 }}>
-                    <div
-                      style={{
-                        width: '36px',
-                        height: '36px',
-                        borderRadius: '10px',
-                        background: 'var(--surface-muted)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: 'var(--text-primary)',
-                        flexShrink: 0,
-                      }}
-                    >
-                      {renderCategoryIcon(cat.category_name)}
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <div
-                        style={{
-                          fontSize: '0.95rem',
-                          fontWeight: 600,
-                          color: 'var(--text-primary)',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                        }}
-                      >
-                        {cat.category_name}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: '0.75rem',
-                          color: cat.remaining_amount < 0 ? '#EF4444' : 'var(--text-tertiary)',
-                          fontWeight: cat.remaining_amount < 0 ? 600 : 400,
-                        }}
-                      >
-                        {cat.remaining_amount < 0
-                          ? `Excedido por ${currSym} ${formatAmount(Math.abs(cat.remaining_amount))}`
-                          : `Disponible: ${currSym} ${formatAmount(cat.remaining_amount)}`}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Primary amount in category currency & equivalents */}
-                  <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '0.5rem' }}>
-                    <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                      {currSym} {formatAmount(cat.spent_amount)} / {formatAmount(cat.limit_amount)}
-                    </div>
-                    {cat.currency !== 'BS' && (
-                      <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
-                        ≈ Bs. {formatAmount(cat.spent_bs)} / {formatAmount(cat.limit_bs)}
-                      </div>
-                    )}
-                    {cat.currency !== 'USD_BCV' && cat.currency !== 'USD_CASH' && (
-                      <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
-                        ≈ $ {formatAmount(cat.spent_usd)} / {formatAmount(cat.limit_usd)}
-                      </div>
-                    )}
-                  </div>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                    Progreso consolidado
+                  </span>
+                  <span
+                    style={{
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      color:
+                        budgetResponse.global_traffic_light === 'red'
+                          ? '#EF4444'
+                          : budgetResponse.global_traffic_light === 'yellow'
+                          ? '#F59E0B'
+                          : '#10B981',
+                    }}
+                  >
+                    {Math.round(budgetResponse.global_spent_percentage)}%
+                  </span>
                 </div>
-
-                {/* Progress bar and action buttons */}
-                <div style={{ marginTop: '0.4rem' }}>
+                <div
+                  style={{
+                    height: '8px',
+                    borderRadius: 'var(--radius-full)',
+                    background: 'var(--surface-muted)',
+                    overflow: 'hidden',
+                  }}
+                >
                   <div
                     style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      marginBottom: '0.35rem',
-                    }}
-                  >
-                    <span style={{ fontSize: '0.75rem', fontWeight: 600, color: statusColor }}>
-                      {Math.round(cat.spent_percentage)}% consumido
-                    </span>
-                    <div style={{ display: 'flex', gap: '0.25rem' }}>
-                      <button
-                        onClick={() => openCategoryModalForEdit(cat)}
-                        title="Editar límite"
-                        style={{
-                          width: '32px',
-                          height: '32px',
-                          borderRadius: 'var(--radius-full)',
-                          background: 'var(--surface-muted)',
-                          border: 'none',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          cursor: 'pointer',
-                          color: 'var(--text-secondary)',
-                          transition: 'all 0.15s ease',
-                        }}
-                      >
-                        <Edit3 size={14} />
-                      </button>
-                      <button
-                        onClick={() =>
-                          setConfirmDelete({
-                            isOpen: true,
-                            categoryName: cat.category_name,
-                          })
-                        }
-                        title="Eliminar límite"
-                        style={{
-                          width: '32px',
-                          height: '32px',
-                          borderRadius: 'var(--radius-full)',
-                          background: 'var(--surface-muted)',
-                          border: 'none',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          cursor: 'pointer',
-                          color: 'var(--expense-color)',
-                          transition: 'all 0.15s ease',
-                        }}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      height: '6px',
+                      height: '100%',
                       borderRadius: 'var(--radius-full)',
-                      background: 'var(--surface-muted)',
-                      overflow: 'hidden',
-                    }}
-                  >
-                    <div
-                      style={{
-                        height: '100%',
-                        borderRadius: 'var(--radius-full)',
-                        background: isRed
+                      background:
+                        budgetResponse.global_traffic_light === 'red'
                           ? 'linear-gradient(90deg, #EF4444, #F87171)'
-                          : isYellow
+                          : budgetResponse.global_traffic_light === 'yellow'
                           ? 'linear-gradient(90deg, #F59E0B, #FBBF24)'
                           : 'linear-gradient(90deg, #10B981, #34D399)',
-                        width: `${Math.min(cat.spent_percentage, 100)}%`,
-                        transition: 'width 0.4s ease-out',
-                      }}
-                    />
-                  </div>
+                      width: `${Math.min(budgetResponse.global_spent_percentage, 100)}%`,
+                      transition: 'width 0.4s ease-out',
+                    }}
+                  />
                 </div>
               </div>
-            );
-          })}
-        </div>
+            )}
+
+            {/* Bottom info row */}
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                paddingTop: '0.65rem',
+                borderTop: '1px solid var(--border-color)',
+                fontSize: '0.75rem',
+                color: 'var(--text-secondary)',
+              }}
+            >
+              <span>
+                Total presupuestado:{' '}
+                <strong style={{ color: 'var(--text-primary)' }}>
+                  {formatAmount(
+                    displayCurrency === 'usd'
+                      ? budgetResponse?.allocated_usd
+                      : displayCurrency === 'bs'
+                      ? budgetResponse?.allocated_bs
+                      : displayCurrency === 'eur'
+                      ? budgetResponse?.allocated_eur
+                      : budgetResponse?.allocated_usdt,
+                    prefixMap[displayCurrency]
+                  )}
+                  {suffixMap[displayCurrency]}
+                </strong>
+              </span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
+                Gastos compartidos deduplicados
+              </span>
+            </div>
+          </div>
+
+          {/* Create New Budget Dashed Button */}
+          <button
+            onClick={() => handleOpenBudgetModal(null)}
+            style={{
+              width: '100%',
+              padding: '0.875rem',
+              marginBottom: '1.25rem',
+              background: 'var(--surface-color)',
+              border: '2px dashed var(--accent-light)',
+              borderRadius: 'var(--radius-md)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.5rem',
+              color: 'var(--text-secondary)',
+              fontFamily: 'inherit',
+              fontSize: '0.9rem',
+              fontWeight: 600,
+              transition: 'all 0.2s ease',
+            }}
+          >
+            <Plus size={18} />
+            Crear nuevo presupuesto
+          </button>
+
+          {/* List of Budgets */}
+          {isLoading ? (
+            <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-tertiary)' }}>
+              Cargando presupuestos...
+            </div>
+          ) : !budgetResponse?.budgets || budgetResponse.budgets.length === 0 ? (
+            <div
+              className="soft-card"
+              style={{
+                padding: '2.5rem 1.5rem',
+                textAlign: 'center',
+                color: 'var(--text-secondary)',
+              }}
+            >
+              <Wallet size={36} color="var(--text-tertiary)" style={{ margin: '0 auto 0.75rem' }} />
+              <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: '0 0 0.35rem', color: 'var(--text-primary)' }}>
+                No tienes presupuestos para este mes
+              </h3>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', margin: '0 0 1.25rem' }}>
+                Crea un presupuesto (ej. &quot;Gastos Mensuales&quot; o &quot;Personal&quot;) para organizar tus límites de gastos.
+              </p>
+              <button
+                onClick={() => handleOpenBudgetModal(null)}
+                className="btn btn-primary"
+                style={{ fontSize: '0.85rem', padding: '0.6rem 1.25rem' }}
+              >
+                <Plus size={16} />
+                Crear primer presupuesto
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              {budgetResponse.budgets.map((b) => {
+                const isRed = b.global_traffic_light === 'red';
+                const isYellow = b.global_traffic_light === 'yellow';
+                const statusColor = isRed ? '#EF4444' : isYellow ? '#F59E0B' : '#10B981';
+                const currSym = currencyLabels[b.currency] || '$';
+
+                return (
+                  <div
+                    key={b.id}
+                    className="soft-card"
+                    onClick={() => setSelectedBudgetId(b.id)}
+                    style={{
+                      padding: '1.15rem 1.25rem',
+                      borderLeft: `4px solid ${statusColor}`,
+                      cursor: 'pointer',
+                      transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'flex-start',
+                        marginBottom: '0.5rem',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0, flex: 1 }}>
+                        <div
+                          style={{
+                            width: '38px',
+                            height: '38px',
+                            borderRadius: '10px',
+                            background: 'var(--surface-muted)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'var(--text-primary)',
+                            flexShrink: 0,
+                          }}
+                        >
+                          <Wallet size={20} />
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.4rem',
+                              fontSize: '1rem',
+                              fontWeight: 700,
+                              color: 'var(--text-primary)',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}
+                          >
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.name}</span>
+                            {b.is_primary && (
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.25rem',
+                                  fontSize: '0.65rem',
+                                  fontWeight: 700,
+                                  color: '#B45309',
+                                  background: 'rgba(245, 158, 11, 0.15)',
+                                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                                  padding: '0.1rem 0.4rem',
+                                  borderRadius: 'var(--radius-full)',
+                                  flexShrink: 0,
+                                }}
+                              >
+                                <Star size={11} fill="#F59E0B" color="#F59E0B" />
+                                Principal
+                              </span>
+                            )}
+                          </div>
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.4rem',
+                              marginTop: '0.2rem',
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: '0.7rem',
+                                fontWeight: 600,
+                                color: 'var(--text-secondary)',
+                                background: 'var(--surface-muted)',
+                                padding: '0.15rem 0.45rem',
+                                borderRadius: 'var(--radius-full)',
+                              }}
+                            >
+                              {b.income_mode === 'manual'
+                                ? 'Manual'
+                                : b.income_mode === 'single_income'
+                                ? '1 Ingreso'
+                                : 'Ingresos'}
+                            </span>
+                            <span style={{ fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
+                              {b.categories_count} categorías
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right Amount Column */}
+                      <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '0.5rem' }}>
+                        <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                          {currSym} {formatAmount(b.total_spent_budget_currency)}
+                          {b.effective_global_limit && b.effective_global_limit > 0 ? (
+                            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
+                              {' '}/ {currSym} {formatAmount(b.effective_global_limit)}
+                            </span>
+                          ) : null}
+                        </div>
+                        {b.currency !== 'BS' && (
+                          <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
+                            ≈ Bs. {formatAmount(b.total_spent_bs)}
+                          </div>
+                        )}
+                        {b.currency !== 'USD_BCV' && b.currency !== 'USD_CASH' && (
+                          <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
+                            ≈ $ {formatAmount(b.total_spent_usd)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Progress bar */}
+                    {b.effective_global_limit && b.effective_global_limit > 0 && (
+                      <div style={{ marginTop: '0.6rem' }}>
+                        <div
+                          style={{
+                            height: '6px',
+                            borderRadius: 'var(--radius-full)',
+                            background: 'var(--surface-muted)',
+                            overflow: 'hidden',
+                          }}
+                        >
+                          <div
+                            style={{
+                              height: '100%',
+                              borderRadius: 'var(--radius-full)',
+                              background: isRed
+                                ? 'linear-gradient(90deg, #EF4444, #F87171)'
+                                : isYellow
+                                ? 'linear-gradient(90deg, #F59E0B, #FBBF24)'
+                                : 'linear-gradient(90deg, #10B981, #34D399)',
+                              width: `${Math.min(b.global_spent_percentage, 100)}%`,
+                              transition: 'width 0.4s ease-out',
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Actions and Footer Row */}
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginTop: '0.6rem',
+                        paddingTop: '0.45rem',
+                        borderTop: '1px solid var(--border-color)',
+                      }}
+                    >
+                      <span style={{ fontSize: '0.75rem', fontWeight: 600, color: statusColor }}>
+                        {b.effective_global_limit && b.effective_global_limit > 0
+                          ? `${Math.round(b.global_spent_percentage)}% consumido`
+                          : 'Sin techo global configurado'}
+                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                        {b.is_primary ? (
+                          <div
+                            title="Presupuesto principal activo"
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              padding: '0.25rem 0.5rem',
+                              borderRadius: 'var(--radius-full)',
+                              background: 'rgba(245, 158, 11, 0.12)',
+                              color: '#B45309',
+                              fontSize: '0.7rem',
+                              fontWeight: 700,
+                            }}
+                          >
+                            <Star size={12} fill="#F59E0B" color="#F59E0B" />
+                            <span>Principal</span>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={(e) => handleSetPrimary(b.id, e)}
+                            title="Hacer presupuesto principal"
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              padding: '0.25rem 0.5rem',
+                              borderRadius: 'var(--radius-full)',
+                              background: 'var(--surface-muted)',
+                              border: '1px solid var(--border-color)',
+                              color: 'var(--text-secondary)',
+                              fontSize: '0.7rem',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            <Star size={12} />
+                            <span>Hacer principal</span>
+                          </button>
+                        )}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenBudgetModal(b);
+                          }}
+                          title="Editar presupuesto"
+                          style={{
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: 'var(--radius-full)',
+                            background: 'var(--surface-muted)',
+                            border: 'none',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            color: 'var(--text-secondary)',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          <Edit3 size={14} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmDeleteBudget({
+                              isOpen: true,
+                              budgetId: b.id,
+                              budgetName: b.name,
+                            });
+                          }}
+                          title="Eliminar presupuesto"
+                          style={{
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: 'var(--radius-full)',
+                            background: 'var(--surface-muted)',
+                            border: 'none',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            color: 'var(--expense-color)',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
 
-      {/* Unbudgeted categories footer card */}
-      {budget && budget.unbudgeted_categories.length > 0 && (
-        <div className="soft-card" style={{ padding: '1.25rem', marginTop: '1.25rem' }}>
-          <div
+      {/* ======================================================== */}
+      {/* DETAIL VIEW (when selectedBudgetId is active)            */}
+      {/* ======================================================== */}
+      {selectedBudget && (
+        <>
+          {/* Detail Header */}
+          <header
             style={{
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              marginBottom: '0.4rem',
+              flexWrap: 'nowrap',
+              gap: '0.5rem',
+              marginBottom: '1.25rem',
+              paddingTop: '0.5rem',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Layers size={16} color="var(--text-secondary)" />
-              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                Gastos sin límite asignado
-              </span>
-            </div>
-            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-              Total: {formatAmount(unbudgetedMap[displayCurrency], prefixMap[displayCurrency])}
-              {suffixMap[displayCurrency]}
-            </span>
-          </div>
-          <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', margin: '0 0 0.75rem 0' }}>
-            Toca una categoría para asignarle un límite en tu presupuesto:
-          </p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-            {budget.unbudgeted_categories.map((catName) => (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
               <button
-                key={catName}
-                onClick={() => openCategoryModalForAdd(catName)}
+                onClick={() => setSelectedBudgetId(null)}
                 style={{
-                  display: 'inline-flex',
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: 'var(--radius-full)',
+                  background: 'var(--surface-color)',
+                  border: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  boxShadow: 'var(--shadow-sm)',
+                  color: 'var(--text-primary)',
+                  flexShrink: 0,
+                }}
+              >
+                <ArrowLeft size={20} />
+              </button>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
+                  <h1
+                    style={{
+                      fontSize: '1.2rem',
+                      fontWeight: 700,
+                      color: 'var(--text-primary)',
+                      margin: 0,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {selectedBudget.name}
+                  </h1>
+                  {selectedBudget.is_primary && (
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
+                        fontSize: '0.65rem',
+                        fontWeight: 700,
+                        color: '#B45309',
+                        background: 'rgba(245, 158, 11, 0.15)',
+                        border: '1px solid rgba(245, 158, 11, 0.3)',
+                        padding: '0.1rem 0.4rem',
+                        borderRadius: 'var(--radius-full)',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Star size={11} fill="#F59E0B" color="#F59E0B" />
+                      Principal
+                    </span>
+                  )}
+                </div>
+                <p
+                  style={{
+                    fontSize: '0.75rem',
+                    color: 'var(--text-secondary)',
+                    margin: 0,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {currencyLabels[selectedBudget.currency] || '$'} • {selectedBudget.month_year}
+                </p>
+              </div>
+            </div>
+
+            {/* Edit / Delete actions for this budget */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0 }}>
+              {!selectedBudget.is_primary ? (
+                <button
+                  onClick={(e) => handleSetPrimary(selectedBudget.id, e)}
+                  title="Hacer este presupuesto el principal"
+                  style={{
+                    height: '36px',
+                    padding: '0 0.6rem',
+                    borderRadius: 'var(--radius-full)',
+                    background: 'var(--surface-color)',
+                    border: '1px solid var(--border-color)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.3rem',
+                    cursor: 'pointer',
+                    color: 'var(--text-secondary)',
+                    boxShadow: 'var(--shadow-sm)',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  <Star size={14} />
+                  <span>Hacer principal</span>
+                </button>
+              ) : (
+                <div
+                  title="Presupuesto principal"
+                  style={{
+                    height: '36px',
+                    padding: '0 0.6rem',
+                    borderRadius: 'var(--radius-full)',
+                    background: 'rgba(245, 158, 11, 0.12)',
+                    border: '1px solid rgba(245, 158, 11, 0.25)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.3rem',
+                    color: '#B45309',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                  }}
+                >
+                  <Star size={14} fill="#F59E0B" color="#F59E0B" />
+                  <span>Principal</span>
+                </div>
+              )}
+              <button
+                onClick={() => handleOpenBudgetModal(selectedBudget)}
+                title="Editar este presupuesto"
+                style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: 'var(--radius-full)',
+                  background: 'var(--surface-color)',
+                  border: '1px solid var(--border-color)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  color: 'var(--text-secondary)',
+                  boxShadow: 'var(--shadow-sm)',
+                }}
+              >
+                <Edit3 size={15} />
+              </button>
+              <button
+                onClick={() =>
+                  setConfirmDeleteBudget({
+                    isOpen: true,
+                    budgetId: selectedBudget.id,
+                    budgetName: selectedBudget.name,
+                  })
+                }
+                title="Eliminar este presupuesto"
+                style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: 'var(--radius-full)',
+                  background: 'var(--surface-color)',
+                  border: '1px solid var(--border-color)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  color: 'var(--expense-color)',
+                  boxShadow: 'var(--shadow-sm)',
+                }}
+              >
+                <Trash2 size={15} />
+              </button>
+            </div>
+          </header>
+
+          {/* Hero Card for THIS Budget */}
+          <div
+            className="soft-card"
+            onClick={cycleDisplayCurrency}
+            style={{
+              marginBottom: '1.25rem',
+              padding: '1.25rem',
+              cursor: 'pointer',
+              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.06) 0%, var(--surface-color) 100%)',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '0.4rem',
+              }}
+            >
+              <span
+                style={{
+                  fontSize: '0.75rem',
+                  color: 'var(--text-secondary)',
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                Techo de este Presupuesto
+              </span>
+              <div
+                style={{
+                  display: 'flex',
                   alignItems: 'center',
                   gap: '0.35rem',
-                  padding: '0.35rem 0.65rem',
+                  padding: '0.2rem 0.6rem',
                   borderRadius: 'var(--radius-full)',
-                  background: 'var(--surface-muted)',
+                  background:
+                    selectedBudget.global_traffic_light === 'red'
+                      ? 'rgba(239, 68, 68, 0.12)'
+                      : selectedBudget.global_traffic_light === 'yellow'
+                      ? 'rgba(245, 158, 11, 0.12)'
+                      : 'rgba(16, 185, 129, 0.12)',
+                  color:
+                    selectedBudget.global_traffic_light === 'red'
+                      ? '#EF4444'
+                      : selectedBudget.global_traffic_light === 'yellow'
+                      ? '#F59E0B'
+                      : '#10B981',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
+                }}
+              >
+                {selectedBudget.effective_global_limit && selectedBudget.effective_global_limit > 0
+                  ? `${Math.round(selectedBudget.global_spent_percentage)}% consumido`
+                  : 'Sin techo global'}
+              </div>
+            </div>
+
+            <div
+              style={{
+                fontSize: '1.85rem',
+                fontWeight: 800,
+                color: 'var(--text-primary)',
+                letterSpacing: '-0.02em',
+              }}
+            >
+              {(() => {
+                const spentMap = {
+                  usd: selectedBudget.total_spent_usd,
+                  bs: selectedBudget.total_spent_bs,
+                  eur: selectedBudget.total_spent_eur,
+                  usdt: selectedBudget.total_spent_usdt,
+                };
+                const limitMap = {
+                  usd: selectedBudget.global_limit_usd,
+                  bs: selectedBudget.global_limit_bs,
+                  eur: selectedBudget.global_limit_eur,
+                  usdt: selectedBudget.global_limit_usdt,
+                };
+                const p = prefixMap[displayCurrency];
+                const s = suffixMap[displayCurrency];
+                const spentStr = formatAmount(spentMap[displayCurrency], p) + s;
+                const lim = limitMap[displayCurrency];
+                if (lim !== null && lim !== undefined && lim > 0) {
+                  return `${spentStr} / ${formatAmount(lim, p)}${s}`;
+                }
+                return spentStr;
+              })()}
+            </div>
+
+            <div
+              style={{
+                fontSize: '0.7rem',
+                color: 'var(--text-tertiary)',
+                marginTop: '0.2rem',
+                marginBottom: '0.75rem',
+              }}
+            >
+              Toca para alternar moneda ({displayCurrency.toUpperCase()})
+            </div>
+
+            {/* Progress Bar */}
+            {selectedBudget.effective_global_limit && selectedBudget.effective_global_limit > 0 && (
+              <div style={{ marginBottom: '0.75rem' }}>
+                <div
+                  style={{
+                    height: '8px',
+                    borderRadius: 'var(--radius-full)',
+                    background: 'var(--surface-muted)',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <div
+                    style={{
+                      height: '100%',
+                      borderRadius: 'var(--radius-full)',
+                      background:
+                        selectedBudget.global_traffic_light === 'red'
+                          ? 'linear-gradient(90deg, #EF4444, #F87171)'
+                          : selectedBudget.global_traffic_light === 'yellow'
+                          ? 'linear-gradient(90deg, #F59E0B, #FBBF24)'
+                          : 'linear-gradient(90deg, #10B981, #34D399)',
+                      width: `${Math.min(selectedBudget.global_spent_percentage, 100)}%`,
+                      transition: 'width 0.4s ease-out',
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Bottom row */}
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                paddingTop: '0.65rem',
+                borderTop: '1px solid var(--border-color)',
+                fontSize: '0.75rem',
+                color: 'var(--text-secondary)',
+              }}
+            >
+              <span>
+                Asignado a categorías:{' '}
+                <strong style={{ color: 'var(--text-primary)' }}>
+                  {formatAmount(
+                    displayCurrency === 'usd'
+                      ? selectedBudget.allocated_usd
+                      : displayCurrency === 'bs'
+                      ? selectedBudget.allocated_bs
+                      : displayCurrency === 'eur'
+                      ? selectedBudget.allocated_eur
+                      : selectedBudget.allocated_usdt,
+                    prefixMap[displayCurrency]
+                  )}
+                  {suffixMap[displayCurrency]}
+                </strong>
+              </span>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleOpenBudgetModal(selectedBudget);
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  padding: '0.3rem 0.65rem',
+                  borderRadius: 'var(--radius-full)',
+                  background: 'var(--surface-color)',
                   border: '1px solid var(--border-color)',
                   color: 'var(--text-primary)',
                   fontSize: '0.75rem',
-                  fontWeight: 500,
+                  fontWeight: 600,
                   cursor: 'pointer',
+                  boxShadow: 'var(--shadow-sm)',
                   transition: 'all 0.15s ease',
                 }}
               >
-                <Plus size={12} />
-                {catName}
+                <SlidersHorizontal size={13} />
+                Ajustar techo
               </button>
-            ))}
+            </div>
           </div>
-        </div>
+
+          {/* Section Header: Categorías del presupuesto */}
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '1rem',
+            }}
+          >
+            <div>
+              <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
+                Categorías del presupuesto ({selectedBudget.category_limits.length})
+              </h3>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '0.15rem 0 0 0' }}>
+                Solo los gastos de estas categorías se suman a este presupuesto
+              </p>
+            </div>
+            <button
+              onClick={() => handleOpenBudgetModal(selectedBudget)}
+              className="btn btn-secondary"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                fontSize: '0.75rem',
+                padding: '0.4rem 0.75rem',
+                borderRadius: '8px',
+                fontWeight: 600,
+              }}
+            >
+              <SlidersHorizontal size={13} />
+              Gestionar categorías
+            </button>
+          </div>
+
+          {/* Direct Category Cards Listing */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {selectedBudget.category_limits.length === 0 ? (
+              <div
+                className="soft-card"
+                style={{
+                  padding: '2.5rem 1.5rem',
+                  textAlign: 'center',
+                  color: 'var(--text-secondary)',
+                }}
+              >
+                <Layers size={36} color="var(--text-tertiary)" style={{ margin: '0 auto 0.75rem' }} />
+                <p style={{ margin: '0 0 1rem', fontSize: '0.9rem', fontWeight: 500 }}>
+                  No has seleccionado categorías para este presupuesto.
+                </p>
+                <button
+                  onClick={() => handleOpenBudgetModal(selectedBudget)}
+                  className="btn btn-primary"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    fontSize: '0.8rem',
+                    padding: '0.5rem 1rem',
+                    borderRadius: '8px',
+                  }}
+                >
+                  <Plus size={14} />
+                  Elegir categorías
+                </button>
+              </div>
+            ) : (
+              selectedBudget.category_limits.map((cl) => {
+                const catName = cl.category_name;
+                const hasLimit = Number(cl.limit_amount) > 0;
+                const otherBudgets =
+                  cl.also_in_budgets ||
+                  (budgetResponse?.budgets || [])
+                    .filter(
+                      (b) =>
+                        b.id !== selectedBudget.id &&
+                        b.category_limits.some((c) => c.category_name.toLowerCase() === catName.toLowerCase())
+                    )
+                    .map((b) => b.name);
+
+                if (hasLimit) {
+                  // Category WITH configured limit in this budget
+                  const isRed = cl.traffic_light === 'red';
+                  const isYellow = cl.traffic_light === 'yellow';
+                  const statusColor = isRed ? '#EF4444' : isYellow ? '#F59E0B' : '#10B981';
+                  const currSym = currencyLabels[cl.currency] || '$';
+
+                  return (
+                    <div
+                      key={catName}
+                      className="soft-card"
+                      style={{
+                        padding: '1rem 1.25rem',
+                        borderLeft: `4px solid ${statusColor}`,
+                        transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'flex-start',
+                          marginBottom: '0.5rem',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0, flex: 1 }}>
+                          <div
+                            style={{
+                              width: '36px',
+                              height: '36px',
+                              borderRadius: '10px',
+                              background: 'var(--surface-muted)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: 'var(--text-primary)',
+                              flexShrink: 0,
+                            }}
+                          >
+                            {renderCategoryIcon(catName)}
+                          </div>
+                          <div style={{ minWidth: 0 }}>
+                            <div
+                              style={{
+                                fontSize: '0.95rem',
+                                fontWeight: 600,
+                                color: 'var(--text-primary)',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                              }}
+                            >
+                              {catName}
+                            </div>
+                            {otherBudgets.length > 0 && (
+                              <div
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.25rem',
+                                  fontSize: '0.675rem',
+                                  fontWeight: 600,
+                                  color: '#B45309',
+                                  background: 'rgba(245, 158, 11, 0.12)',
+                                  padding: '0.1rem 0.4rem',
+                                  borderRadius: 'var(--radius-full)',
+                                  marginTop: '0.2rem',
+                                }}
+                              >
+                                ⚠️ También en: {otherBudgets.join(', ')}
+                              </div>
+                            )}
+                            <div
+                              style={{
+                                fontSize: '0.75rem',
+                                color: cl.remaining_amount < 0 ? '#EF4444' : 'var(--text-tertiary)',
+                                fontWeight: cl.remaining_amount < 0 ? 600 : 400,
+                                marginTop: '0.15rem',
+                              }}
+                            >
+                              {cl.remaining_amount < 0
+                                ? `Excedido por ${currSym} ${formatAmount(Math.abs(cl.remaining_amount))}`
+                                : `Disponible: ${currSym} ${formatAmount(cl.remaining_amount)}`}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '0.5rem' }}>
+                          <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                            {currSym} {formatAmount(cl.spent_amount)} / {formatAmount(cl.limit_amount)}
+                          </div>
+                          {cl.currency !== 'BS' && (
+                            <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
+                              ≈ Bs. {formatAmount(cl.spent_bs)} / {formatAmount(cl.limit_bs)}
+                            </div>
+                          )}
+                          {cl.currency !== 'USD_BCV' && cl.currency !== 'USD_CASH' && (
+                            <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
+                              ≈ $ {formatAmount(cl.spent_usd)} / {formatAmount(cl.limit_usd)}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 8px Progress Bar */}
+                      <div style={{ marginTop: '0.5rem' }}>
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '0.35rem',
+                          }}
+                        >
+                          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: statusColor }}>
+                            {Math.round(cl.spent_percentage)}% consumido
+                          </span>
+                          <div style={{ display: 'flex', gap: '0.25rem' }}>
+                            <button
+                              onClick={() => handleOpenCategoryLimitModal(catName)}
+                              title="Editar límite"
+                              style={{
+                                width: '30px',
+                                height: '30px',
+                                borderRadius: 'var(--radius-full)',
+                                background: 'var(--surface-muted)',
+                                border: 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                                color: 'var(--text-secondary)',
+                                transition: 'all 0.15s ease',
+                              }}
+                            >
+                              <Edit3 size={13} />
+                            </button>
+                            <button
+                              onClick={() =>
+                                setConfirmDeleteCategoryLimit({
+                                  isOpen: true,
+                                  budgetId: selectedBudget.id,
+                                  categoryName: catName,
+                                })
+                              }
+                              title="Quitar límite de este presupuesto"
+                              style={{
+                                width: '30px',
+                                height: '30px',
+                                borderRadius: 'var(--radius-full)',
+                                background: 'var(--surface-muted)',
+                                border: 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                                color: 'var(--expense-color)',
+                                transition: 'all 0.15s ease',
+                              }}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            height: '8px',
+                            borderRadius: 'var(--radius-full)',
+                            background: 'var(--surface-muted)',
+                            overflow: 'hidden',
+                          }}
+                        >
+                          <div
+                            style={{
+                              height: '100%',
+                              borderRadius: 'var(--radius-full)',
+                              background: isRed
+                                ? 'linear-gradient(90deg, #EF4444, #F87171)'
+                                : isYellow
+                                ? 'linear-gradient(90deg, #F59E0B, #FBBF24)'
+                                : 'linear-gradient(90deg, #10B981, #34D399)',
+                              width: `${Math.min(cl.spent_percentage, 100)}%`,
+                              transition: 'width 0.4s ease-out',
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                } else {
+                  // Category WITHOUT limit (> 0) in this budget (limit_amount === 0)
+                  return (
+                    <div
+                      key={catName}
+                      className="soft-card"
+                      style={{
+                        padding: '0.85rem 1.15rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '0.75rem',
+                        background: 'var(--surface-color)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0, flex: 1 }}>
+                        <div
+                          style={{
+                            width: '36px',
+                            height: '36px',
+                            borderRadius: '10px',
+                            background: 'var(--surface-muted)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'var(--text-primary)',
+                            flexShrink: 0,
+                          }}
+                        >
+                          {renderCategoryIcon(catName)}
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <div
+                            style={{
+                              fontSize: '0.9rem',
+                              fontWeight: 600,
+                              color: 'var(--text-primary)',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}
+                          >
+                            {catName}
+                          </div>
+                          {otherBudgets.length > 0 && (
+                            <div
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.25rem',
+                                fontSize: '0.675rem',
+                                fontWeight: 600,
+                                color: '#B45309',
+                                background: 'rgba(245, 158, 11, 0.12)',
+                                padding: '0.1rem 0.4rem',
+                                borderRadius: 'var(--radius-full)',
+                                marginTop: '0.15rem',
+                              }}
+                            >
+                              ⚠️ También en: {otherBudgets.join(', ')}
+                            </div>
+                          )}
+                          <div style={{ fontSize: '0.725rem', color: 'var(--text-tertiary)', marginTop: '0.1rem' }}>
+                            Gastado este mes: $ {formatAmount(cl.spent_usd)}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0 }}>
+                        <button
+                          onClick={() => handleOpenCategoryLimitModal(catName)}
+                          className="btn btn-secondary"
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            padding: '0.4rem 0.75rem',
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                            borderRadius: 'var(--radius-full)',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          <Plus size={14} />
+                          Asignar límite
+                        </button>
+                        <button
+                          onClick={() =>
+                            setConfirmDeleteCategoryLimit({
+                              isOpen: true,
+                              budgetId: selectedBudget.id,
+                              categoryName: catName,
+                            })
+                          }
+                          title="Quitar categoría de este presupuesto"
+                          style={{
+                            width: '30px',
+                            height: '30px',
+                            borderRadius: 'var(--radius-full)',
+                            background: 'var(--surface-muted)',
+                            border: 'none',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            color: 'var(--expense-color)',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+              })
+            )}
+          </div>
+        </>
       )}
 
-      {/* GlobalBudgetModal */}
-      {isGlobalModalOpen && budget && (
-        <GlobalBudgetModal
-          isOpen={isGlobalModalOpen}
+      {/* ======================================================== */}
+      {/* MODALS                                                   */}
+      {/* ======================================================== */}
+
+      {/* BudgetFormModal (Create / Edit Budget) */}
+      {budgetModal.isOpen && (
+        <BudgetFormModal
+          isOpen={budgetModal.isOpen}
           monthYear={currentMonthYear}
-          currentBudget={budget}
+          budgetToEdit={budgetModal.budgetToEdit}
+          hasExistingBudgets={(budgetResponse?.budgets?.length || 0) > 0}
           incomes={estimatedIncomes}
-          onClose={() => setIsGlobalModalOpen(false)}
+          availableCategories={budgetResponse?.available_categories || []}
+          renderCategoryIcon={renderCategoryIcon}
+          onClose={() => setBudgetModal({ isOpen: false, budgetToEdit: null })}
           onSaved={(updated) => {
-            setBudget(updated);
-            setIsGlobalModalOpen(false);
+            setBudgetResponse(updated);
+            setBudgetModal({ isOpen: false, budgetToEdit: null });
           }}
         />
       )}
@@ -962,10 +1809,10 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
             >
               <div>
                 <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
-                  {categoryModal.mode === 'create' ? 'Agregar Categoría' : 'Editar Límite'}
+                  {categoryModal.existingLimit ? 'Editar Límite' : 'Asignar Límite'}
                 </h3>
                 <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '0.2rem 0 0 0' }}>
-                  Define el monto máximo para esta categoría
+                  {categoryModal.categoryName} en &quot;{selectedBudget?.name}&quot;
                 </p>
               </div>
               <button
@@ -981,34 +1828,43 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
               </button>
             </div>
 
+            {/* Warning if category is already in other budgets */}
+            {categoryModal.otherBudgetsWithCat.length > 0 && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '0.5rem',
+                  padding: '0.75rem',
+                  borderRadius: '8px',
+                  background: 'rgba(245, 158, 11, 0.1)',
+                  border: '1px solid rgba(245, 158, 11, 0.25)',
+                  marginBottom: '1rem',
+                  fontSize: '0.75rem',
+                  color: '#92400E',
+                }}
+              >
+                <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
+                <div>
+                  <strong>Categoría compartida:</strong> ya tiene límite asignado en:{' '}
+                  <strong>{categoryModal.otherBudgetsWithCat.join(', ')}</strong>. Puedes presupuestarla aquí también;
+                  en el resumen global consolidado sus gastos se contabilizan una sola vez.
+                </div>
+              </div>
+            )}
+
             <form onSubmit={handleSaveCategoryLimit} className="expense-form">
               <div className="form-group" style={{ marginBottom: '1rem' }}>
                 <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
                   Categoría
                 </label>
-                {categoryModal.mode === 'create' ? (
-                  <select
-                    value={categoryModal.categoryName}
-                    onChange={(e) => setCategoryModal((prev) => ({ ...prev, categoryName: e.target.value }))}
-                    className="input-field"
-                    required
-                    style={{ width: '100%', marginTop: '0.35rem' }}
-                  >
-                    {availableCategoryNames.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    type="text"
-                    value={categoryModal.categoryName}
-                    disabled
-                    className="input-field"
-                    style={{ width: '100%', marginTop: '0.35rem', opacity: 0.7 }}
-                  />
-                )}
+                <input
+                  type="text"
+                  value={categoryModal.categoryName}
+                  disabled
+                  className="input-field"
+                  style={{ width: '100%', marginTop: '0.35rem', opacity: 0.7 }}
+                />
               </div>
 
               <div className="form-group" style={{ marginBottom: '1rem' }}>
@@ -1078,75 +1934,143 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
         </div>
       )}
 
-      {/* ConfirmDelete Modal */}
+      {/* ConfirmDelete Budget Modal */}
       <ConfirmModal
-        isOpen={confirmDelete.isOpen}
-        title="¿Eliminar límite?"
-        message={`¿Estás seguro de que deseas eliminar el límite para "${confirmDelete.categoryName}"? Los gastos de esta categoría pasarán a ser no presupuestados.`}
+        isOpen={confirmDeleteBudget.isOpen}
+        title="¿Eliminar presupuesto?"
+        message={`¿Estás seguro de que deseas eliminar el presupuesto "${confirmDeleteBudget.budgetName}"? Se eliminarán también los límites de categorías configurados dentro de este presupuesto.`}
+        onConfirm={handleDeleteBudget}
+        onCancel={() => setConfirmDeleteBudget({ isOpen: false, budgetId: '', budgetName: '' })}
+      />
+
+      {/* ConfirmDelete Category Limit Modal */}
+      <ConfirmModal
+        isOpen={confirmDeleteCategoryLimit.isOpen}
+        title="¿Quitar categoría del presupuesto?"
+        message={`¿Estás seguro de que deseas quitar la categoría "${confirmDeleteCategoryLimit.categoryName}" de este presupuesto?`}
         onConfirm={handleDeleteCategoryLimit}
-        onCancel={() => setConfirmDelete({ isOpen: false, categoryName: '' })}
+        onCancel={() => setConfirmDeleteCategoryLimit({ isOpen: false, budgetId: '', categoryName: '' })}
       />
     </div>
   );
 };
 
-// Modal for Configuring Global Budget Limit and Mode
-interface GlobalBudgetModalProps {
+// Modal for Creating or Editing a Budget (BudgetFormModal)
+interface BudgetFormModalProps {
   isOpen: boolean;
   monthYear: string;
-  currentBudget: MonthlyBudgetResponse;
+  budgetToEdit: SingleBudgetOut | null;
+  hasExistingBudgets?: boolean;
   incomes: EstimatedIncome[];
+  availableCategories?: string[];
+  renderCategoryIcon?: (name: string) => React.ReactNode;
   onClose: () => void;
-  onSaved: (budget: MonthlyBudgetResponse) => void;
+  onSaved: (response: MonthlyBudgetResponse) => void;
 }
 
-const GlobalBudgetModal: React.FC<GlobalBudgetModalProps> = ({
+const BudgetFormModal: React.FC<BudgetFormModalProps> = ({
   isOpen,
   monthYear,
-  currentBudget,
+  budgetToEdit,
+  hasExistingBudgets = false,
   incomes,
+  availableCategories = [],
+  renderCategoryIcon,
   onClose,
   onSaved,
 }) => {
-  const [currency, setCurrency] = useState<CurrencyType>(currentBudget.currency);
-  const [incomeMode, setIncomeMode] = useState<BudgetIncomeMode>(currentBudget.income_mode);
-  const [linkedIncomeId, setLinkedIncomeId] = useState<string>(currentBudget.linked_income_id || '');
+  const isEdit = Boolean(budgetToEdit);
+  const [name, setName] = useState<string>(budgetToEdit?.name || '');
+  const [currency, setCurrency] = useState<CurrencyType>(budgetToEdit?.currency || 'USD_BCV');
+  const [incomeMode, setIncomeMode] = useState<BudgetIncomeMode>(budgetToEdit?.income_mode || 'manual');
+  const [linkedIncomeId, setLinkedIncomeId] = useState<string>(budgetToEdit?.linked_income_id || '');
   const [manualLimit, setManualLimit] = useState<string>(
-    currentBudget.manual_global_limit !== null && currentBudget.manual_global_limit !== undefined
-      ? String(currentBudget.manual_global_limit)
+    budgetToEdit?.manual_global_limit !== null && budgetToEdit?.manual_global_limit !== undefined
+      ? String(budgetToEdit.manual_global_limit)
       : ''
   );
+  const [isPrimary, setIsPrimary] = useState<boolean>(
+    budgetToEdit ? Boolean(budgetToEdit.is_primary) : !hasExistingBudgets
+  );
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(() => {
+    if (budgetToEdit) {
+      return budgetToEdit.category_limits ? budgetToEdit.category_limits.map((cl) => cl.category_name) : [];
+    }
+    return availableCategories || [];
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen) return null;
 
+  const allSelected =
+    availableCategories.length > 0 &&
+    availableCategories.every((cat) =>
+      selectedCategories.some((sc) => sc.toLowerCase() === cat.toLowerCase())
+    );
+
+  const toggleCategory = (catName: string) => {
+    setSelectedCategories((prev) => {
+      const exists = prev.some((c) => c.toLowerCase() === catName.toLowerCase());
+      if (exists) {
+        return prev.filter((c) => c.toLowerCase() !== catName.toLowerCase());
+      } else {
+        return [...prev, catName];
+      }
+    });
+  };
+
+  const handleSelectAllCategories = () => {
+    if (availableCategories.length === 0) return;
+    if (allSelected) {
+      setSelectedCategories([]);
+    } else {
+      setSelectedCategories([...availableCategories]);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!name.trim()) {
+      alert('Ingresa un nombre para el presupuesto');
+      return;
+    }
     setIsSubmitting(true);
 
     let manualVal: number | null = null;
-    if (incomeMode === 'manual') {
+    if (incomeMode === 'manual' && manualLimit.trim()) {
       const num = parseFloat(manualLimit);
       if (!isNaN(num) && num >= 0) {
         manualVal = num;
-      } else {
-        manualVal = null;
       }
     }
 
     try {
-      const payload = {
-        currency,
-        income_mode: incomeMode,
-        linked_income_id: incomeMode === 'single_income' && linkedIncomeId ? linkedIncomeId : null,
-        manual_global_limit: manualVal,
-        category_limits: null, // Keep existing category limits intact!
-      };
-      const res = await upsertMonthlyBudget(monthYear, payload);
-      onSaved(res);
-    } catch (error) {
-      console.error('Error saving global budget:', error);
-      alert('Error al guardar presupuesto global');
+      if (isEdit && budgetToEdit) {
+        const res = await updateMonthlyBudgetById(budgetToEdit.id, {
+          name: name.trim(),
+          currency,
+          income_mode: incomeMode,
+          linked_income_id: incomeMode === 'single_income' && linkedIncomeId ? linkedIncomeId : null,
+          manual_global_limit: manualVal,
+          is_primary: isPrimary,
+          categories: selectedCategories,
+        });
+        onSaved(res);
+      } else {
+        const res = await createMonthlyBudget(monthYear, {
+          name: name.trim(),
+          currency,
+          income_mode: incomeMode,
+          linked_income_id: incomeMode === 'single_income' && linkedIncomeId ? linkedIncomeId : null,
+          manual_global_limit: manualVal,
+          is_primary: isPrimary,
+          categories: selectedCategories,
+        });
+        onSaved(res);
+      }
+    } catch (error: any) {
+      console.error('Error saving budget:', error);
+      alert(error?.response?.data?.detail || 'Error al guardar el presupuesto');
     } finally {
       setIsSubmitting(false);
     }
@@ -1173,10 +2097,10 @@ const GlobalBudgetModal: React.FC<GlobalBudgetModalProps> = ({
         >
           <div>
             <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
-              Presupuesto Global
+              {isEdit ? 'Editar Presupuesto' : 'Crear Nuevo Presupuesto'}
             </h3>
             <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '0.2rem 0 0 0' }}>
-              Configura el tope general y modo de cálculo del mes
+              Configura el nombre y modo del techo mensual
             </p>
           </div>
           <button
@@ -1193,10 +2117,26 @@ const GlobalBudgetModal: React.FC<GlobalBudgetModalProps> = ({
         </div>
 
         <form onSubmit={handleSubmit} className="expense-form">
+          {/* Name */}
+          <div className="form-group" style={{ marginBottom: '1rem' }}>
+            <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              Nombre del presupuesto
+            </label>
+            <input
+              type="text"
+              required
+              placeholder="Ej. Personal, Hogar, Salidas"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="input-field"
+              style={{ width: '100%', marginTop: '0.35rem' }}
+            />
+          </div>
+
           {/* Currency */}
           <div className="form-group" style={{ marginBottom: '1rem' }}>
             <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-              Moneda base del presupuesto global
+              Moneda base
             </label>
             <select
               value={currency}
@@ -1215,7 +2155,7 @@ const GlobalBudgetModal: React.FC<GlobalBudgetModalProps> = ({
           {/* Mode Selector */}
           <div className="form-group" style={{ marginBottom: '1rem' }}>
             <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-              Modo de límite global
+              Modo de techo global
             </label>
             <div
               style={{
@@ -1257,7 +2197,7 @@ const GlobalBudgetModal: React.FC<GlobalBudgetModalProps> = ({
           {incomeMode === 'manual' && (
             <div className="form-group" style={{ marginBottom: '1.5rem' }}>
               <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                Tope mensual global ({currencyLabels[currency] || '$'})
+                Techo mensual global ({currencyLabels[currency] || '$'})
               </label>
               <input
                 type="number"
@@ -1270,7 +2210,7 @@ const GlobalBudgetModal: React.FC<GlobalBudgetModalProps> = ({
                 style={{ width: '100%', marginTop: '0.35rem', fontSize: '1.05rem', fontWeight: 600 }}
               />
               <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginTop: '0.25rem', display: 'block' }}>
-                Deja vacío si solo deseas presupuestar por categorías individuales.
+                Opcional: déjalo vacío si solo deseas límites por categorías.
               </span>
             </div>
           )}
@@ -1295,7 +2235,7 @@ const GlobalBudgetModal: React.FC<GlobalBudgetModalProps> = ({
                 ))}
               </select>
               <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginTop: '0.25rem', display: 'block' }}>
-                El límite global se adaptará automáticamente al monto estimado de este ingreso.
+                El techo se adaptará automáticamente al monto estimado de este ingreso.
               </span>
             </div>
           )}
@@ -1314,9 +2254,147 @@ const GlobalBudgetModal: React.FC<GlobalBudgetModalProps> = ({
               <p style={{ margin: '0 0 0.4rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                 Modo dinámico: Total de ingresos
               </p>
-              El tope global sumará todos tus ingresos estimados activos ({incomes.length} activos registrados), convertidos a la moneda global.
+              El techo global sumará todos tus ingresos estimados activos ({incomes.length} registrados).
             </div>
           )}
+
+          {/* Category multi-select pills */}
+          <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '0.4rem',
+              }}
+            >
+              <div>
+                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                  Categorías incluidas ({selectedCategories.length})
+                </label>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
+                  Solo los gastos de estas categorías se sumarán a este presupuesto
+                </div>
+              </div>
+              {availableCategories.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleSelectAllCategories}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--primary-color)',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    padding: '0.2rem 0.4rem',
+                    borderRadius: '6px',
+                  }}
+                >
+                  {allSelected ? 'Limpiar' : 'Seleccionar todas'}
+                </button>
+              )}
+            </div>
+
+            {/* Chips Container */}
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '0.4rem',
+                maxHeight: '160px',
+                overflowY: 'auto',
+                padding: '0.5rem',
+                borderRadius: '10px',
+                background: 'var(--surface-muted)',
+                border: '1px solid var(--border-color)',
+              }}
+            >
+              {availableCategories.length === 0 ? (
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', padding: '0.5rem' }}>
+                  No hay categorías registradas.
+                </div>
+              ) : (
+                availableCategories.map((cat) => {
+                  const isChecked = selectedCategories.some(
+                    (sc) => sc.toLowerCase() === cat.toLowerCase()
+                  );
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => toggleCategory(cat)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        padding: '0.35rem 0.65rem',
+                        borderRadius: 'var(--radius-full)',
+                        border: `1.5px solid ${isChecked ? 'var(--primary-color)' : 'var(--border-color)'}`,
+                        background: isChecked ? 'rgba(16, 185, 129, 0.12)' : 'var(--surface-color)',
+                        color: isChecked ? 'var(--primary-color)' : 'var(--text-secondary)',
+                        fontSize: '0.75rem',
+                        fontWeight: isChecked ? 600 : 500,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      {renderCategoryIcon && (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', transform: 'scale(0.85)' }}>
+                          {renderCategoryIcon(cat)}
+                        </span>
+                      )}
+                      <span>{cat}</span>
+                      {isChecked && <Check size={12} strokeWidth={2.5} />}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          {/* Primary Budget Toggle / Checkbox */}
+          <div
+            onClick={() => setIsPrimary(!isPrimary)}
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '0.75rem',
+              padding: '0.85rem',
+              borderRadius: '10px',
+              border: `1.5px solid ${isPrimary ? 'var(--primary-color)' : 'var(--border-color)'}`,
+              background: isPrimary ? 'rgba(16, 185, 129, 0.08)' : 'var(--surface-color)',
+              marginBottom: '1.5rem',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={isPrimary}
+              onChange={(e) => setIsPrimary(e.target.checked)}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                marginTop: '0.15rem',
+                width: '18px',
+                height: '18px',
+                accentColor: 'var(--primary-color)',
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+            />
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  Presupuesto principal
+                </span>
+                <Star size={13} fill={isPrimary ? "#F59E0B" : "none"} color={isPrimary ? "#F59E0B" : "var(--text-tertiary)"} />
+              </div>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '0.2rem 0 0 0', lineHeight: 1.35 }}>
+                Se tomará en cuenta para mostrar el semáforo de categorías en el Resumen.
+              </p>
+            </div>
+          </div>
 
           {/* Action buttons */}
           <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
@@ -1348,7 +2426,7 @@ const GlobalBudgetModal: React.FC<GlobalBudgetModalProps> = ({
                 opacity: isSubmitting ? 0.7 : 1,
               }}
             >
-              {isSubmitting ? 'Guardando...' : 'Guardar Global'}
+              {isSubmitting ? 'Guardando...' : 'Guardar Presupuesto'}
             </button>
           </div>
         </form>

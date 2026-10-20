@@ -364,12 +364,14 @@ class MonthlyBudget(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
     month_year = Column(String(7), nullable=False, index=True) # YYYY-MM
+    name = Column(String(100), nullable=False, default='Presupuesto Principal', server_default='Presupuesto Principal')
     currency = Column(String(10), nullable=False, default='USD_BCV')
     income_mode = Column(String(20), nullable=False, default='manual') # 'manual', 'single_income', 'all_incomes'
     linked_income_id = Column(UUID(as_uuid=True), ForeignKey("estimated_incomes.id", ondelete="SET NULL"), nullable=True, index=True)
     manual_global_limit = Column(Numeric(12, 4), nullable=True)
     effective_global_limit = Column(Numeric(12, 4), nullable=True)
     is_confirmed = Column(Boolean, nullable=False, server_default='false')
+    is_primary = Column(Boolean, nullable=False, default=False, server_default='false')
     notified_month_start = Column(Boolean, nullable=False, server_default='false')
     notified_global_80 = Column(Boolean, nullable=False, server_default='false')
     notified_global_100 = Column(Boolean, nullable=False, server_default='false')
@@ -380,7 +382,7 @@ class MonthlyBudget(Base):
     linked_income = relationship("EstimatedIncome", foreign_keys=[linked_income_id], lazy="selectin")
 
     __table_args__ = (
-        UniqueConstraint('user_id', 'month_year', name='_user_month_budget_uc'),
+        UniqueConstraint('user_id', 'month_year', 'name', name='_user_month_budget_name_uc'),
     )
 
 
