@@ -43,24 +43,45 @@ async def get_jwks(force_refresh: bool = False):
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> UUID:
     token = credentials.credentials
-    jwks = await get_jwks()
-    supabase_url = os.environ.get("SUPABASE_URL", "").rstrip("/")
-    expected_iss = f"{supabase_url}/auth/v1" if supabase_url else None
-    
-    decode_kwargs = {
-        "algorithms": ["ES256", "RS256"],
-        "audience": "authenticated"
-    }
-    if expected_iss:
-        decode_kwargs["issuer"] = expected_iss
-
     try:
-        try:
-            payload = jwt.decode(token, jwks, **decode_kwargs)
-        except JWTError:
-            # Reintentar una vez forzando refresco de JWKS por si Supabase rotó claves
-            fresh_jwks = await get_jwks(force_refresh=True)
-            payload = jwt.decode(token, fresh_jwks, **decode_kwargs)
+        header = jwt.get_unverified_header(token)
+        alg = header.get("alg")
+
+        if alg == "HS256":
+            jwt_secret = os.environ.get("SUPABASE_JWT_SECRET")
+            if not jwt_secret:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="SUPABASE_JWT_SECRET is not set in environment"
+                )
+            payload = jwt.decode(
+                token,
+                jwt_secret,
+                algorithms=["HS256"],
+                options={"verify_aud": False}
+            )
+        else:
+            jwks = await get_jwks()
+            supabase_url = os.environ.get("SUPABASE_URL", "").rstrip("/")
+            expected_iss = f"{supabase_url}/auth/v1" if supabase_url else None
+            
+            decode_kwargs = {
+                "algorithms": ["ES256", "RS256"],
+                "audience": "authenticated"
+            }
+            if expected_iss:
+                decode_kwargs["issuer"] = expected_iss
+
+            try:
+                payload = jwt.decode(token, jwks, **decode_kwargs)
+            except JWTError:
+                # Reintentar una vez forzando refresco de JWKS
+                fresh_jwks = await get_jwks(force_refresh=True)
+                try:
+                    payload = jwt.decode(token, fresh_jwks, **decode_kwargs)
+                except JWTError:
+                    # Fallback flexible en audience/issuer con firma JWKS verificada
+                    payload = jwt.decode(token, fresh_jwks, algorithms=["ES256", "RS256"], options={"verify_aud": False})
 
         user_id_str = payload.get("sub")
         if user_id_str is None:
