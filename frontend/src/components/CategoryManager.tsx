@@ -175,7 +175,7 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
   return (
     <div className="category-manager" style={{ maxWidth: '640px', margin: '0 auto' }}>
       {/* Top Header Card */}
-      <div className="soft-card" style={{ padding: '1.5rem', marginBottom: '1.25rem' }}>
+      <div className="category-manager-card soft-card">
         <div
           style={{
             display: 'flex',
@@ -646,7 +646,7 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    padding: '0.75rem 1rem',
+                    padding: '0.65rem 0.85rem',
                     background: 'var(--surface-color)',
                     borderRadius: 'var(--radius-md)',
                     border: '1px solid var(--border-color)',
@@ -671,7 +671,7 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
                       <IconComponent size={18} />
                     </div>
 
-                    <div style={{ minWidth: 0 }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
                       <div
                         style={{
                           fontWeight: 600,
@@ -691,21 +691,25 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
                           display: 'flex',
                           alignItems: 'center',
                           gap: '0.35rem',
-                          marginTop: '0.15rem',
+                          marginTop: '0.2rem',
                         }}
                       >
                         <span
                           style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
                             fontSize: '0.72rem',
                             fontWeight: 600,
                             color: totalUsage > 0 ? 'var(--text-secondary)' : 'var(--text-tertiary)',
                             background: totalUsage > 0 ? 'var(--surface-muted)' : 'transparent',
-                            padding: totalUsage > 0 ? '0.05rem 0.4rem' : 0,
+                            padding: totalUsage > 0 ? '0.12rem 0.5rem' : 0,
                             borderRadius: 'var(--radius-full)',
+                            whiteSpace: 'nowrap',
+                            lineHeight: 1.3,
                           }}
                           title={`Gastos: ${c.expense_count || 0} · Gastos fijos: ${c.fixed_count || 0} · Deudas: ${c.debt_count || 0} · Metas: ${c.saving_count || 0} · Presupuestos: ${c.budget_count || 0}`}
                         >
-                          {totalUsage === 1 ? '1 elemento asociado' : `${totalUsage} elementos asociados`}
+                          {totalUsage === 1 ? '1 gasto asociado' : `${totalUsage} gastos asociados`}
                         </span>
                       </div>
                     </div>
@@ -804,7 +808,7 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
               Estás a punto de eliminar <strong>&quot;{deletingCategory.name}&quot;</strong>.
               {deletingCategory.usage_count && deletingCategory.usage_count > 0 ? (
                 <span>
-                  {' '}Esta categoría está asociada a <strong>{deletingCategory.usage_count}</strong> elemento(s) (gastos, deudas, gastos fijos, etc.).
+                  {' '}Esta categoría está asociada a <strong>{deletingCategory.usage_count}</strong> {deletingCategory.usage_count === 1 ? 'gasto asociado' : 'gastos asociados'} (gastos, deudas, gastos fijos, etc.).
                 </span>
               ) : null}
             </p>
@@ -819,7 +823,7 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
                   marginBottom: '0.35rem',
                 }}
               >
-                Reasignar elementos asociados a:
+                Reasignar gastos asociados a:
               </label>
               <select
                 value={reassignTo}

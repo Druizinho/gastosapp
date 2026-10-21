@@ -23,6 +23,7 @@
   --accent-hover: #1F2937;
   --accent-light: #E5E7EB;
   --accent-subtle: #F9FAFB;
+  --border-color: #E5E7EB;
 
   /* Status */
   --warning-color: #F59E0B;
@@ -1295,6 +1296,17 @@ body {
 /* =============================================
    SETTINGS & CATEGORY MANAGER
    ============================================= */
+
+.category-manager-card {
+  padding: 1.5rem;
+  margin-bottom: 1.25rem;
+}
+
+@media (max-width: 480px) {
+  .category-manager-card {
+    padding: 1rem 0.75rem;
+  }
+}
 
 .category-list-item {
   display: flex;
