@@ -436,6 +436,37 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
     }
   };
 
+  const handleManageCategories = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (primaryBudget) {
+      setSelectedBudgetId(primaryBudget.id);
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const bRes = await getMonthlyBudget(currentMonthYear);
+      setBudgetResponse(bRes);
+      let prim = bRes.budgets?.find((b) => b.is_primary) || bRes.budgets?.[0];
+      if (!prim) {
+        const createdRes = await createMonthlyBudget(currentMonthYear, {
+          name: 'Presupuesto Principal',
+          currency: 'USD_BCV',
+          is_primary: true,
+          categories: [],
+        });
+        setBudgetResponse(createdRes);
+        prim = createdRes.budgets?.find((b) => b.is_primary) || createdRes.budgets?.[0];
+      }
+      if (prim) {
+        setSelectedBudgetId(prim.id);
+      }
+    } catch (error) {
+      console.error('Error loading or initializing budget for category management:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Open modal to create or edit a budget group
   const handleOpenBudgetModal = (budgetToEdit: SingleBudgetOut | null = null) => {
     setBudgetModal({
@@ -744,10 +775,8 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
             }
             footerRight={
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (primaryBudget) setSelectedBudgetId(primaryBudget.id);
-                }}
+                onClick={handleManageCategories}
+                disabled={isLoading}
                 className="btn btn-secondary"
                 style={{
                   display: 'inline-flex',
@@ -757,6 +786,8 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                   fontSize: '0.75rem',
                   fontWeight: 600,
                   borderRadius: 'var(--radius-full)',
+                  cursor: isLoading ? 'not-allowed' : 'pointer',
+                  opacity: isLoading ? 0.7 : 1,
                 }}
               >
                 <SlidersHorizontal size={13} />

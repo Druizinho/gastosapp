@@ -273,8 +273,40 @@ async def get_or_clone_monthly_budgets(
         .limit(1)
     )
     prior_my = prior_res.scalar_one_or_none()
+    async def _provision_default_primary() -> List[models.MonthlyBudget]:
+        default_primary = models.MonthlyBudget(
+            user_id=user_id,
+            month_year=month_year,
+            name="Presupuesto Principal",
+            currency="USD_BCV",
+            income_mode="manual",
+            is_confirmed=True,
+            is_primary=True,
+            notified_month_start=True
+        )
+        db.add(default_primary)
+        try:
+            await db.commit()
+            db.expire_all()
+        except IntegrityError:
+            await db.rollback()
+
+        re_res = await db.execute(
+            select(models.MonthlyBudget)
+            .options(
+                selectinload(models.MonthlyBudget.category_limits),
+                selectinload(models.MonthlyBudget.linked_income)
+            )
+            .where(
+                models.MonthlyBudget.user_id == user_id,
+                models.MonthlyBudget.month_year == month_year
+            )
+            .order_by(models.MonthlyBudget.is_primary.desc(), models.MonthlyBudget.name.asc())
+        )
+        return list(re_res.scalars().all())
+
     if not prior_my:
-        return []
+        return await _provision_default_primary()
 
     # Fetch prior budgets
     pb_res = await db.execute(
@@ -287,7 +319,7 @@ async def get_or_clone_monthly_budgets(
     )
     prior_budgets = pb_res.scalars().all()
     if not prior_budgets:
-        return []
+        return await _provision_default_primary()
 
     # Clone each budget
     any_prior_primary = any(pb.is_primary for pb in prior_budgets)
