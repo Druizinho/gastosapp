@@ -19,6 +19,8 @@ async def create_expense(db: AsyncSession, expense: schemas.ExpenseCreate, user_
         data.update(extra_data)
         
     db_expense = models.Expense(**data, user_id=user_id)
+    if not db_expense.category or not db_expense.category.strip():
+        db_expense.category = "Sin Categoría"
     if not db_expense.date:
         db_expense.date = date.today()
         
@@ -52,6 +54,8 @@ async def update_expense(db: AsyncSession, expense_id: UUID, expense: schemas.Ex
     update_data = expense.model_dump(exclude_unset=True)
     if 'manual_rate' in update_data:
         del update_data['manual_rate']
+    if 'category' in update_data and (not update_data['category'] or not update_data['category'].strip()):
+        update_data['category'] = "Sin Categoría"
     if extra_data:
         update_data.update(extra_data)
         
@@ -196,6 +200,7 @@ DEFAULT_CATEGORIES = [
     {"name": "Gastos Fijos", "icon": "Receipt", "color": "#14B8A6"},
     {"name": "Deudas", "icon": "CreditCard", "color": "#F97316"},
     {"name": "Ahorro", "icon": "PiggyBank", "color": "#22C55E"},
+    {"name": "Sin Categoría", "icon": "HelpCircle", "color": "#64748B"},
 ]
 
 _categories_debts_schema_ensured = False
@@ -293,6 +298,8 @@ def _normalize_category_instance(cat: models.Category) -> None:
             "creditcard": "#F97316",
             "ahorro": "#22C55E",
             "piggybank": "#22C55E",
+            "sin categoría": "#64748B",
+            "helpcircle": "#64748B",
         }
         cat.color = mapping.get(name_lower, mapping.get(color_lower, "#6366F1"))
 
@@ -337,6 +344,22 @@ async def get_categories(db: AsyncSession, user_id: UUID):
     cats = list(result.scalars().all())
     if not cats:
         cats = list(await seed_default_categories(db, user_id=user_id, only_if_empty=True))
+
+    has_sin_cat = any((c.name or "").strip().lower() == "sin categoría" for c in cats)
+    if not has_sin_cat:
+        db_sin_cat = models.Category(
+            user_id=user_id,
+            name="Sin Categoría",
+            icon="HelpCircle",
+            color="#64748B"
+        )
+        db.add(db_sin_cat)
+        try:
+            await db.commit()
+            await db.refresh(db_sin_cat)
+            cats.append(db_sin_cat)
+        except IntegrityError:
+            await db.rollback()
 
     for cat in cats:
         _normalize_category_instance(cat)
@@ -403,6 +426,12 @@ async def get_category(db: AsyncSession, category_id: UUID, user_id: UUID):
 
 async def create_category(db: AsyncSession, category: schemas.CategoryCreate, user_id: UUID):
     norm_name = category.name.strip()
+    if norm_name.lower() == "sin categoría":
+        raise HTTPException(
+            status_code=400,
+            detail="La categoría 'Sin Categoría' es del sistema y se gestiona automáticamente."
+        )
+
     existing = await db.execute(
         select(models.Category.id).where(
             models.Category.user_id == user_id,
@@ -442,6 +471,11 @@ async def update_category(db: AsyncSession, category_id: UUID, category_update: 
     
     old_name = db_category.name
     new_name = category_update.name.strip()
+
+    if old_name.strip().lower() == "sin categoría":
+        raise HTTPException(status_code=400, detail="La categoría 'Sin Categoría' es del sistema y no puede ser modificada.")
+    if new_name.lower() == "sin categoría" and old_name.lower() != "sin categoría":
+        raise HTTPException(status_code=400, detail="No puedes renombrar una categoría a 'Sin Categoría'.")
 
     if old_name.lower() != new_name.lower():
         existing = await db.execute(
@@ -558,6 +592,8 @@ async def delete_category(db: AsyncSession, category_id: UUID, user_id: UUID, re
         return False
     
     category_name = db_category.name
+    if category_name.strip().lower() == "sin categoría":
+        raise HTTPException(status_code=400, detail="La categoría 'Sin Categoría' es del sistema y no puede ser eliminada.")
     
     if reassign_to:
         reassign_to = reassign_to.strip()

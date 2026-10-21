@@ -679,6 +679,8 @@ export interface BudgetCategorySummaryOut {
   limit_eur: number;
   limit_usdt: number;
   also_in_budgets?: string[];
+  is_inherited?: boolean;
+  needs_limit?: boolean;
 }
 
 export interface CategoryMonthSpendOut {

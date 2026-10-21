@@ -149,6 +149,8 @@ export const CategorySelect: React.FC<CategorySelectProps> = ({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '0.35rem',
             marginBottom: '0.35rem',
           }}
         >
@@ -278,6 +280,9 @@ export const CategorySelect: React.FC<CategorySelectProps> = ({
             flexDirection: 'column',
             gap: '0.65rem',
             animation: 'fadeIn 0.15s ease-out',
+            boxSizing: 'border-box',
+            width: '100%',
+            overflow: 'hidden',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -327,7 +332,7 @@ export const CategorySelect: React.FC<CategorySelectProps> = ({
           )}
 
           {/* Name Input + Live Preview Badge */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
             <div
               style={{
                 width: '32px',
@@ -359,7 +364,8 @@ export const CategorySelect: React.FC<CategorySelectProps> = ({
                 }
               }}
               style={{
-                flex: 1,
+                flex: '1 1 130px',
+                minWidth: 0,
                 padding: '0.55rem 0.7rem',
                 fontSize: '0.85rem',
                 borderRadius: 'var(--radius-sm)',
@@ -420,7 +426,7 @@ export const CategorySelect: React.FC<CategorySelectProps> = ({
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(6, 1fr)',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(28px, 1fr))',
                 gap: '0.35rem',
               }}
             >
@@ -459,12 +465,24 @@ export const CategorySelect: React.FC<CategorySelectProps> = ({
           </div>
 
           {/* Actions */}
-          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.25rem' }}>
+          <div
+            style={{
+              display: 'flex',
+              gap: '0.5rem',
+              justifyContent: 'flex-end',
+              flexWrap: 'wrap',
+              marginTop: '0.25rem',
+            }}
+          >
             <button
               type="button"
               onClick={handleCancelInline}
               disabled={isSubmitting}
               style={{
+                flex: '1 1 auto',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
                 padding: '0.4rem 0.75rem',
                 fontSize: '0.78rem',
                 borderRadius: '6px',
@@ -482,6 +500,10 @@ export const CategorySelect: React.FC<CategorySelectProps> = ({
               onClick={handleSaveInline}
               disabled={isSubmitting || !newCatName.trim()}
               style={{
+                flex: '1 1 auto',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
                 padding: '0.4rem 0.85rem',
                 fontSize: '0.78rem',
                 borderRadius: '6px',
@@ -491,8 +513,6 @@ export const CategorySelect: React.FC<CategorySelectProps> = ({
                 fontWeight: 600,
                 cursor: isSubmitting || !newCatName.trim() ? 'not-allowed' : 'pointer',
                 opacity: isSubmitting || !newCatName.trim() ? 0.6 : 1,
-                display: 'inline-flex',
-                alignItems: 'center',
                 gap: '0.3rem',
                 boxShadow: 'var(--shadow-sm)',
               }}

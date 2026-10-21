@@ -236,8 +236,8 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
             />
           </div>
 
-          <div style={{ display: 'flex', gap: '0.75rem' }}>
-            <div style={{ flex: 1 }}>
+          <div className="form-group row" style={{ gap: '0.75rem' }}>
+            <div className="form-group half" style={{ flex: 1 }}>
               <label style={labelStyle}>Monto Total *</label>
               <input
                 type="number"
@@ -253,7 +253,7 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
               />
             </div>
 
-            <div style={{ flex: 1 }}>
+            <div className="form-group half" style={{ flex: 1 }}>
               <label style={labelStyle}>Moneda *</label>
               <select
                 name="currency"
@@ -316,8 +316,8 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: '0.75rem' }}>
-            <div style={{ flex: 1 }}>
+          <div className="form-group row" style={{ gap: '0.75rem' }}>
+            <div className="form-group half" style={{ flex: 1 }}>
               <label style={labelStyle}>Fecha de Inicio *</label>
               <input
                 type="date"
@@ -329,7 +329,7 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
               />
             </div>
 
-            <div style={{ flex: 1 }}>
+            <div className="form-group half" style={{ flex: 1 }}>
               <label style={labelStyle}>Fecha Límite (Opcional)</label>
               <input
                 type="date"

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator, field_validator
 from typing import Optional, List, Any
 import datetime
 from uuid import UUID
@@ -87,9 +87,16 @@ class CategoryResponse(CategoryBase):
 class ExpenseBase(BaseModel):
     amount: Decimal = Field(..., gt=0, description="Amount must be greater than 0")
     description: str = Field(..., min_length=1)
-    category: str = Field(..., min_length=1)
+    category: Optional[str] = Field(default="Sin Categoría")
     date: Optional[datetime.date] = None
     currency: CurrencyType = Field(default=CurrencyType.BS)
+
+    @field_validator("category", mode="before")
+    @classmethod
+    def default_empty_category(cls, v):
+        if not v or not str(v).strip():
+            return "Sin Categoría"
+        return str(v).strip()
 
 class ExpenseCreate(ExpenseBase):
     manual_rate: Optional[Decimal] = Field(None, gt=0, description="Optional manual exchange rate if API fails")
@@ -738,6 +745,8 @@ class BudgetCategorySummaryOut(BaseModel):
     limit_eur: Decimal = Decimal("0")
     limit_usdt: Decimal = Decimal("0")
     also_in_budgets: List[str] = []
+    is_inherited: bool = False
+    needs_limit: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 

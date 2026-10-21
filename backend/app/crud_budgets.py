@@ -47,6 +47,10 @@ async def get_available_budget_categories(db: AsyncSession, user_id: UUID) -> Li
         select(models.Category.name).where(models.Category.user_id == user_id).order_by(models.Category.name.asc())
     )
     user_cats = res.scalars().all()
+    if not user_cats:
+        from . import crud
+        cats_obj = await crud.get_categories(db, user_id)
+        user_cats = [c.name for c in cats_obj]
     seen = set()
     result = []
     
@@ -164,66 +168,15 @@ async def _compute_effective_global_limit(
     db: AsyncSession
 ) -> Optional[Decimal]:
     """
-    Computes effective global limit based on income_mode.
-    When income.currency == budget.currency, short-circuits and returns Decimal(str(income.expected_amount))
-    directly without requiring external rates.
+    Computes effective global limit (ceiling) as the exact sum of category limits
+    defined or inherited in the budget, converted to budget.currency.
     """
-    if budget.income_mode == 'manual':
-        if budget.manual_global_limit is not None:
-            return Decimal(str(budget.manual_global_limit))
-        return None
-
-    elif budget.income_mode == 'single_income':
-        if not budget.linked_income_id:
-            return None
-        # Use eager-loaded linked_income or query
-        income = budget.linked_income
-        if not income:
-            res = await db.execute(
-                select(models.EstimatedIncome).where(
-                    models.EstimatedIncome.id == budget.linked_income_id,
-                    models.EstimatedIncome.user_id == budget.user_id
-                )
-            )
-            income = res.scalars().first()
-
-        if not income:
-            return None
-
-        # Short-circuit if currencies match!
-        if income.currency == budget.currency:
-            return Decimal(str(income.expected_amount))
-
-        return _convert_value_between_currencies(
-            Decimal(str(income.expected_amount)),
-            income.currency,
-            budget.currency,
-            rates
-        )
-
-    elif budget.income_mode == 'all_incomes':
-        # Query active estimated incomes for this user
-        res = await db.execute(
-            select(models.EstimatedIncome).where(
-                models.EstimatedIncome.user_id == budget.user_id,
-                models.EstimatedIncome.is_active == True
-            )
-        )
-        incomes = res.scalars().all()
-        total = Decimal("0")
-        for inc in incomes:
-            if inc.currency == budget.currency:
-                total += Decimal(str(inc.expected_amount))
-            else:
-                total += _convert_value_between_currencies(
-                    Decimal(str(inc.expected_amount)),
-                    inc.currency,
-                    budget.currency,
-                    rates
-                )
-        return total
-
-    return None
+    total = Decimal("0")
+    for cl in (budget.category_limits or []):
+        amt = Decimal(str(cl.limit_amount or 0))
+        cl_curr = cl.currency or budget.currency or 'USD_BCV'
+        total += _convert_value_between_currencies(amt, cl_curr, budget.currency, rates)
+    return total
 
 
 async def get_or_clone_monthly_budgets(
@@ -521,6 +474,33 @@ async def get_monthly_budget_view(
         for cl in b.category_limits:
             cat_to_budget_names.setdefault(cl.category_name.strip().lower(), []).append(b.name)
 
+    # Ensure all available categories exist in Primary Budget so they can be configured
+    if primary_budget:
+        existing_prim_cats = {cl.category_name.strip().lower() for cl in primary_budget.category_limits}
+        added_to_prim = False
+        for acat in available_categories:
+            if acat.strip().lower() not in existing_prim_cats:
+                new_prim_cl = models.BudgetCategoryLimit(
+                    budget_id=primary_budget.id,
+                    category_name=acat,
+                    limit_amount=Decimal("0"),
+                    currency=primary_budget.currency or 'USD_BCV',
+                    notified_80=False,
+                    notified_100=False,
+                )
+                primary_budget.category_limits.append(new_prim_cl)
+                db.add(new_prim_cl)
+                added_to_prim = True
+        if added_to_prim:
+            try:
+                await db.commit()
+                await db.refresh(primary_budget)
+            except IntegrityError:
+                await db.rollback()
+        primary_limits_map = {cl.category_name.strip().lower(): cl for cl in primary_budget.category_limits}
+    else:
+        primary_limits_map = {}
+
     # Build SingleBudgetOut for each budget
     single_budgets: List[schemas.SingleBudgetOut] = []
     all_category_summaries: List[schemas.BudgetCategorySummaryOut] = []
@@ -537,6 +517,15 @@ async def get_monthly_budget_view(
         b_cats = set()
         for cl in b.category_limits:
             b_cats.add(cl.category_name)
+            is_inherited = False
+            if not b.is_primary:
+                # Sub-budgets inherit limit and currency directly from Primary Budget
+                pcl = primary_limits_map.get(cl.category_name.strip().lower())
+                if pcl:
+                    cl.limit_amount = pcl.limit_amount
+                    cl.currency = pcl.currency or (primary_budget.currency if primary_budget else b_curr)
+                is_inherited = True
+
             cl_curr = cl.currency or b_curr
             cat_exps = [
                 e for cat_key, exps_list in expenses_by_cat.items()
@@ -550,7 +539,7 @@ async def get_monthly_budget_view(
             cat_spent_eur = sum((_expense_amount_in_currency(e, 'EUR_BCV', rates) for e in cat_exps), Decimal("0"))
             cat_spent_usdt = sum((_expense_amount_in_currency(e, 'USDT', rates) for e in cat_exps), Decimal("0"))
 
-            limit_amt = Decimal(str(cl.limit_amount))
+            limit_amt = Decimal(str(cl.limit_amount or 0))
             limit_usd = _convert_value_between_currencies(limit_amt, cl_curr, 'USD_BCV', rates)
             limit_bs = _convert_value_between_currencies(limit_amt, cl_curr, 'BS', rates)
             limit_eur = _convert_value_between_currencies(limit_amt, cl_curr, 'EUR_BCV', rates)
@@ -586,7 +575,9 @@ async def get_monthly_budget_view(
                 limit_bs=round(limit_bs, 2),
                 limit_eur=round(limit_eur, 2),
                 limit_usdt=round(limit_usdt, 2),
-                also_in_budgets=also_in
+                also_in_budgets=also_in,
+                is_inherited=is_inherited,
+                needs_limit=(limit_amt <= Decimal("0"))
             )
             b_cat_summaries.append(sum_out)
             all_category_summaries.append(sum_out)
@@ -691,13 +682,18 @@ async def get_monthly_budget_view(
     consolidated_allocated_eur = sum((cl.limit_eur for cl in consolidated_category_limits), Decimal("0"))
     consolidated_allocated_usdt = sum((cl.limit_usdt for cl in consolidated_category_limits), Decimal("0"))
 
-    # Consolidated effective global limit: sum of budgets' limits if available
+    primary_budget = next((b for b in budgets if b.is_primary), budgets[0] if budgets else None)
+    primary_single = next((sb for sb in single_budgets if sb.is_primary), single_budgets[0] if single_budgets else None)
+
+    # Master Overview Hero Card ceiling strictly represents the Primary Budget (Plan Maestro)
     cons_eff_global = None
-    if any(sb.effective_global_limit is not None for sb in single_budgets):
-        cons_eff_global = Decimal("0")
-        for sb in single_budgets:
-            if sb.effective_global_limit:
-                cons_eff_global += _convert_value_between_currencies(Decimal(str(sb.effective_global_limit)), sb.currency, target_currency, rates)
+    if primary_single and primary_single.effective_global_limit is not None:
+        cons_eff_global = _convert_value_between_currencies(
+            Decimal(str(primary_single.effective_global_limit)),
+            primary_single.currency,
+            target_currency,
+            rates
+        )
 
     cons_limit_usd = None
     cons_limit_bs = None
@@ -714,9 +710,6 @@ async def get_monthly_budget_view(
         if cons_eff_global > 0:
             cons_pct = float((total_spent_budget_curr / cons_eff_global) * 100)
             cons_tl = _calc_traffic_light(cons_pct)
-
-    primary_budget = next((b for b in budgets if b.is_primary), budgets[0] if budgets else None)
-    primary_single = next((sb for sb in single_budgets if sb.is_primary), single_budgets[0] if single_budgets else None)
 
     return schemas.MonthlyBudgetResponse(
         id=primary_budget.id if primary_budget else None,
@@ -817,18 +810,26 @@ async def create_monthly_budget(
     await db.flush()
 
     if payload.categories:
+        primary_b = next((b for b in existing_budgets if b.is_primary), None)
+        primary_limits = {}
+        if primary_b and primary_b.category_limits:
+            primary_limits = {cl.category_name.strip().lower(): cl for cl in primary_b.category_limits}
+
         seen_cats = set()
         for raw_cat in payload.categories:
             cat_name = (raw_cat or "").strip()
             if not cat_name or cat_name.lower() in seen_cats:
                 continue
             seen_cats.add(cat_name.lower())
+            pcl = primary_limits.get(cat_name.lower())
+            init_limit = pcl.limit_amount if pcl else Decimal("0")
+            init_curr = pcl.currency if pcl else curr_val
             db.add(
                 models.BudgetCategoryLimit(
                     budget_id=new_budget.id,
                     category_name=cat_name,
-                    limit_amount=Decimal("0"),
-                    currency=curr_val,
+                    limit_amount=init_limit,
+                    currency=init_curr,
                     notified_80=False,
                     notified_100=False,
                 )
@@ -932,15 +933,30 @@ async def update_monthly_budget_by_id(
                 budget.category_limits.remove(cl_obj)
                 await db.delete(cl_obj)
 
-        # Add newly selected categories (preserving existing limits for already-present categories)
+        # Add newly selected categories (inheriting from Primary budget for sub-budgets)
+        primary_res = await db.execute(
+            select(models.MonthlyBudget)
+            .options(selectinload(models.MonthlyBudget.category_limits))
+            .where(
+                models.MonthlyBudget.user_id == user_id,
+                models.MonthlyBudget.month_year == budget.month_year,
+                models.MonthlyBudget.is_primary == True
+            )
+        )
+        primary_b = primary_res.scalars().first()
+        primary_limits = {cl.category_name.strip().lower(): cl for cl in (primary_b.category_limits if primary_b else [])}
+
         for low_name, display_name in desired_map.items():
             if low_name not in existing_by_lower:
+                pcl = primary_limits.get(low_name)
+                init_limit = pcl.limit_amount if pcl else Decimal("0")
+                init_curr = pcl.currency if pcl else (budget.currency or "USD_BCV")
                 db.add(
                     models.BudgetCategoryLimit(
                         budget_id=budget.id,
                         category_name=display_name,
-                        limit_amount=Decimal("0"),
-                        currency=budget.currency or "USD_BCV",
+                        limit_amount=init_limit,
+                        currency=init_curr,
                         notified_80=False,
                         notified_100=False,
                     )
@@ -1002,6 +1018,12 @@ async def delete_monthly_budget_by_id(
     if not budget:
         raise HTTPException(status_code=404, detail="Presupuesto no encontrado")
 
+    if budget.is_primary:
+        raise HTTPException(
+            status_code=400,
+            detail="El Presupuesto Principal (Plan Maestro) no puede ser eliminado."
+        )
+
     month_year = budget.month_year
     was_primary = bool(budget.is_primary)
     await db.delete(budget)
@@ -1044,6 +1066,12 @@ async def upsert_category_limit_by_budget_id(
     if not budget:
         raise HTTPException(status_code=404, detail="Presupuesto no encontrado")
 
+    if not budget.is_primary:
+        raise HTTPException(
+            status_code=400,
+            detail="Los límites de categorías se definen únicamente en el Presupuesto Principal."
+        )
+
     budget.is_confirmed = True
     cat_name = item.category_name.strip()
     item_curr = item.currency.value if hasattr(item.currency, "value") else str(item.currency)
@@ -1064,6 +1092,24 @@ async def upsert_category_limit_by_budget_id(
             notified_100=False
         )
         db.add(new_cl)
+
+    # Propagate to any sub-budgets in the same month that contain this category
+    sub_budgets_res = await db.execute(
+        select(models.MonthlyBudget)
+        .options(selectinload(models.MonthlyBudget.category_limits))
+        .where(
+            models.MonthlyBudget.user_id == user_id,
+            models.MonthlyBudget.month_year == budget.month_year,
+            models.MonthlyBudget.id != budget.id
+        )
+    )
+    for sb in sub_budgets_res.scalars().all():
+        sb_cl = next((c for c in (sb.category_limits or []) if c.category_name.strip().lower() == cat_name.lower()), None)
+        if sb_cl:
+            sb_cl.limit_amount = item.limit_amount
+            sb_cl.currency = item_curr
+            sb_cl.notified_80 = False
+            sb_cl.notified_100 = False
 
     month_year = budget.month_year
     await db.commit()
@@ -1100,8 +1146,30 @@ async def delete_category_limit_by_budget_id(
     target_cat = category_name.strip().lower()
     cl_to_delete = next((cl for cl in (budget.category_limits or []) if cl.category_name.lower() == target_cat), None)
     if cl_to_delete:
-        budget.category_limits.remove(cl_to_delete)
-        await db.delete(cl_to_delete)
+        if budget.is_primary:
+            # In Primary, reset limit to 0 rather than deleting the category row
+            cl_to_delete.limit_amount = Decimal("0")
+            cl_to_delete.notified_80 = False
+            cl_to_delete.notified_100 = False
+            # Propagate reset to any sub-budgets that have this category
+            sub_budgets_res = await db.execute(
+                select(models.MonthlyBudget)
+                .options(selectinload(models.MonthlyBudget.category_limits))
+                .where(
+                    models.MonthlyBudget.user_id == user_id,
+                    models.MonthlyBudget.month_year == budget.month_year,
+                    models.MonthlyBudget.id != budget.id
+                )
+            )
+            for sb in sub_budgets_res.scalars().all():
+                sb_cl = next((c for c in (sb.category_limits or []) if c.category_name.strip().lower() == target_cat), None)
+                if sb_cl:
+                    sb_cl.limit_amount = Decimal("0")
+        else:
+            # In sub-budget, removing category removes it from this group
+            budget.category_limits.remove(cl_to_delete)
+            await db.delete(cl_to_delete)
+
         await db.commit()
         db.expire_all()
         await check_and_notify_budget_thresholds(
@@ -1216,7 +1284,7 @@ async def upsert_budget_category_limit(
         db.expire_all()
         budgets = await get_or_clone_monthly_budgets(db, user_id, month_year)
 
-    target_budget = budgets[0]
+    target_budget = next((b for b in budgets if b.is_primary), budgets[0])
     return await upsert_category_limit_by_budget_id(db, user_id, target_budget.id, item)
 
 
@@ -1329,55 +1397,67 @@ async def check_and_notify_budget_thresholds(
         )
         expenses = exp_res.scalars().all()
 
+        # Synchronize in-memory category limits from Primary budget to Sub-budgets
+        prim_b = next((b for b in budgets if b.is_primary), None)
+        prim_map = {cl.category_name.strip().lower(): cl for cl in (prim_b.category_limits if prim_b else [])}
+        for b in budgets:
+            if not b.is_primary:
+                for cl in b.category_limits:
+                    pcl = prim_map.get(cl.category_name.strip().lower())
+                    if pcl:
+                        cl.limit_amount = pcl.limit_amount
+                        cl.currency = pcl.currency or b.currency
+
         for b in budgets:
             b_curr = b.currency
             b_cats_lower = {cl.category_name.strip().lower() for cl in b.category_limits}
             b_exps = [e for e in expenses if (e.category or "Sin Categoría").strip().lower() in b_cats_lower]
             b_total_spent = sum((_expense_amount_in_currency(e, b_curr, rates) for e in b_exps), Decimal("0"))
 
-            # 1. Check category limits for this budget
-            for cl in b.category_limits:
-                limit = Decimal(str(cl.limit_amount))
-                if limit <= 0:
-                    continue
-                cl_curr = cl.currency or b_curr
-                spent = sum(
-                    (_expense_amount_in_currency(exp, cl_curr, rates)
-                     for exp in expenses
-                     if (exp.category or "Sin Categoría").strip().lower() == cl.category_name.strip().lower()),
-                    Decimal("0")
-                )
-                pct = float((spent / limit) * 100)
+            # 1. Check category limits strictly on Primary Budget (Plan Maestro) to avoid notification storms
+            if b.is_primary:
+                for cl in b.category_limits:
+                    limit = Decimal(str(cl.limit_amount))
+                    if limit <= 0:
+                        continue
+                    cl_curr = cl.currency or b_curr
+                    spent = sum(
+                        (_expense_amount_in_currency(exp, cl_curr, rates)
+                         for exp in expenses
+                         if (exp.category or "Sin Categoría").strip().lower() == cl.category_name.strip().lower()),
+                        Decimal("0")
+                    )
+                    pct = float((spent / limit) * 100)
 
-                if pct < 80.0:
-                    if cl.notified_80 or cl.notified_100:
-                        cl.notified_80 = False
-                        cl.notified_100 = False
-                elif 80.0 <= pct < 100.0:
-                    if cl.notified_100:
-                        cl.notified_100 = False
-                    if not cl.notified_80 and allow_notify:
-                        cl.notified_80 = True
-                        await send_notification_to_user(
-                            db=db,
-                            user_id=user_id,
-                            title=f"Alerta de presupuesto [{b.name}]: {cl.category_name}",
-                            body=f"Has alcanzado el {pct:.0f}% de tu presupuesto en {cl.category_name} ({spent:.2f} / {limit:.2f} {cl_curr}) en '{b.name}'.",
-                            type="budgets",
-                            url="/herramientas/presupuestos"
-                        )
-                else: # pct >= 100.0
-                    if not cl.notified_100 and allow_notify:
-                        cl.notified_100 = True
-                        cl.notified_80 = True
-                        await send_notification_to_user(
-                            db=db,
-                            user_id=user_id,
-                            title=f"¡Presupuesto excedido [{b.name}]: {cl.category_name}!",
-                            body=f"Has superado el 100% de tu presupuesto en {cl.category_name} ({spent:.2f} / {limit:.2f} {cl_curr}) en '{b.name}'.",
-                            type="budgets",
-                            url="/herramientas/presupuestos"
-                        )
+                    if pct < 80.0:
+                        if cl.notified_80 or cl.notified_100:
+                            cl.notified_80 = False
+                            cl.notified_100 = False
+                    elif 80.0 <= pct < 100.0:
+                        if cl.notified_100:
+                            cl.notified_100 = False
+                        if not cl.notified_80 and allow_notify:
+                            cl.notified_80 = True
+                            await send_notification_to_user(
+                                db=db,
+                                user_id=user_id,
+                                title=f"Alerta de presupuesto: {cl.category_name}",
+                                body=f"Has alcanzado el {pct:.0f}% de tu presupuesto en {cl.category_name} ({spent:.2f} / {limit:.2f} {cl_curr}).",
+                                type="budgets",
+                                url="/herramientas/presupuestos"
+                            )
+                    else: # pct >= 100.0
+                        if not cl.notified_100 and allow_notify:
+                            cl.notified_100 = True
+                            cl.notified_80 = True
+                            await send_notification_to_user(
+                                db=db,
+                                user_id=user_id,
+                                title=f"¡Presupuesto excedido: {cl.category_name}!",
+                                body=f"Has superado el 100% de tu presupuesto en {cl.category_name} ({spent:.2f} / {limit:.2f} {cl_curr}).",
+                                type="budgets",
+                                url="/herramientas/presupuestos"
+                            )
 
             # 2. Check global limit for this budget
             effective_global = await _compute_effective_global_limit(b, rates, db)

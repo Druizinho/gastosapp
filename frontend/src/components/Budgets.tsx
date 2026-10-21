@@ -10,30 +10,26 @@ import {
   Layers,
   Sparkles,
   X,
-  Wallet,
-  AlertTriangle,
   Star,
-  Check
+  Check,
+  Lock,
+  RotateCcw
 } from 'lucide-react';
 import type {
   MonthlyBudgetResponse,
   SingleBudgetOut,
-  BudgetIncomeMode,
   CurrencyType,
   Category,
-  EstimatedIncome,
   BudgetCategorySummaryOut
 } from '../types';
 import {
   getMonthlyBudget,
   confirmMonthlyBudget,
-  getEstimatedIncomes,
   createMonthlyBudget,
   updateMonthlyBudgetById,
   deleteMonthlyBudgetById,
   upsertCategoryLimitByBudgetId,
-  deleteCategoryLimitByBudgetId,
-  setPrimaryMonthlyBudget
+  deleteCategoryLimitByBudgetId
 } from '../api';
 import { resolveCategoryVisuals } from '../utils/categoryVisuals';
 import { useCategories } from '../context/CategoriesContext';
@@ -64,6 +60,223 @@ const formatAmount = (amount: number | null | undefined, prefix: string = ''): s
   return `${prefix}${Number(amount).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
+export type DisplayCurrency = 'usd' | 'bs' | 'eur' | 'usdt';
+
+export const prefixMap: Record<DisplayCurrency, string> = {
+  bs: 'Bs. ',
+  usd: '$ ',
+  eur: '€ ',
+  usdt: '',
+};
+
+export const suffixMap: Record<DisplayCurrency, string> = {
+  bs: '',
+  usd: '',
+  eur: '',
+  usdt: ' USDT',
+};
+
+export interface TrafficLightProgressBarProps {
+  percentage: number;
+  trafficLight?: 'green' | 'yellow' | 'red';
+  height?: number;
+  style?: React.CSSProperties;
+}
+
+export const TrafficLightProgressBar: React.FC<TrafficLightProgressBarProps> = ({
+  percentage,
+  trafficLight,
+  height = 8,
+  style,
+}) => {
+  const clamped = Math.max(0, Math.min(percentage, 100));
+  const resolvedLight =
+    trafficLight || (percentage >= 100 ? 'red' : percentage >= 80 ? 'yellow' : 'green');
+
+  const gradient =
+    resolvedLight === 'red'
+      ? 'linear-gradient(90deg, #EF4444, #F87171)'
+      : resolvedLight === 'yellow'
+      ? 'linear-gradient(90deg, #F59E0B, #FBBF24)'
+      : 'linear-gradient(90deg, #10B981, #34D399)';
+
+  return (
+    <div
+      style={{
+        height: `${height}px`,
+        borderRadius: 'var(--radius-full)',
+        background: 'var(--surface-muted)',
+        overflow: 'hidden',
+        ...style,
+      }}
+    >
+      <div
+        style={{
+          height: '100%',
+          borderRadius: 'var(--radius-full)',
+          background: gradient,
+          width: `${clamped}%`,
+          transition: 'width 0.4s ease-out',
+        }}
+      />
+    </div>
+  );
+};
+
+export interface BudgetHeroCardProps {
+  title: string;
+  badge: React.ReactNode;
+  spentMap: { usd: number; bs: number; eur: number; usdt: number };
+  limitMap?: { usd?: number | null; bs?: number | null; eur?: number | null; usdt?: number | null };
+  displayCurrency: DisplayCurrency;
+  onCycleCurrency: () => void;
+  isLoading?: boolean;
+  showProgress?: boolean;
+  percentage?: number;
+  trafficLight?: 'green' | 'yellow' | 'red';
+  progressTitle?: string;
+  footerLeft?: React.ReactNode;
+  footerRight?: React.ReactNode;
+}
+
+export const BudgetHeroCard: React.FC<BudgetHeroCardProps> = ({
+  title,
+  badge,
+  spentMap,
+  limitMap,
+  displayCurrency,
+  onCycleCurrency,
+  isLoading = false,
+  showProgress = false,
+  percentage = 0,
+  trafficLight,
+  progressTitle,
+  footerLeft,
+  footerRight,
+}) => {
+  const p = prefixMap[displayCurrency];
+  const s = suffixMap[displayCurrency];
+  const spent = spentMap[displayCurrency] ?? 0;
+  const spentStr = formatAmount(spent, p) + s;
+  const lim = limitMap ? limitMap[displayCurrency] : undefined;
+  let amountDisplay = spentStr;
+  if (lim !== null && lim !== undefined && lim > 0) {
+    amountDisplay = `${spentStr} / ${formatAmount(lim, p)}${s}`;
+  }
+
+  const resolvedLight =
+    trafficLight || (percentage >= 100 ? 'red' : percentage >= 80 ? 'yellow' : 'green');
+  const lightColor =
+    resolvedLight === 'red' ? '#EF4444' : resolvedLight === 'yellow' ? '#F59E0B' : '#10B981';
+
+  return (
+    <div
+      className="soft-card"
+      onClick={onCycleCurrency}
+      style={{
+        marginBottom: '1.25rem',
+        padding: '1.25rem',
+        cursor: 'pointer',
+        background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.06) 0%, var(--surface-color) 100%)',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '0.4rem',
+        }}
+      >
+        <span
+          style={{
+            fontSize: '0.75rem',
+            color: 'var(--text-secondary)',
+            fontWeight: 600,
+            textTransform: 'uppercase',
+            letterSpacing: '0.04em',
+          }}
+        >
+          {title}
+        </span>
+        {badge}
+      </div>
+
+      <div
+        style={{
+          fontSize: '1.85rem',
+          fontWeight: 800,
+          color: 'var(--text-primary)',
+          letterSpacing: '-0.02em',
+        }}
+      >
+        {isLoading ? '...' : amountDisplay}
+      </div>
+
+      <div
+        style={{
+          fontSize: '0.7rem',
+          color: 'var(--text-tertiary)',
+          marginTop: '0.2rem',
+          marginBottom: '0.75rem',
+        }}
+      >
+        Toca para alternar moneda ({displayCurrency.toUpperCase()})
+      </div>
+
+      {showProgress && (
+        <div style={{ marginBottom: '0.75rem' }}>
+          {progressTitle && (
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '0.35rem',
+              }}
+            >
+              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                {progressTitle}
+              </span>
+              <span
+                style={{
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  color: lightColor,
+                }}
+              >
+                {Math.round(percentage)}%
+              </span>
+            </div>
+          )}
+          <TrafficLightProgressBar
+            percentage={percentage}
+            trafficLight={trafficLight}
+            height={8}
+          />
+        </div>
+      )}
+
+      {(footerLeft || footerRight) && (
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            paddingTop: '0.65rem',
+            borderTop: '1px solid var(--border-color)',
+            fontSize: '0.75rem',
+            color: 'var(--text-secondary)',
+          }}
+        >
+          {footerLeft || <div />}
+          {footerRight || <div />}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
   const navigate = useNavigate();
 
@@ -82,12 +295,11 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
 
   // Data states
   const [budgetResponse, setBudgetResponse] = useState<MonthlyBudgetResponse | null>(null);
-  const [estimatedIncomes, setEstimatedIncomes] = useState<EstimatedIncome[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isConfirmingBudget, setIsConfirmingBudget] = useState<boolean>(false);
 
   // Currency cycling for hero card (usd, bs, eur, usdt)
-  const [displayCurrency, setDisplayCurrency] = useState<'usd' | 'bs' | 'eur' | 'usdt'>('usd');
+  const [displayCurrency, setDisplayCurrency] = useState<DisplayCurrency>('usd');
 
   // Modals state
   const [budgetModal, setBudgetModal] = useState<{
@@ -150,6 +362,16 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
     return map;
   }, [allCategories]);
 
+  // Primary budget (Plan Maestro - single source of truth for limits)
+  const primaryBudget: SingleBudgetOut | undefined = useMemo(() => {
+    return budgetResponse?.budgets?.find((b) => b.is_primary) || budgetResponse?.budgets?.[0];
+  }, [budgetResponse]);
+
+  // Sub-budgets (category groups that inherit limits from Primary)
+  const subBudgets: SingleBudgetOut[] = useMemo(() => {
+    return budgetResponse?.budgets?.filter((b) => !b.is_primary) || [];
+  }, [budgetResponse]);
+
   // Currently selected budget object (if in detail view)
   const selectedBudget: SingleBudgetOut | undefined = useMemo(() => {
     if (!selectedBudgetId || !budgetResponse?.budgets) return undefined;
@@ -167,13 +389,11 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const [bRes, incomes] = await Promise.all([
+      const [bRes] = await Promise.all([
         getMonthlyBudget(currentMonthYear),
-        getEstimatedIncomes(true),
         refreshCategories(),
       ]);
       setBudgetResponse(bRes);
-      setEstimatedIncomes(incomes);
     } catch (error) {
       console.error('Error fetching budget data:', error);
     } finally {
@@ -216,7 +436,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
     }
   };
 
-  // Open modal to create or edit a budget
+  // Open modal to create or edit a budget group
   const handleOpenBudgetModal = (budgetToEdit: SingleBudgetOut | null = null) => {
     setBudgetModal({
       isOpen: true,
@@ -224,33 +444,28 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
     });
   };
 
-  // Open category limit modal directly for a category in the selected budget
+  // Open category limit modal directly (always edits in Primary budget)
   const handleOpenCategoryLimitModal = (categoryName: string) => {
-    if (!selectedBudget) return;
-    const existing = selectedBudget.category_limits.find(
+    const targetBudgetForLimit = primaryBudget || selectedBudget;
+    if (!targetBudgetForLimit) return;
+    const existing = targetBudgetForLimit.category_limits.find(
       (cl) => cl.category_name.toLowerCase() === categoryName.toLowerCase()
     ) || null;
-
-    // Check if category is already budgeted in other budgets (only alert on non-primary budgets)
-    const otherBudgets = selectedBudget.is_primary
-      ? []
-      : (budgetResponse?.budgets || [])
-          .filter((b) => b.id !== selectedBudget.id && b.category_limits.some((cl) => cl.category_name.toLowerCase() === categoryName.toLowerCase()))
-          .map((b) => b.name);
 
     setCategoryModal({
       isOpen: true,
       categoryName,
       existingLimit: existing,
-      otherBudgetsWithCat: otherBudgets,
+      otherBudgetsWithCat: [],
       limitAmount: existing && Number(existing.limit_amount) > 0 ? String(existing.limit_amount) : '',
-      currency: existing?.currency || selectedBudget.currency || 'USD_BCV',
+      currency: existing?.currency || targetBudgetForLimit.currency || 'USD_BCV',
     });
   };
 
   const handleSaveCategoryLimit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedBudget) return;
+    const targetBudgetForLimit = primaryBudget || selectedBudget;
+    if (!targetBudgetForLimit) return;
     const amountNum = parseFloat(categoryModal.limitAmount);
     if (isNaN(amountNum) || amountNum < 0) {
       alert('Ingresa un monto límite válido mayor o igual a 0');
@@ -258,16 +473,16 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
     }
 
     try {
-      const updated = await upsertCategoryLimitByBudgetId(selectedBudget.id, {
+      const updated = await upsertCategoryLimitByBudgetId(targetBudgetForLimit.id, {
         category_name: categoryModal.categoryName,
         limit_amount: amountNum,
         currency: categoryModal.currency,
       });
       setBudgetResponse(updated);
       setCategoryModal((prev) => ({ ...prev, isOpen: false }));
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving category limit:', error);
-      alert('Error al guardar límite de categoría');
+      alert(error?.response?.data?.detail || 'Error al guardar límite de categoría');
     }
   };
 
@@ -301,20 +516,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
     }
   };
 
-  const handleSetPrimary = async (budgetId: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    try {
-      const updated = await setPrimaryMonthlyBudget(budgetId);
-      setBudgetResponse(updated);
-    } catch (error) {
-      console.error('Error setting primary budget:', error);
-      alert('Error al elegir presupuesto como principal');
-    }
-  };
-
-  // Currency equivalent helpers
-  const prefixMap = { bs: 'Bs. ', usd: '$ ', eur: '€ ', usdt: '' };
-  const suffixMap = { bs: '', usd: '', eur: '', usdt: ' USDT' };
+  // Currency equivalent helpers (prefixMap, suffixMap declared at module level)
 
   // Render category icon with color using resolveCategoryVisuals
   const renderCategoryIcon = (categoryName: string) => {
@@ -479,36 +681,10 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
             </div>
           )}
 
-          {/* Consolidated Hero Card */}
-          <div
-            className="soft-card"
-            onClick={cycleDisplayCurrency}
-            style={{
-              marginBottom: '1.25rem',
-              padding: '1.25rem',
-              cursor: 'pointer',
-              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.06) 0%, var(--surface-color) 100%)',
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '0.4rem',
-              }}
-            >
-              <span
-                style={{
-                  fontSize: '0.75rem',
-                  color: 'var(--text-secondary)',
-                  fontWeight: 600,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.04em',
-                }}
-              >
-                Gasto Total del Mes (Consolidado)
-              </span>
+          {/* Hero Card: Presupuesto Principal (Plan Maestro) */}
+          <BudgetHeroCard
+            title="Presupuesto Principal (Plan Maestro)"
+            badge={
               <div
                 style={{
                   display: 'flex',
@@ -516,184 +692,121 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                   gap: '0.35rem',
                   padding: '0.2rem 0.6rem',
                   borderRadius: 'var(--radius-full)',
-                  background: 'rgba(16, 185, 129, 0.12)',
-                  color: '#10B981',
+                  background: 'rgba(245, 158, 11, 0.15)',
+                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                  color: '#B45309',
                   fontSize: '0.75rem',
-                  fontWeight: 600,
+                  fontWeight: 700,
                   whiteSpace: 'nowrap',
                   flexShrink: 0,
                 }}
               >
-                {budgetResponse?.budgets?.length || 0} presupuestos
+                <Star size={12} fill="#F59E0B" color="#F59E0B" />
+                Plan Maestro
               </div>
-            </div>
-
-            <div
-              style={{
-                fontSize: '1.85rem',
-                fontWeight: 800,
-                color: 'var(--text-primary)',
-                letterSpacing: '-0.02em',
-              }}
-            >
-              {isLoading
-                ? '...'
-                : (() => {
-                    const spentMap = {
-                      usd: budgetResponse?.total_spent_usd ?? 0,
-                      bs: budgetResponse?.total_spent_bs ?? 0,
-                      eur: budgetResponse?.total_spent_eur ?? 0,
-                      usdt: budgetResponse?.total_spent_usdt ?? 0,
-                    };
-                    const limitMap = {
-                      usd: budgetResponse?.global_limit_usd,
-                      bs: budgetResponse?.global_limit_bs,
-                      eur: budgetResponse?.global_limit_eur,
-                      usdt: budgetResponse?.global_limit_usdt,
-                    };
-                    const p = prefixMap[displayCurrency];
-                    const s = suffixMap[displayCurrency];
-                    const spentStr = formatAmount(spentMap[displayCurrency], p) + s;
-                    const lim = limitMap[displayCurrency];
-                    if (lim !== null && lim !== undefined && lim > 0) {
-                      return `${spentStr} / ${formatAmount(lim, p)}${s}`;
-                    }
-                    return spentStr;
-                  })()}
-            </div>
-
-            <div
-              style={{
-                fontSize: '0.7rem',
-                color: 'var(--text-tertiary)',
-                marginTop: '0.2rem',
-                marginBottom: '0.75rem',
-              }}
-            >
-              Toca para alternar moneda ({displayCurrency.toUpperCase()})
-            </div>
-
-            {/* Consolidated progress if limits exist */}
-            {budgetResponse?.global_limit_usd && budgetResponse.global_limit_usd > 0 && (
-              <div style={{ marginBottom: '0.75rem' }}>
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginBottom: '0.35rem',
-                  }}
-                >
-                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                    Progreso consolidado
-                  </span>
-                  <span
-                    style={{
-                      fontSize: '0.75rem',
-                      fontWeight: 600,
-                      color:
-                        budgetResponse.global_traffic_light === 'red'
-                          ? '#EF4444'
-                          : budgetResponse.global_traffic_light === 'yellow'
-                          ? '#F59E0B'
-                          : '#10B981',
-                    }}
-                  >
-                    {Math.round(budgetResponse.global_spent_percentage)}%
-                  </span>
-                </div>
-                <div
-                  style={{
-                    height: '8px',
-                    borderRadius: 'var(--radius-full)',
-                    background: 'var(--surface-muted)',
-                    overflow: 'hidden',
-                  }}
-                >
-                  <div
-                    style={{
-                      height: '100%',
-                      borderRadius: 'var(--radius-full)',
-                      background:
-                        budgetResponse.global_traffic_light === 'red'
-                          ? 'linear-gradient(90deg, #EF4444, #F87171)'
-                          : budgetResponse.global_traffic_light === 'yellow'
-                          ? 'linear-gradient(90deg, #F59E0B, #FBBF24)'
-                          : 'linear-gradient(90deg, #10B981, #34D399)',
-                      width: `${Math.min(budgetResponse.global_spent_percentage, 100)}%`,
-                      transition: 'width 0.4s ease-out',
-                    }}
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Bottom info row */}
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                paddingTop: '0.65rem',
-                borderTop: '1px solid var(--border-color)',
-                fontSize: '0.75rem',
-                color: 'var(--text-secondary)',
-              }}
-            >
+            }
+            spentMap={{
+              usd: budgetResponse?.total_spent_usd ?? 0,
+              bs: budgetResponse?.total_spent_bs ?? 0,
+              eur: budgetResponse?.total_spent_eur ?? 0,
+              usdt: budgetResponse?.total_spent_usdt ?? 0,
+            }}
+            limitMap={{
+              usd: budgetResponse?.global_limit_usd,
+              bs: budgetResponse?.global_limit_bs,
+              eur: budgetResponse?.global_limit_eur,
+              usdt: budgetResponse?.global_limit_usdt,
+            }}
+            displayCurrency={displayCurrency}
+            onCycleCurrency={cycleDisplayCurrency}
+            isLoading={isLoading}
+            showProgress={!!(budgetResponse?.global_limit_usd && budgetResponse.global_limit_usd > 0)}
+            percentage={budgetResponse?.global_spent_percentage}
+            trafficLight={budgetResponse?.global_traffic_light}
+            progressTitle="Límite del mes consumido"
+            footerLeft={
               <span>
-                Total presupuestado:{' '}
+                Techo Plan Maestro:{' '}
                 <strong style={{ color: 'var(--text-primary)' }}>
                   {formatAmount(
                     displayCurrency === 'usd'
-                      ? budgetResponse?.allocated_usd
+                      ? budgetResponse?.global_limit_usd
                       : displayCurrency === 'bs'
-                      ? budgetResponse?.allocated_bs
+                      ? budgetResponse?.global_limit_bs
                       : displayCurrency === 'eur'
-                      ? budgetResponse?.allocated_eur
-                      : budgetResponse?.allocated_usdt,
+                      ? budgetResponse?.global_limit_eur
+                      : budgetResponse?.global_limit_usdt,
                     prefixMap[displayCurrency]
                   )}
                   {suffixMap[displayCurrency]}
                 </strong>
               </span>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
-                Gastos compartidos deduplicados
-              </span>
-            </div>
-          </div>
+            }
+            footerRight={
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (primaryBudget) setSelectedBudgetId(primaryBudget.id);
+                }}
+                className="btn btn-secondary"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  padding: '0.35rem 0.75rem',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  borderRadius: 'var(--radius-full)',
+                }}
+              >
+                <SlidersHorizontal size={13} />
+                Gestionar Categorías y Límites
+              </button>
+            }
+          />
 
-          {/* Create New Budget Dashed Button */}
-          <button
-            onClick={() => handleOpenBudgetModal(null)}
+          {/* Section: Grupos y Sub-presupuestos */}
+          <div
             style={{
-              width: '100%',
-              padding: '0.875rem',
-              marginBottom: '1.25rem',
-              background: 'var(--surface-color)',
-              border: '2px dashed var(--accent-light)',
-              borderRadius: 'var(--radius-md)',
-              cursor: 'pointer',
               display: 'flex',
+              justifyContent: 'space-between',
               alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.5rem',
-              color: 'var(--text-secondary)',
-              fontFamily: 'inherit',
-              fontSize: '0.9rem',
-              fontWeight: 600,
-              transition: 'all 0.2s ease',
+              marginTop: '1.25rem',
+              marginBottom: '0.85rem',
             }}
           >
-            <Plus size={18} />
-            Crear nuevo presupuesto
-          </button>
+            <div>
+              <h2 style={{ fontSize: '1.05rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
+                Grupos y Sub-presupuestos ({subBudgets.length})
+              </h2>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '0.15rem 0 0 0' }}>
+                Agrupa categorías para organizar o compartir tus límites
+              </p>
+            </div>
+            <button
+              onClick={() => handleOpenBudgetModal(null)}
+              className="btn btn-primary"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                fontSize: '0.75rem',
+                padding: '0.45rem 0.85rem',
+                borderRadius: 'var(--radius-full)',
+                fontWeight: 600,
+              }}
+            >
+              <Plus size={15} />
+              Nuevo grupo
+            </button>
+          </div>
 
-          {/* List of Budgets */}
+          {/* List of Sub-Budgets */}
           {isLoading ? (
             <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-tertiary)' }}>
               Cargando presupuestos...
             </div>
-          ) : !budgetResponse?.budgets || budgetResponse.budgets.length === 0 ? (
+          ) : subBudgets.length === 0 ? (
             <div
               className="soft-card"
               style={{
@@ -702,12 +815,12 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                 color: 'var(--text-secondary)',
               }}
             >
-              <Wallet size={36} color="var(--text-tertiary)" style={{ margin: '0 auto 0.75rem' }} />
+              <Layers size={36} color="var(--text-tertiary)" style={{ margin: '0 auto 0.75rem' }} />
               <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: '0 0 0.35rem', color: 'var(--text-primary)' }}>
-                No tienes presupuestos para este mes
+                No tienes grupos de categorías creados
               </h3>
               <p style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', margin: '0 0 1.25rem' }}>
-                Crea un presupuesto (ej. &quot;Gastos Mensuales&quot; o &quot;Personal&quot;) para organizar tus límites de gastos.
+                Crea un grupo (ej. &quot;Casa & Mercado&quot; o &quot;Gastos Personales&quot;) para reunir categorías y heredarlas del Principal.
               </p>
               <button
                 onClick={() => handleOpenBudgetModal(null)}
@@ -715,16 +828,18 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                 style={{ fontSize: '0.85rem', padding: '0.6rem 1.25rem' }}
               >
                 <Plus size={16} />
-                Crear primer presupuesto
+                Crear primer grupo
               </button>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-              {budgetResponse.budgets.map((b) => {
+              {subBudgets.map((b) => {
                 const isRed = b.global_traffic_light === 'red';
                 const isYellow = b.global_traffic_light === 'yellow';
                 const statusColor = isRed ? '#EF4444' : isYellow ? '#F59E0B' : '#10B981';
                 const currSym = currencyLabels[b.currency] || '$';
+                const catNames = b.category_limits.map((c) => c.category_name).slice(0, 3).join(', ');
+                const hasMore = b.category_limits.length > 3 ? ` +${b.category_limits.length - 3}` : '';
 
                 return (
                   <div
@@ -760,14 +875,11 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                             flexShrink: 0,
                           }}
                         >
-                          <Wallet size={20} />
+                          <Layers size={20} />
                         </div>
                         <div style={{ minWidth: 0 }}>
                           <div
                             style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '0.4rem',
                               fontSize: '1rem',
                               fontWeight: 700,
                               color: 'var(--text-primary)',
@@ -776,27 +888,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                               textOverflow: 'ellipsis',
                             }}
                           >
-                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.name}</span>
-                            {b.is_primary && (
-                              <span
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '0.25rem',
-                                  fontSize: '0.65rem',
-                                  fontWeight: 700,
-                                  color: '#B45309',
-                                  background: 'rgba(245, 158, 11, 0.15)',
-                                  border: '1px solid rgba(245, 158, 11, 0.3)',
-                                  padding: '0.1rem 0.4rem',
-                                  borderRadius: 'var(--radius-full)',
-                                  flexShrink: 0,
-                                }}
-                              >
-                                <Star size={11} fill="#F59E0B" color="#F59E0B" />
-                                Principal
-                              </span>
-                            )}
+                            {b.name}
                           </div>
                           <div
                             style={{
@@ -816,15 +908,13 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                                 borderRadius: 'var(--radius-full)',
                               }}
                             >
-                              {b.income_mode === 'manual'
-                                ? 'Manual'
-                                : b.income_mode === 'single_income'
-                                ? '1 Ingreso'
-                                : 'Ingresos'}
-                            </span>
-                            <span style={{ fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
                               {b.categories_count} categorías
                             </span>
+                            {catNames && (
+                              <span style={{ fontSize: '0.725rem', color: 'var(--text-tertiary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {catNames}{hasMore}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -844,39 +934,17 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                             ≈ Bs. {formatAmount(b.total_spent_bs)}
                           </div>
                         )}
-                        {b.currency !== 'USD_BCV' && b.currency !== 'USD_CASH' && (
-                          <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
-                            ≈ $ {formatAmount(b.total_spent_usd)}
-                          </div>
-                        )}
                       </div>
                     </div>
 
                     {/* Progress bar */}
                     {b.effective_global_limit && b.effective_global_limit > 0 && (
                       <div style={{ marginTop: '0.6rem' }}>
-                        <div
-                          style={{
-                            height: '6px',
-                            borderRadius: 'var(--radius-full)',
-                            background: 'var(--surface-muted)',
-                            overflow: 'hidden',
-                          }}
-                        >
-                          <div
-                            style={{
-                              height: '100%',
-                              borderRadius: 'var(--radius-full)',
-                              background: isRed
-                                ? 'linear-gradient(90deg, #EF4444, #F87171)'
-                                : isYellow
-                                ? 'linear-gradient(90deg, #F59E0B, #FBBF24)'
-                                : 'linear-gradient(90deg, #10B981, #34D399)',
-                              width: `${Math.min(b.global_spent_percentage, 100)}%`,
-                              transition: 'width 0.4s ease-out',
-                            }}
-                          />
-                        </div>
+                        <TrafficLightProgressBar
+                          percentage={b.global_spent_percentage}
+                          trafficLight={b.global_traffic_light}
+                          height={8}
+                        />
                       </div>
                     )}
 
@@ -894,56 +962,15 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                       <span style={{ fontSize: '0.75rem', fontWeight: 600, color: statusColor }}>
                         {b.effective_global_limit && b.effective_global_limit > 0
                           ? `${Math.round(b.global_spent_percentage)}% consumido`
-                          : 'Sin techo global configurado'}
+                          : 'Sin límites asignados'}
                       </span>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                        {b.is_primary ? (
-                          <div
-                            title="Presupuesto principal activo"
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '0.25rem',
-                              padding: '0.25rem 0.5rem',
-                              borderRadius: 'var(--radius-full)',
-                              background: 'rgba(245, 158, 11, 0.12)',
-                              color: '#B45309',
-                              fontSize: '0.7rem',
-                              fontWeight: 700,
-                            }}
-                          >
-                            <Star size={12} fill="#F59E0B" color="#F59E0B" />
-                            <span>Principal</span>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={(e) => handleSetPrimary(b.id, e)}
-                            title="Hacer presupuesto principal"
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '0.25rem',
-                              padding: '0.25rem 0.5rem',
-                              borderRadius: 'var(--radius-full)',
-                              background: 'var(--surface-muted)',
-                              border: '1px solid var(--border-color)',
-                              color: 'var(--text-secondary)',
-                              fontSize: '0.7rem',
-                              fontWeight: 600,
-                              cursor: 'pointer',
-                              transition: 'all 0.15s ease',
-                            }}
-                          >
-                            <Star size={12} />
-                            <span>Hacer principal</span>
-                          </button>
-                        )}
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             handleOpenBudgetModal(b);
                           }}
-                          title="Editar presupuesto"
+                          title="Editar grupo"
                           style={{
                             width: '32px',
                             height: '32px',
@@ -969,7 +996,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                               budgetName: b.name,
                             });
                           }}
-                          title="Eliminar presupuesto"
+                          title="Eliminar grupo"
                           style={{
                             width: '32px',
                             height: '32px',
@@ -1046,9 +1073,9 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                       textOverflow: 'ellipsis',
                     }}
                   >
-                    {selectedBudget.name}
+                    {selectedBudget.is_primary ? 'Plan Maestro' : selectedBudget.name}
                   </h1>
-                  {selectedBudget.is_primary && (
+                  {selectedBudget.is_primary ? (
                     <span
                       style={{
                         display: 'inline-flex',
@@ -1059,13 +1086,32 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                         color: '#B45309',
                         background: 'rgba(245, 158, 11, 0.15)',
                         border: '1px solid rgba(245, 158, 11, 0.3)',
-                        padding: '0.1rem 0.4rem',
+                        padding: '0.1rem 0.45rem',
                         borderRadius: 'var(--radius-full)',
                         flexShrink: 0,
                       }}
                     >
                       <Star size={11} fill="#F59E0B" color="#F59E0B" />
                       Principal
+                    </span>
+                  ) : (
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
+                        fontSize: '0.65rem',
+                        fontWeight: 700,
+                        color: 'var(--primary-color)',
+                        background: 'rgba(16, 185, 129, 0.12)',
+                        border: '1px solid rgba(16, 185, 129, 0.25)',
+                        padding: '0.1rem 0.45rem',
+                        borderRadius: 'var(--radius-full)',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Layers size={11} />
+                      Grupo
                     </span>
                   )}
                 </div>
@@ -1079,60 +1125,18 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                     textOverflow: 'ellipsis',
                   }}
                 >
-                  {currencyLabels[selectedBudget.currency] || '$'} • {selectedBudget.month_year}
+                  {selectedBudget.is_primary
+                    ? `Fuente de verdad de todos los límites • ${currencyLabels[selectedBudget.currency] || '$'} • ${selectedBudget.month_year}`
+                    : `Límites heredados del Principal • ${currencyLabels[selectedBudget.currency] || '$'} • ${selectedBudget.month_year}`}
                 </p>
               </div>
             </div>
 
             {/* Edit / Delete actions for this budget */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0 }}>
-              {!selectedBudget.is_primary ? (
-                <button
-                  onClick={(e) => handleSetPrimary(selectedBudget.id, e)}
-                  title="Hacer este presupuesto el principal"
-                  style={{
-                    height: '36px',
-                    padding: '0 0.6rem',
-                    borderRadius: 'var(--radius-full)',
-                    background: 'var(--surface-color)',
-                    border: '1px solid var(--border-color)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.3rem',
-                    cursor: 'pointer',
-                    color: 'var(--text-secondary)',
-                    boxShadow: 'var(--shadow-sm)',
-                    fontSize: '0.75rem',
-                    fontWeight: 600,
-                  }}
-                >
-                  <Star size={14} />
-                  <span>Hacer principal</span>
-                </button>
-              ) : (
-                <div
-                  title="Presupuesto principal"
-                  style={{
-                    height: '36px',
-                    padding: '0 0.6rem',
-                    borderRadius: 'var(--radius-full)',
-                    background: 'rgba(245, 158, 11, 0.12)',
-                    border: '1px solid rgba(245, 158, 11, 0.25)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.3rem',
-                    color: '#B45309',
-                    fontSize: '0.75rem',
-                    fontWeight: 700,
-                  }}
-                >
-                  <Star size={14} fill="#F59E0B" color="#F59E0B" />
-                  <span>Principal</span>
-                </div>
-              )}
               <button
                 onClick={() => handleOpenBudgetModal(selectedBudget)}
-                title="Editar este presupuesto"
+                title={selectedBudget.is_primary ? 'Editar nombre y moneda' : 'Editar grupo'}
                 style={{
                   width: '36px',
                   height: '36px',
@@ -1149,64 +1153,40 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
               >
                 <Edit3 size={15} />
               </button>
-              <button
-                onClick={() =>
-                  setConfirmDeleteBudget({
-                    isOpen: true,
-                    budgetId: selectedBudget.id,
-                    budgetName: selectedBudget.name,
-                  })
-                }
-                title="Eliminar este presupuesto"
-                style={{
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: 'var(--radius-full)',
-                  background: 'var(--surface-color)',
-                  border: '1px solid var(--border-color)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  color: 'var(--expense-color)',
-                  boxShadow: 'var(--shadow-sm)',
-                }}
-              >
-                <Trash2 size={15} />
-              </button>
+              {!selectedBudget.is_primary && (
+                <button
+                  onClick={() =>
+                    setConfirmDeleteBudget({
+                      isOpen: true,
+                      budgetId: selectedBudget.id,
+                      budgetName: selectedBudget.name,
+                    })
+                  }
+                  title="Eliminar este grupo"
+                  style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: 'var(--radius-full)',
+                    background: 'var(--surface-color)',
+                    border: '1px solid var(--border-color)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    color: 'var(--expense-color)',
+                    boxShadow: 'var(--shadow-sm)',
+                  }}
+                >
+                  <Trash2 size={15} />
+                </button>
+              )}
             </div>
           </header>
 
           {/* Hero Card for THIS Budget */}
-          <div
-            className="soft-card"
-            onClick={cycleDisplayCurrency}
-            style={{
-              marginBottom: '1.25rem',
-              padding: '1.25rem',
-              cursor: 'pointer',
-              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.06) 0%, var(--surface-color) 100%)',
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '0.4rem',
-              }}
-            >
-              <span
-                style={{
-                  fontSize: '0.75rem',
-                  color: 'var(--text-secondary)',
-                  fontWeight: 600,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.04em',
-                }}
-              >
-                Techo de este Presupuesto
-              </span>
+          <BudgetHeroCard
+            title={selectedBudget.is_primary ? 'Techo Total del Plan Maestro' : `Techo de "${selectedBudget.name}"`}
+            badge={
               <div
                 style={{
                   display: 'flex',
@@ -1234,96 +1214,29 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
               >
                 {selectedBudget.effective_global_limit && selectedBudget.effective_global_limit > 0
                   ? `${Math.round(selectedBudget.global_spent_percentage)}% consumido`
-                  : 'Sin techo global'}
+                  : 'Sin límites asignados'}
               </div>
-            </div>
-
-            <div
-              style={{
-                fontSize: '1.85rem',
-                fontWeight: 800,
-                color: 'var(--text-primary)',
-                letterSpacing: '-0.02em',
-              }}
-            >
-              {(() => {
-                const spentMap = {
-                  usd: selectedBudget.total_spent_usd,
-                  bs: selectedBudget.total_spent_bs,
-                  eur: selectedBudget.total_spent_eur,
-                  usdt: selectedBudget.total_spent_usdt,
-                };
-                const limitMap = {
-                  usd: selectedBudget.global_limit_usd,
-                  bs: selectedBudget.global_limit_bs,
-                  eur: selectedBudget.global_limit_eur,
-                  usdt: selectedBudget.global_limit_usdt,
-                };
-                const p = prefixMap[displayCurrency];
-                const s = suffixMap[displayCurrency];
-                const spentStr = formatAmount(spentMap[displayCurrency], p) + s;
-                const lim = limitMap[displayCurrency];
-                if (lim !== null && lim !== undefined && lim > 0) {
-                  return `${spentStr} / ${formatAmount(lim, p)}${s}`;
-                }
-                return spentStr;
-              })()}
-            </div>
-
-            <div
-              style={{
-                fontSize: '0.7rem',
-                color: 'var(--text-tertiary)',
-                marginTop: '0.2rem',
-                marginBottom: '0.75rem',
-              }}
-            >
-              Toca para alternar moneda ({displayCurrency.toUpperCase()})
-            </div>
-
-            {/* Progress Bar */}
-            {selectedBudget.effective_global_limit && selectedBudget.effective_global_limit > 0 && (
-              <div style={{ marginBottom: '0.75rem' }}>
-                <div
-                  style={{
-                    height: '8px',
-                    borderRadius: 'var(--radius-full)',
-                    background: 'var(--surface-muted)',
-                    overflow: 'hidden',
-                  }}
-                >
-                  <div
-                    style={{
-                      height: '100%',
-                      borderRadius: 'var(--radius-full)',
-                      background:
-                        selectedBudget.global_traffic_light === 'red'
-                          ? 'linear-gradient(90deg, #EF4444, #F87171)'
-                          : selectedBudget.global_traffic_light === 'yellow'
-                          ? 'linear-gradient(90deg, #F59E0B, #FBBF24)'
-                          : 'linear-gradient(90deg, #10B981, #34D399)',
-                      width: `${Math.min(selectedBudget.global_spent_percentage, 100)}%`,
-                      transition: 'width 0.4s ease-out',
-                    }}
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Bottom row */}
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                paddingTop: '0.65rem',
-                borderTop: '1px solid var(--border-color)',
-                fontSize: '0.75rem',
-                color: 'var(--text-secondary)',
-              }}
-            >
+            }
+            spentMap={{
+              usd: selectedBudget.total_spent_usd,
+              bs: selectedBudget.total_spent_bs,
+              eur: selectedBudget.total_spent_eur,
+              usdt: selectedBudget.total_spent_usdt,
+            }}
+            limitMap={{
+              usd: selectedBudget.global_limit_usd,
+              bs: selectedBudget.global_limit_bs,
+              eur: selectedBudget.global_limit_eur,
+              usdt: selectedBudget.global_limit_usdt,
+            }}
+            displayCurrency={displayCurrency}
+            onCycleCurrency={cycleDisplayCurrency}
+            showProgress={!!(selectedBudget.effective_global_limit && selectedBudget.effective_global_limit > 0)}
+            percentage={selectedBudget.global_spent_percentage}
+            trafficLight={selectedBudget.global_traffic_light}
+            footerLeft={
               <span>
-                Asignado a categorías:{' '}
+                {selectedBudget.is_primary ? 'Total sumatoria de categorías: ' : 'Límites sumados en este grupo: '}
                 <strong style={{ color: 'var(--text-primary)' }}>
                   {formatAmount(
                     displayCurrency === 'usd'
@@ -1338,34 +1251,31 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                   {suffixMap[displayCurrency]}
                 </strong>
               </span>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleOpenBudgetModal(selectedBudget);
-                }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.35rem',
-                  padding: '0.3rem 0.65rem',
-                  borderRadius: 'var(--radius-full)',
-                  background: 'var(--surface-color)',
-                  border: '1px solid var(--border-color)',
-                  color: 'var(--text-primary)',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  boxShadow: 'var(--shadow-sm)',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                <SlidersHorizontal size={13} />
-                Ajustar techo
-              </button>
-            </div>
-          </div>
+            }
+            footerRight={
+              selectedBudget.is_primary ? (
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+                  Suma automática de límites
+                </span>
+              ) : (
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.3rem',
+                    fontSize: '0.75rem',
+                    color: 'var(--primary-color)',
+                    fontWeight: 600,
+                  }}
+                >
+                  <Lock size={12} />
+                  Límites heredados del Principal
+                </span>
+              )
+            }
+          />
 
-          {/* Section Header: Categorías del presupuesto */}
+          {/* Section Header: Categorías */}
           <div
             style={{
               display: 'flex',
@@ -1376,28 +1286,34 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
           >
             <div>
               <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
-                Categorías del presupuesto ({selectedBudget.category_limits.length})
+                {selectedBudget.is_primary
+                  ? `Categorías del Plan Maestro (${selectedBudget.category_limits.length})`
+                  : `Categorías del grupo (${selectedBudget.category_limits.length})`}
               </h3>
               <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '0.15rem 0 0 0' }}>
-                Solo los gastos de estas categorías se suman a este presupuesto
+                {selectedBudget.is_primary
+                  ? 'Define aquí el límite mensual de cada categoría. Los grupos heredarán estos límites.'
+                  : 'Solo los gastos de estas categorías se suman a este grupo.'}
               </p>
             </div>
-            <button
-              onClick={() => handleOpenBudgetModal(selectedBudget)}
-              className="btn btn-secondary"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.35rem',
-                fontSize: '0.75rem',
-                padding: '0.4rem 0.75rem',
-                borderRadius: '8px',
-                fontWeight: 600,
-              }}
-            >
-              <SlidersHorizontal size={13} />
-              Gestionar categorías
-            </button>
+            {!selectedBudget.is_primary && (
+              <button
+                onClick={() => handleOpenBudgetModal(selectedBudget)}
+                className="btn btn-secondary"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  fontSize: '0.75rem',
+                  padding: '0.4rem 0.75rem',
+                  borderRadius: '8px',
+                  fontWeight: 600,
+                }}
+              >
+                <SlidersHorizontal size={13} />
+                Gestionar categorías
+              </button>
+            )}
           </div>
 
           {/* Direct Category Cards Listing */}
@@ -1413,7 +1329,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
               >
                 <Layers size={36} color="var(--text-tertiary)" style={{ margin: '0 auto 0.75rem' }} />
                 <p style={{ margin: '0 0 1rem', fontSize: '0.9rem', fontWeight: 500 }}>
-                  No has seleccionado categorías para este presupuesto.
+                  No has seleccionado categorías para este grupo.
                 </p>
                 <button
                   onClick={() => handleOpenBudgetModal(selectedBudget)}
@@ -1435,24 +1351,13 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
               selectedBudget.category_limits.map((cl) => {
                 const catName = cl.category_name;
                 const hasLimit = Number(cl.limit_amount) > 0;
-                const otherBudgets = selectedBudget.is_primary
-                  ? []
-                  : (cl.also_in_budgets && cl.also_in_budgets.length > 0)
-                    ? cl.also_in_budgets
-                    : (budgetResponse?.budgets || [])
-                        .filter(
-                          (b) =>
-                            b.id !== selectedBudget.id &&
-                            b.category_limits.some((c) => c.category_name.toLowerCase() === catName.toLowerCase())
-                        )
-                        .map((b) => b.name);
+                const currSym = currencyLabels[cl.currency] || '$';
 
                 if (hasLimit) {
-                  // Category WITH configured limit in this budget
+                  // Category WITH configured limit
                   const isRed = cl.traffic_light === 'red';
                   const isYellow = cl.traffic_light === 'yellow';
                   const statusColor = isRed ? '#EF4444' : isYellow ? '#F59E0B' : '#10B981';
-                  const currSym = currencyLabels[cl.currency] || '$';
 
                   return (
                     <div
@@ -1489,36 +1394,39 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                             {renderCategoryIcon(catName)}
                           </div>
                           <div style={{ minWidth: 0 }}>
-                            <div
-                              style={{
-                                fontSize: '0.95rem',
-                                fontWeight: 600,
-                                color: 'var(--text-primary)',
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                              }}
-                            >
-                              {catName}
-                            </div>
-                            {otherBudgets.length > 0 && (
-                              <div
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                              <span
                                 style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '0.25rem',
-                                  fontSize: '0.675rem',
+                                  fontSize: '0.95rem',
                                   fontWeight: 600,
-                                  color: '#B45309',
-                                  background: 'rgba(245, 158, 11, 0.12)',
-                                  padding: '0.1rem 0.4rem',
-                                  borderRadius: 'var(--radius-full)',
-                                  marginTop: '0.2rem',
+                                  color: 'var(--text-primary)',
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
                                 }}
                               >
-                                ⚠️ También en: {otherBudgets.join(', ')}
-                              </div>
-                            )}
+                                {catName}
+                              </span>
+                              {!selectedBudget.is_primary && (
+                                <span
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.2rem',
+                                    fontSize: '0.65rem',
+                                    fontWeight: 600,
+                                    color: 'var(--text-tertiary)',
+                                    background: 'var(--surface-muted)',
+                                    padding: '0.1rem 0.35rem',
+                                    borderRadius: 'var(--radius-full)',
+                                    flexShrink: 0,
+                                  }}
+                                  title="Límite heredado del Presupuesto Principal"
+                                >
+                                  <Lock size={10} /> Heredado
+                                </span>
+                              )}
+                            </div>
                             <div
                               style={{
                                 fontSize: '0.75rem',
@@ -1564,81 +1472,116 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                           <span style={{ fontSize: '0.75rem', fontWeight: 600, color: statusColor }}>
                             {Math.round(cl.spent_percentage)}% consumido
                           </span>
-                          <div style={{ display: 'flex', gap: '0.25rem' }}>
-                            <button
-                              onClick={() => handleOpenCategoryLimitModal(catName)}
-                              title="Editar límite"
-                              style={{
-                                width: '30px',
-                                height: '30px',
-                                borderRadius: 'var(--radius-full)',
-                                background: 'var(--surface-muted)',
-                                border: 'none',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                cursor: 'pointer',
-                                color: 'var(--text-secondary)',
-                                transition: 'all 0.15s ease',
-                              }}
-                            >
-                              <Edit3 size={13} />
-                            </button>
-                            <button
-                              onClick={() =>
-                                setConfirmDeleteCategoryLimit({
-                                  isOpen: true,
-                                  budgetId: selectedBudget.id,
-                                  categoryName: catName,
-                                })
-                              }
-                              title="Quitar límite de este presupuesto"
-                              style={{
-                                width: '30px',
-                                height: '30px',
-                                borderRadius: 'var(--radius-full)',
-                                background: 'var(--surface-muted)',
-                                border: 'none',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                cursor: 'pointer',
-                                color: 'var(--expense-color)',
-                                transition: 'all 0.15s ease',
-                              }}
-                            >
-                              <Trash2 size={13} />
-                            </button>
+                          <div style={{ display: 'flex', gap: '0.35rem' }}>
+                            {selectedBudget.is_primary ? (
+                              <>
+                                <button
+                                  onClick={() => handleOpenCategoryLimitModal(catName)}
+                                  title="Editar límite"
+                                  style={{
+                                    width: '30px',
+                                    height: '30px',
+                                    borderRadius: 'var(--radius-full)',
+                                    background: 'var(--surface-muted)',
+                                    border: 'none',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: 'pointer',
+                                    color: 'var(--text-secondary)',
+                                    transition: 'all 0.15s ease',
+                                  }}
+                                >
+                                  <Edit3 size={13} />
+                                </button>
+                                <button
+                                  onClick={() =>
+                                    setConfirmDeleteCategoryLimit({
+                                      isOpen: true,
+                                      budgetId: selectedBudget.id,
+                                      categoryName: catName,
+                                    })
+                                  }
+                                  title="Restablecer límite a 0"
+                                  style={{
+                                    width: '30px',
+                                    height: '30px',
+                                    borderRadius: 'var(--radius-full)',
+                                    background: 'var(--surface-muted)',
+                                    border: 'none',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: 'pointer',
+                                    color: 'var(--text-tertiary)',
+                                    transition: 'all 0.15s ease',
+                                  }}
+                                >
+                                  <RotateCcw size={13} />
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => handleOpenCategoryLimitModal(catName)}
+                                  title="Ajustar límite en el Presupuesto Principal"
+                                  style={{
+                                    padding: '0.2rem 0.5rem',
+                                    borderRadius: '6px',
+                                    background: 'var(--surface-muted)',
+                                    border: '1px solid var(--border-color)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.25rem',
+                                    cursor: 'pointer',
+                                    color: 'var(--text-secondary)',
+                                    fontSize: '0.7rem',
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  <Edit3 size={11} />
+                                  Ajustar en Principal
+                                </button>
+                                <button
+                                  onClick={() =>
+                                    setConfirmDeleteCategoryLimit({
+                                      isOpen: true,
+                                      budgetId: selectedBudget.id,
+                                      categoryName: catName,
+                                    })
+                                  }
+                                  title="Quitar categoría de este grupo"
+                                  style={{
+                                    width: '30px',
+                                    height: '30px',
+                                    borderRadius: 'var(--radius-full)',
+                                    background: 'var(--surface-muted)',
+                                    border: 'none',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: 'pointer',
+                                    color: 'var(--expense-color)',
+                                    transition: 'all 0.15s ease',
+                                  }}
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </>
+                            )}
                           </div>
                         </div>
 
-                        <div
-                          style={{
-                            height: '8px',
-                            borderRadius: 'var(--radius-full)',
-                            background: 'var(--surface-muted)',
-                            overflow: 'hidden',
-                          }}
-                        >
-                          <div
-                            style={{
-                              height: '100%',
-                              borderRadius: 'var(--radius-full)',
-                              background: isRed
-                                ? 'linear-gradient(90deg, #EF4444, #F87171)'
-                                : isYellow
-                                ? 'linear-gradient(90deg, #F59E0B, #FBBF24)'
-                                : 'linear-gradient(90deg, #10B981, #34D399)',
-                              width: `${Math.min(cl.spent_percentage, 100)}%`,
-                              transition: 'width 0.4s ease-out',
-                            }}
-                          />
-                        </div>
+                        <TrafficLightProgressBar
+                          percentage={cl.spent_percentage}
+                          trafficLight={cl.traffic_light}
+                          height={8}
+                        />
                       </div>
                     </div>
                   );
                 } else {
-                  // Category WITHOUT limit (> 0) in this budget (limit_amount === 0)
+                  // Category without limit (limit_amount === 0) -> "⚠️ Falta ingresar límite"
                   return (
                     <div
                       key={catName}
@@ -1650,6 +1593,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                         justifyContent: 'space-between',
                         gap: '0.75rem',
                         background: 'var(--surface-color)',
+                        borderLeft: '4px solid var(--border-color)',
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0, flex: 1 }}>
@@ -1681,27 +1625,24 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                           >
                             {catName}
                           </div>
-                          {otherBudgets.length > 0 && (
-                            <div
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '0.25rem',
-                                fontSize: '0.675rem',
-                                fontWeight: 600,
-                                color: '#B45309',
-                                background: 'rgba(245, 158, 11, 0.12)',
-                                padding: '0.1rem 0.4rem',
-                                borderRadius: 'var(--radius-full)',
-                                marginTop: '0.15rem',
-                              }}
-                            >
-                              ⚠️ También en: {otherBudgets.join(', ')}
+                          <div
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              fontSize: '0.7rem',
+                              fontWeight: 600,
+                              color: '#B45309',
+                              marginTop: '0.15rem',
+                            }}
+                          >
+                            ⚠️ Falta ingresar límite
+                          </div>
+                          {cl.spent_usd > 0 && (
+                            <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginTop: '0.1rem' }}>
+                              Gastado: $ {formatAmount(cl.spent_usd)}
                             </div>
                           )}
-                          <div style={{ fontSize: '0.725rem', color: 'var(--text-tertiary)', marginTop: '0.1rem' }}>
-                            Gastado este mes: $ {formatAmount(cl.spent_usd)}
-                          </div>
                         </div>
                       </div>
 
@@ -1721,33 +1662,35 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                           }}
                         >
                           <Plus size={14} />
-                          Asignar límite
+                          {selectedBudget.is_primary ? 'Definir límite' : 'Ajustar en Principal'}
                         </button>
-                        <button
-                          onClick={() =>
-                            setConfirmDeleteCategoryLimit({
-                              isOpen: true,
-                              budgetId: selectedBudget.id,
-                              categoryName: catName,
-                            })
-                          }
-                          title="Quitar categoría de este presupuesto"
-                          style={{
-                            width: '30px',
-                            height: '30px',
-                            borderRadius: 'var(--radius-full)',
-                            background: 'var(--surface-muted)',
-                            border: 'none',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                            color: 'var(--expense-color)',
-                            transition: 'all 0.15s ease',
-                          }}
-                        >
-                          <Trash2 size={13} />
-                        </button>
+                        {!selectedBudget.is_primary && (
+                          <button
+                            onClick={() =>
+                              setConfirmDeleteCategoryLimit({
+                                isOpen: true,
+                                budgetId: selectedBudget.id,
+                                categoryName: catName,
+                              })
+                            }
+                            title="Quitar categoría de este grupo"
+                            style={{
+                              width: '30px',
+                              height: '30px',
+                              borderRadius: 'var(--radius-full)',
+                              background: 'var(--surface-muted)',
+                              border: 'none',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              cursor: 'pointer',
+                              color: 'var(--expense-color)',
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -1769,7 +1712,6 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
           monthYear={currentMonthYear}
           budgetToEdit={budgetModal.budgetToEdit}
           hasExistingBudgets={(budgetResponse?.budgets?.length || 0) > 0}
-          incomes={estimatedIncomes}
           availableCategories={budgetResponse?.available_categories || []}
           renderCategoryIcon={renderCategoryIcon}
           onClose={() => setBudgetModal({ isOpen: false, budgetToEdit: null })}
@@ -1802,10 +1744,12 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
             >
               <div>
                 <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
-                  {categoryModal.existingLimit ? 'Editar Límite' : 'Asignar Límite'}
+                  {categoryModal.existingLimit && Number(categoryModal.existingLimit.limit_amount) > 0
+                    ? 'Editar Límite Mensual'
+                    : 'Asignar Límite Mensual'}
                 </h3>
                 <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '0.2rem 0 0 0' }}>
-                  {categoryModal.categoryName} en &quot;{selectedBudget?.name}&quot;
+                  {categoryModal.categoryName} • Plan Maestro
                 </p>
               </div>
               <button
@@ -1821,30 +1765,26 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
               </button>
             </div>
 
-            {/* Warning if category is already in other budgets (only alert on non-primary budgets) */}
-            {categoryModal.otherBudgetsWithCat.length > 0 && !selectedBudget?.is_primary && (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: '0.5rem',
-                  padding: '0.75rem',
-                  borderRadius: '8px',
-                  background: 'rgba(245, 158, 11, 0.1)',
-                  border: '1px solid rgba(245, 158, 11, 0.25)',
-                  marginBottom: '1rem',
-                  fontSize: '0.75rem',
-                  color: '#92400E',
-                }}
-              >
-                <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
-                <div>
-                  <strong>Categoría compartida:</strong> ya tiene límite asignado en:{' '}
-                  <strong>{categoryModal.otherBudgetsWithCat.join(', ')}</strong>. Puedes presupuestarla aquí también;
-                  en el resumen global consolidado sus gastos se contabilizan una sola vez.
-                </div>
+            {/* Sync explanation callout */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '0.75rem',
+                borderRadius: '8px',
+                background: 'rgba(16, 185, 129, 0.1)',
+                border: '1px solid rgba(16, 185, 129, 0.25)',
+                marginBottom: '1rem',
+                fontSize: '0.75rem',
+                color: '#065F46',
+              }}
+            >
+              <Lock size={15} style={{ flexShrink: 0 }} />
+              <div>
+                El límite se define en el <strong>Plan Maestro</strong> y se sincroniza automáticamente con todos los grupos que incluyan esta categoría.
               </div>
-            )}
+            </div>
 
             <form onSubmit={handleSaveCategoryLimit} className="expense-form">
               <div className="form-group" style={{ marginBottom: '1rem' }}>
@@ -1930,8 +1870,8 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
       {/* ConfirmDelete Budget Modal */}
       <ConfirmModal
         isOpen={confirmDeleteBudget.isOpen}
-        title="¿Eliminar presupuesto?"
-        message={`¿Estás seguro de que deseas eliminar el presupuesto "${confirmDeleteBudget.budgetName}"? Se eliminarán también los límites de categorías configurados dentro de este presupuesto.`}
+        title="¿Eliminar grupo?"
+        message={`¿Estás seguro de que deseas eliminar el grupo "${confirmDeleteBudget.budgetName}"? Los límites en el Plan Maestro se mantendrán intactos.`}
         onConfirm={handleDeleteBudget}
         onCancel={() => setConfirmDeleteBudget({ isOpen: false, budgetId: '', budgetName: '' })}
       />
@@ -1939,8 +1879,12 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
       {/* ConfirmDelete Category Limit Modal */}
       <ConfirmModal
         isOpen={confirmDeleteCategoryLimit.isOpen}
-        title="¿Quitar categoría del presupuesto?"
-        message={`¿Estás seguro de que deseas quitar la categoría "${confirmDeleteCategoryLimit.categoryName}" de este presupuesto?`}
+        title={selectedBudget?.is_primary ? '¿Restablecer límite?' : '¿Quitar categoría del grupo?'}
+        message={
+          selectedBudget?.is_primary
+            ? `¿Deseas restablecer a 0 el límite de "${confirmDeleteCategoryLimit.categoryName}" en el Plan Maestro? Los grupos que incluyan esta categoría también heredarán 0.`
+            : `¿Deseas quitar la categoría "${confirmDeleteCategoryLimit.categoryName}" de este grupo? El límite en el Plan Maestro se mantendrá intacto.`
+        }
         onConfirm={handleDeleteCategoryLimit}
         onCancel={() => setConfirmDeleteCategoryLimit({ isOpen: false, budgetId: '', categoryName: '' })}
       />
@@ -1954,7 +1898,6 @@ interface BudgetFormModalProps {
   monthYear: string;
   budgetToEdit: SingleBudgetOut | null;
   hasExistingBudgets?: boolean;
-  incomes: EstimatedIncome[];
   availableCategories?: string[];
   renderCategoryIcon?: (name: string) => React.ReactNode;
   onClose: () => void;
@@ -1965,26 +1908,15 @@ const BudgetFormModal: React.FC<BudgetFormModalProps> = ({
   isOpen,
   monthYear,
   budgetToEdit,
-  hasExistingBudgets = false,
-  incomes,
   availableCategories = [],
   renderCategoryIcon,
   onClose,
   onSaved,
 }) => {
   const isEdit = Boolean(budgetToEdit);
+  const isPrimary = Boolean(budgetToEdit?.is_primary);
   const [name, setName] = useState<string>(budgetToEdit?.name || '');
   const [currency, setCurrency] = useState<CurrencyType>(budgetToEdit?.currency || 'USD_BCV');
-  const [incomeMode, setIncomeMode] = useState<BudgetIncomeMode>(budgetToEdit?.income_mode || 'manual');
-  const [linkedIncomeId, setLinkedIncomeId] = useState<string>(budgetToEdit?.linked_income_id || '');
-  const [manualLimit, setManualLimit] = useState<string>(
-    budgetToEdit?.manual_global_limit !== null && budgetToEdit?.manual_global_limit !== undefined
-      ? String(budgetToEdit.manual_global_limit)
-      : ''
-  );
-  const [isPrimary, setIsPrimary] = useState<boolean>(
-    budgetToEdit ? Boolean(budgetToEdit.is_primary) : !hasExistingBudgets
-  );
   const [selectedCategories, setSelectedCategories] = useState<string[]>(() => {
     if (budgetToEdit) {
       return budgetToEdit.category_limits ? budgetToEdit.category_limits.map((cl) => cl.category_name) : [];
@@ -2024,39 +1956,25 @@ const BudgetFormModal: React.FC<BudgetFormModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
-      alert('Ingresa un nombre para el presupuesto');
+      alert('Ingresa un nombre');
       return;
     }
     setIsSubmitting(true);
-
-    let manualVal: number | null = null;
-    if (incomeMode === 'manual' && manualLimit.trim()) {
-      const num = parseFloat(manualLimit);
-      if (!isNaN(num) && num >= 0) {
-        manualVal = num;
-      }
-    }
 
     try {
       if (isEdit && budgetToEdit) {
         const res = await updateMonthlyBudgetById(budgetToEdit.id, {
           name: name.trim(),
           currency,
-          income_mode: incomeMode,
-          linked_income_id: incomeMode === 'single_income' && linkedIncomeId ? linkedIncomeId : null,
-          manual_global_limit: manualVal,
           is_primary: isPrimary,
-          categories: selectedCategories,
+          categories: isPrimary ? undefined : selectedCategories,
         });
         onSaved(res);
       } else {
         const res = await createMonthlyBudget(monthYear, {
           name: name.trim(),
           currency,
-          income_mode: incomeMode,
-          linked_income_id: incomeMode === 'single_income' && linkedIncomeId ? linkedIncomeId : null,
-          manual_global_limit: manualVal,
-          is_primary: isPrimary,
+          is_primary: false,
           categories: selectedCategories,
         });
         onSaved(res);
@@ -2090,10 +2008,12 @@ const BudgetFormModal: React.FC<BudgetFormModalProps> = ({
         >
           <div>
             <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
-              {isEdit ? 'Editar Presupuesto' : 'Crear Nuevo Presupuesto'}
+              {isEdit ? (isPrimary ? 'Editar Plan Maestro' : 'Editar Grupo') : 'Nuevo Grupo de Categorías'}
             </h3>
             <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '0.2rem 0 0 0' }}>
-              Configura el nombre y modo del techo mensual
+              {isPrimary
+                ? 'Configura el nombre y moneda base de tu Plan Maestro'
+                : 'Agrupa categorías que heredarán sus límites del Principal'}
             </p>
           </div>
           <button
@@ -2110,15 +2030,58 @@ const BudgetFormModal: React.FC<BudgetFormModalProps> = ({
         </div>
 
         <form onSubmit={handleSubmit} className="expense-form">
+          {/* Banner */}
+          {isPrimary ? (
+            <div
+              style={{
+                padding: '0.75rem',
+                borderRadius: '8px',
+                background: 'rgba(245, 158, 11, 0.1)',
+                border: '1px solid rgba(245, 158, 11, 0.25)',
+                marginBottom: '1rem',
+                fontSize: '0.75rem',
+                color: '#92400E',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+              }}
+            >
+              <Star size={15} fill="#F59E0B" color="#F59E0B" style={{ flexShrink: 0 }} />
+              <div>
+                <strong>Plan Maestro:</strong> Es el presupuesto principal y la fuente de verdad de todos los límites de categorías.
+              </div>
+            </div>
+          ) : (
+            <div
+              style={{
+                padding: '0.75rem',
+                borderRadius: '8px',
+                background: 'rgba(16, 185, 129, 0.1)',
+                border: '1px solid rgba(16, 185, 129, 0.25)',
+                marginBottom: '1rem',
+                fontSize: '0.75rem',
+                color: '#065F46',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+              }}
+            >
+              <Lock size={15} style={{ flexShrink: 0 }} />
+              <div>
+                <strong>Límites heredados:</strong> Los montos de cada categoría se toman automáticamente del Presupuesto Principal.
+              </div>
+            </div>
+          )}
+
           {/* Name */}
           <div className="form-group" style={{ marginBottom: '1rem' }}>
             <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-              Nombre del presupuesto
+              {isPrimary ? 'Nombre del Presupuesto Principal' : 'Nombre del grupo'}
             </label>
             <input
               type="text"
               required
-              placeholder="Ej. Personal, Hogar, Salidas"
+              placeholder={isPrimary ? 'Plan Maestro' : 'Ej. Hogar, Salidas, Pareja'}
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="input-field"
@@ -2145,252 +2108,105 @@ const BudgetFormModal: React.FC<BudgetFormModalProps> = ({
             </select>
           </div>
 
-          {/* Mode Selector */}
-          <div className="form-group" style={{ marginBottom: '1rem' }}>
-            <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-              Modo de techo global
-            </label>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(3, 1fr)',
-                gap: '0.4rem',
-                marginTop: '0.35rem',
-              }}
-            >
-              {[
-                { id: 'manual', label: 'Manual' },
-                { id: 'single_income', label: '1 Ingreso' },
-                { id: 'all_incomes', label: 'Ingresos' },
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setIncomeMode(tab.id as BudgetIncomeMode)}
-                  style={{
-                    padding: '0.5rem 0.25rem',
-                    borderRadius: '8px',
-                    border: '1px solid',
-                    borderColor: incomeMode === tab.id ? 'var(--primary-color)' : 'var(--border-color)',
-                    background: incomeMode === tab.id ? 'rgba(16, 185, 129, 0.12)' : 'var(--surface-color)',
-                    color: incomeMode === tab.id ? 'var(--primary-color)' : 'var(--text-secondary)',
-                    fontWeight: 600,
-                    fontSize: '0.75rem',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Mode details */}
-          {incomeMode === 'manual' && (
-            <div className="form-group" style={{ marginBottom: '1.5rem' }}>
-              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                Techo mensual global ({currencyLabels[currency] || '$'})
-              </label>
-              <input
-                type="number"
-                step="any"
-                min="0"
-                placeholder="Sin límite global (opcional)"
-                value={manualLimit}
-                onChange={(e) => setManualLimit(e.target.value)}
-                className="input-field"
-                style={{ width: '100%', marginTop: '0.35rem', fontSize: '1.05rem', fontWeight: 600 }}
-              />
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginTop: '0.25rem', display: 'block' }}>
-                Opcional: déjalo vacío si solo deseas límites por categorías.
-              </span>
-            </div>
-          )}
-
-          {incomeMode === 'single_income' && (
-            <div className="form-group" style={{ marginBottom: '1.5rem' }}>
-              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                Ingreso estimado a vincular
-              </label>
-              <select
-                value={linkedIncomeId}
-                onChange={(e) => setLinkedIncomeId(e.target.value)}
-                className="input-field"
-                required
-                style={{ width: '100%', marginTop: '0.35rem' }}
+          {/* Category selection for Sub-Budgets */}
+          {!isPrimary && (
+            <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '0.4rem',
+                }}
               >
-                <option value="">Selecciona un ingreso estimado...</option>
-                {incomes.map((inc) => (
-                  <option key={inc.id} value={inc.id}>
-                    {inc.name} ({currencyLabels[inc.currency] || '$'} {formatAmount(inc.expected_amount)})
-                  </option>
-                ))}
-              </select>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginTop: '0.25rem', display: 'block' }}>
-                El techo se adaptará automáticamente al monto estimado de este ingreso.
-              </span>
+                <div>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                    Categorías a incluir ({selectedCategories.length})
+                  </label>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
+                    Solo los gastos de estas categorías se sumarán a este grupo
+                  </div>
+                </div>
+                {availableCategories.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleSelectAllCategories}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--primary-color)',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      padding: '0.2rem 0.4rem',
+                      borderRadius: '6px',
+                    }}
+                  >
+                    {allSelected ? 'Limpiar' : 'Seleccionar todas'}
+                  </button>
+                )}
+              </div>
+
+              {/* Chips Container */}
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: '0.4rem',
+                  maxHeight: '160px',
+                  overflowY: 'auto',
+                  padding: '0.5rem',
+                  borderRadius: '10px',
+                  background: 'var(--surface-muted)',
+                  border: '1px solid var(--border-color)',
+                }}
+              >
+                {availableCategories.length === 0 ? (
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', padding: '0.5rem' }}>
+                    No hay categorías registradas.
+                  </div>
+                ) : (
+                  availableCategories.map((cat) => {
+                    const isChecked = selectedCategories.some(
+                      (sc) => sc.toLowerCase() === cat.toLowerCase()
+                    );
+                    return (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => toggleCategory(cat)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.35rem',
+                          padding: '0.35rem 0.65rem',
+                          borderRadius: 'var(--radius-full)',
+                          border: `1.5px solid ${isChecked ? 'var(--primary-color)' : 'var(--border-color)'}`,
+                          background: isChecked ? 'rgba(16, 185, 129, 0.12)' : 'var(--surface-color)',
+                          color: isChecked ? 'var(--primary-color)' : 'var(--text-secondary)',
+                          fontSize: '0.75rem',
+                          fontWeight: isChecked ? 600 : 500,
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        {renderCategoryIcon && (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', transform: 'scale(0.85)' }}>
+                            {renderCategoryIcon(cat)}
+                          </span>
+                        )}
+                        <span>{cat}</span>
+                        {isChecked && <Check size={12} strokeWidth={2.5} />}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
             </div>
           )}
-
-          {incomeMode === 'all_incomes' && (
-            <div
-              style={{
-                padding: '0.85rem',
-                borderRadius: '8px',
-                background: 'var(--surface-muted)',
-                marginBottom: '1.5rem',
-                fontSize: '0.75rem',
-                color: 'var(--text-secondary)',
-              }}
-            >
-              <p style={{ margin: '0 0 0.4rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                Modo dinámico: Total de ingresos
-              </p>
-              El techo global sumará todos tus ingresos estimados activos ({incomes.length} registrados).
-            </div>
-          )}
-
-          {/* Category multi-select pills */}
-          <div className="form-group" style={{ marginBottom: '1.25rem' }}>
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '0.4rem',
-              }}
-            >
-              <div>
-                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                  Categorías incluidas ({selectedCategories.length})
-                </label>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
-                  Solo los gastos de estas categorías se sumarán a este presupuesto
-                </div>
-              </div>
-              {availableCategories.length > 0 && (
-                <button
-                  type="button"
-                  onClick={handleSelectAllCategories}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--primary-color)',
-                    fontSize: '0.75rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    padding: '0.2rem 0.4rem',
-                    borderRadius: '6px',
-                  }}
-                >
-                  {allSelected ? 'Limpiar' : 'Seleccionar todas'}
-                </button>
-              )}
-            </div>
-
-            {/* Chips Container */}
-            <div
-              style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: '0.4rem',
-                maxHeight: '160px',
-                overflowY: 'auto',
-                padding: '0.5rem',
-                borderRadius: '10px',
-                background: 'var(--surface-muted)',
-                border: '1px solid var(--border-color)',
-              }}
-            >
-              {availableCategories.length === 0 ? (
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', padding: '0.5rem' }}>
-                  No hay categorías registradas.
-                </div>
-              ) : (
-                availableCategories.map((cat) => {
-                  const isChecked = selectedCategories.some(
-                    (sc) => sc.toLowerCase() === cat.toLowerCase()
-                  );
-                  return (
-                    <button
-                      key={cat}
-                      type="button"
-                      onClick={() => toggleCategory(cat)}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '0.35rem',
-                        padding: '0.35rem 0.65rem',
-                        borderRadius: 'var(--radius-full)',
-                        border: `1.5px solid ${isChecked ? 'var(--primary-color)' : 'var(--border-color)'}`,
-                        background: isChecked ? 'rgba(16, 185, 129, 0.12)' : 'var(--surface-color)',
-                        color: isChecked ? 'var(--primary-color)' : 'var(--text-secondary)',
-                        fontSize: '0.75rem',
-                        fontWeight: isChecked ? 600 : 500,
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease',
-                      }}
-                    >
-                      {renderCategoryIcon && (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', transform: 'scale(0.85)' }}>
-                          {renderCategoryIcon(cat)}
-                        </span>
-                      )}
-                      <span>{cat}</span>
-                      {isChecked && <Check size={12} strokeWidth={2.5} />}
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </div>
-
-          {/* Primary Budget Toggle / Checkbox */}
-          <div
-            onClick={() => setIsPrimary(!isPrimary)}
-            style={{
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: '0.75rem',
-              padding: '0.85rem',
-              borderRadius: '10px',
-              border: `1.5px solid ${isPrimary ? 'var(--primary-color)' : 'var(--border-color)'}`,
-              background: isPrimary ? 'rgba(16, 185, 129, 0.08)' : 'var(--surface-color)',
-              marginBottom: '1.5rem',
-              cursor: 'pointer',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={isPrimary}
-              onChange={(e) => setIsPrimary(e.target.checked)}
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                marginTop: '0.15rem',
-                width: '18px',
-                height: '18px',
-                accentColor: 'var(--primary-color)',
-                cursor: 'pointer',
-                flexShrink: 0,
-              }}
-            />
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                  Presupuesto principal
-                </span>
-                <Star size={13} fill={isPrimary ? "#F59E0B" : "none"} color={isPrimary ? "#F59E0B" : "var(--text-tertiary)"} />
-              </div>
-              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '0.2rem 0 0 0', lineHeight: 1.35 }}>
-                Se tomará en cuenta para mostrar el semáforo de categorías en el Resumen.
-              </p>
-            </div>
-          </div>
 
           {/* Action buttons */}
-          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
             <button
               type="button"
               onClick={onClose}
@@ -2419,7 +2235,7 @@ const BudgetFormModal: React.FC<BudgetFormModalProps> = ({
                 opacity: isSubmitting ? 0.7 : 1,
               }}
             >
-              {isSubmitting ? 'Guardando...' : 'Guardar Presupuesto'}
+              {isSubmitting ? 'Guardando...' : isEdit ? 'Guardar Cambios' : 'Crear Grupo'}
             </button>
           </div>
         </form>
