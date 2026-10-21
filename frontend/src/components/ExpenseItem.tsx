@@ -184,4 +184,4 @@ const ExpenseItem: React.FC<ExpenseItemProps> = ({ expense, onEdit, onDelete, ca
   );
 };
 
-export default ExpenseItem;
+export default React.memo(ExpenseItem);

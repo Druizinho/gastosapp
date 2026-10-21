@@ -55,6 +55,9 @@ def send_push_notification_to_token(fcm_token: str, title: str, body: str, url: 
     except messaging.UnregisteredError:
         print(f"Token is unregistered or invalid: {fcm_token}")
         return False, True
+    except (messaging.InvalidArgumentError, messaging.SenderIdMismatchError) as e:
+        print(f"Token invalid or sender mismatch: {fcm_token} ({e})")
+        return False, True
     except Exception as e:
         err_str = str(e).lower()
         if "unregistered" in err_str or "registration-token-not-registered" in err_str:
@@ -124,7 +127,7 @@ async def send_notification_to_user(
                         models.PushSubscription.fcm_token.in_(tokens_to_delete)
                     )
                 )
-                await db.flush()
+                await db.commit()
 
     except Exception as e:
         print("Error in send_notification_to_user:", repr(e))

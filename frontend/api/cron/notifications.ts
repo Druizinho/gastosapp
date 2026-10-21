@@ -4,29 +4,35 @@ export default async function handler(
   request: VercelRequest,
   response: VercelResponse,
 ) {
-  // Opcional: verificar que la petición viene de Vercel Cron
-  // const authHeader = request.headers.authorization;
-  // if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-  //   return response.status(401).json({ success: false, error: 'Unauthorized' });
-  // }
+  // Verificar autenticación de Vercel Cron si CRON_SECRET está configurado
+  const authHeader = request.headers.authorization;
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret && authHeader && authHeader !== `Bearer ${cronSecret}`) {
+    return response.status(401).json({ success: false, error: 'Unauthorized' });
+  }
 
   try {
-    // Tomar la URL del backend desde las variables de entorno de Vercel
-    const backendUrl = process.env.VITE_API_URL;
-    if (!backendUrl) {
-      throw new Error('VITE_API_URL is not defined');
-    }
-    
+    const backendUrl = process.env.BACKEND_API_URL || process.env.VITE_API_URL || 'http://localhost:8000/api';
     const apiUrl = backendUrl.endsWith('/api') ? backendUrl : `${backendUrl}/api`;
     
-    // Llamar al endpoint del backend en Render que procesa las notificaciones
-    console.log(`Llamando al backend en: ${apiUrl}/push/trigger`);
-    const result = await fetch(`${apiUrl}/push/trigger`, {
+    console.log(`Disparando cron de notificaciones en: ${apiUrl}/push/cron`);
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (cronSecret) {
+      headers['Authorization'] = `Bearer ${cronSecret}`;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8500); // Timeout de 8.5s para no exceder los 10s de Vercel
+
+    const targetUrl = `${apiUrl}/push/cron${cronSecret ? `?token=${encodeURIComponent(cronSecret)}` : ''}`;
+    const result = await fetch(targetUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      }
+      headers,
+      signal: controller.signal
     });
+    clearTimeout(timeout);
 
     if (!result.ok) {
       const text = await result.text();

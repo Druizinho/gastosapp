@@ -2,10 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException, status, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import delete
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import os
 import datetime
 import asyncio
+import secrets
 from uuid import UUID
 
 from .. import schemas, models, auth
@@ -98,33 +99,44 @@ async def test_push(
     
     return {"message": f"Notificación enviada a {sent} dispositivos."}
 
-@router.get("/cron")
+@router.api_route("/cron", methods=["GET", "POST"])
+@router.api_route("/trigger", methods=["POST"])
 async def trigger_notifications(
-    token: str = None,
+    token: Optional[str] = None,
+    authorization: Optional[str] = Header(None),
+    window: Optional[str] = None,
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Trigger endpoint called by cron-job.org every 14 minutes.
+    Trigger endpoint llamado por Vercel Cron o cron-job.org.
+    Acepta el token vía query param ?token= o header Authorization: Bearer <secret>.
     """
+    provided_token = token
+    if not provided_token and authorization:
+        if authorization.lower().startswith("bearer "):
+            provided_token = authorization.split(" ", 1)[1].strip()
+        else:
+            provided_token = authorization.strip()
+
     cron_secret = os.getenv("CRON_SECRET")
     if not cron_secret:
         raise HTTPException(status_code=500, detail="CRON_SECRET is not configured")
         
-    if token != cron_secret:
+    if not provided_token or not secrets.compare_digest(provided_token, cron_secret):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    # Get current time in UTC-4 (Venezuela/Miami)
-    utc_now = datetime.datetime.now(datetime.timezone.utc)
-    local_now = utc_now.astimezone(datetime.timezone(datetime.timedelta(hours=-4)))
+    # Hora actual en Venezuela (UTC-4)
+    from app.time_utils import vet_now, vet_today
+    local_now = vet_now()
     
-    # Determine which window we are in
-    is_morning = local_now.hour == 9 and 0 <= local_now.minute < 15
-    is_evening = local_now.hour == 20 and 0 <= local_now.minute < 15
+    # Determinar ventana activa (con tolerancia de 30 minutos o parámetro explícito)
+    is_morning = window == "morning" or (local_now.hour == 9 and 0 <= local_now.minute < 30)
+    is_evening = window == "evening" or (local_now.hour == 20 and 0 <= local_now.minute < 30)
     
     if not is_morning and not is_evening:
-        return {"status": "awake", "time": local_now.isoformat(), "message": "Ping received. Not notification time."}
+        return {"status": "awake", "time": local_now.isoformat(), "message": "Ping received. Outside notification window."}
 
-    today = local_now.date()
+    today = vet_today()
     yesterday = today - datetime.timedelta(days=1)
     current_month_str = today.strftime("%Y-%m")
     
@@ -132,7 +144,7 @@ async def trigger_notifications(
     failed_count = 0
     tokens_to_delete = []
 
-    # Helper function to send to a user, checking preferences
+    # Helper function to send to a user, checking preferences and daily deduplication
     async def send_to_user(user_id: UUID, title: str, body: str, pref_key: str):
         nonlocal sent_count, failed_count, tokens_to_delete
         
@@ -141,6 +153,17 @@ async def trigger_notifications(
         profile = (await db.execute(profile_stmt)).scalar()
         if not profile or not getattr(profile, pref_key, True):
             return  # User opted out
+
+        # Deduplicación diaria: evitar enviar la misma notificación más de una vez por día al mismo usuario
+        existing_notif = await db.execute(
+            select(models.Notification.id).where(
+                models.Notification.user_id == user_id,
+                models.Notification.title == title,
+                models.Notification.created_at >= datetime.datetime.combine(today, datetime.time.min, tzinfo=datetime.timezone.utc)
+            )
+        )
+        if existing_notif.scalars().first():
+            return  # Ya notificado hoy
             
         # Save notification to database
         notification_type = pref_key.replace('notify_', '')
@@ -157,15 +180,16 @@ async def trigger_notifications(
         sub_result = await db.execute(sub_stmt)
         subscriptions = sub_result.scalars().all()
         for sub in subscriptions:
-            success, is_unregistered = send_push_notification_to_token(sub.fcm_token, title=title, body=body)
+            # Enviar de forma asíncrona en threadpool para no bloquear el event loop ni exceder timeouts
+            success, is_unregistered = await asyncio.to_thread(
+                send_push_notification_to_token, sub.fcm_token, title=title, body=body
+            )
             if success:
                 sent_count += 1
             else:
                 failed_count += 1
                 if is_unregistered:
                     tokens_to_delete.append(sub.fcm_token)
-            # Add a 2 second delay to avoid vibrating the phone simultaneously for multiple notifications
-            await asyncio.sleep(2)
 
     # ==========================================
     # ☀️ MORNING WINDOW (9:00 AM) - Due Today/Overdue

@@ -114,10 +114,18 @@ def _convert_value_between_currencies(amount: Decimal, from_currency: str, to_cu
     if from_currency == to_currency:
         return amount
 
-    # Extract rates safely, guarding against None or 0
+    # Extraer tasas con fallback a la última tasa válida conocida del servicio BCV
+    from app import bcv_service
     usd_bs = Decimal(str(rates.get("usd_bs"))) if rates.get("usd_bs") and Decimal(str(rates.get("usd_bs"))) > 0 else None
     eur_bs = Decimal(str(rates.get("eur_bs"))) if rates.get("eur_bs") and Decimal(str(rates.get("eur_bs"))) > 0 else None
     usdt_bs = Decimal(str(rates.get("usdt_bs"))) if rates.get("usdt_bs") and Decimal(str(rates.get("usdt_bs"))) > 0 else None
+
+    if not usd_bs and bcv_service._last_valid_rates.get("usd_bs"):
+        usd_bs = Decimal(str(bcv_service._last_valid_rates["usd_bs"]))
+    if not eur_bs and bcv_service._last_valid_rates.get("eur_bs"):
+        eur_bs = Decimal(str(bcv_service._last_valid_rates["eur_bs"]))
+    if not usdt_bs and bcv_service._last_valid_rates.get("usdt_bs"):
+        usdt_bs = Decimal(str(bcv_service._last_valid_rates["usdt_bs"]))
 
     # Step 1: Convert from_currency to BS
     amount_bs: Optional[Decimal] = None
@@ -133,14 +141,14 @@ def _convert_value_between_currencies(amount: Decimal, from_currency: str, to_cu
         if usdt_bs:
             amount_bs = amount * usdt_bs
     elif from_currency == 'USD_CASH':
-        avail = [r for r in [usdt_bs, usd_bs, eur_bs] if r is not None and r > 0]
-        if avail:
-            amount_bs = amount * max(avail)
-        elif usd_bs:
-            amount_bs = amount * usd_bs
+        cash_rate = usdt_bs or usd_bs
+        if cash_rate:
+            amount_bs = amount * cash_rate
 
     if amount_bs is None:
-        # Fallback if rate missing
+        # Si falta la tasa para convertir una divisa extranjera a BS, nunca asumir paridad 1:1 con BS
+        if from_currency == 'BS' and to_currency in ('USD_BCV', 'USD_CASH', 'USDT', 'EUR_BCV'):
+            return Decimal('0')
         return amount
 
     # Step 2: Convert amount_bs to to_currency
@@ -153,11 +161,13 @@ def _convert_value_between_currencies(amount: Decimal, from_currency: str, to_cu
         if eur_bs and eur_bs > 0:
             return amount_bs / eur_bs
     elif to_currency in ('USDT', 'USD_CASH'):
-        avail = [r for r in [usdt_bs, usd_bs, eur_bs] if r is not None and r > 0]
-        if avail:
-            return amount_bs / max(avail)
-        elif usd_bs and usd_bs > 0:
-            return amount_bs / usd_bs
+        cash_rate = usdt_bs or usd_bs
+        if cash_rate and cash_rate > 0:
+            return amount_bs / cash_rate
+
+    # Si se intenta convertir Bolívares a una divisa extranjera sin tasa, no retornar el monto nominal en bolívares como dólares
+    if from_currency == 'BS' and to_currency != 'BS':
+        return Decimal('0')
 
     return amount
 
@@ -474,12 +484,12 @@ async def get_monthly_budget_view(
         for cl in b.category_limits:
             cat_to_budget_names.setdefault(cl.category_name.strip().lower(), []).append(b.name)
 
-    # Ensure all available categories exist in Primary Budget so they can be configured
+    # Ensure all available categories exist in Primary Budget representation so they can be configured
     if primary_budget:
         existing_prim_cats = {cl.category_name.strip().lower() for cl in primary_budget.category_limits}
-        added_to_prim = False
         for acat in available_categories:
             if acat.strip().lower() not in existing_prim_cats:
+                # FIN-06: Create in-memory limit for view response without performing DB writes on GET
                 new_prim_cl = models.BudgetCategoryLimit(
                     budget_id=primary_budget.id,
                     category_name=acat,
@@ -489,14 +499,6 @@ async def get_monthly_budget_view(
                     notified_100=False,
                 )
                 primary_budget.category_limits.append(new_prim_cl)
-                db.add(new_prim_cl)
-                added_to_prim = True
-        if added_to_prim:
-            try:
-                await db.commit()
-                await db.refresh(primary_budget)
-            except IntegrityError:
-                await db.rollback()
         primary_limits_map = {cl.category_name.strip().lower(): cl for cl in primary_budget.category_limits}
     else:
         primary_limits_map = {}

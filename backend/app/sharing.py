@@ -7,7 +7,7 @@ from datetime import datetime, timezone, date
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from sqlalchemy import or_, and_, delete, text
+from sqlalchemy import or_, and_, delete, text, update
 from fastapi import HTTPException
 
 from . import models, schemas
@@ -149,7 +149,8 @@ def assert_can_change_role(
     share: models.Share,
     actor_member: models.ShareMember,
     target_member: models.ShareMember,
-    new_role: str
+    new_role: str,
+    all_members: Optional[List[models.ShareMember]] = None
 ):
     if target_member.user_id == share.owner_id:
         raise HTTPException(status_code=403, detail="No se puede cambiar el rol del creador del ítem")
@@ -161,9 +162,22 @@ def assert_can_change_role(
     # Admin rules
     if actor_member.role == "admin":
         if target_member.role == "admin" and new_role == "member":
+            # PAN-09: Permitir auto-degradación si queda al menos otro administrador
+            if actor_member.user_id == target_member.user_id:
+                if all_members is not None:
+                    other_admins = [
+                        m for m in all_members 
+                        if m.role == "admin" and m.user_id != actor_member.user_id
+                    ]
+                    if not other_admins:
+                        raise HTTPException(
+                            status_code=400,
+                            detail="No puedes renunciar al rol de administrador si eres el único administrador restante"
+                        )
+                return
             raise HTTPException(
                 status_code=403,
-                detail="Solo el creador puede degradar a un administrador"
+                detail="Solo el creador puede degradar a otro administrador"
             )
         return
 
@@ -262,9 +276,25 @@ async def create_share(
     )
     existing_children = ch_res.scalars().all()
 
+    # Obtener nombre del creador para asignar como contraparte en clones de deudas
+    creator_name = "Mi Pana"
+    if entity_type == "debt":
+        creator_prof = await db.get(models.Profile, owner_id)
+        if creator_prof and creator_prof.display_name:
+            creator_name = creator_prof.display_name
+
     # Clone for each target
     for tid in clean_targets:
         clone_data = _clone_entity_data(owner_entity, tid)
+        if entity_type == "debt":
+            # Inversión simétrica obligatoria de deudas:
+            # Si el creador cobra ('receivable'), el pana debe ('owed'); y viceversa
+            if getattr(owner_entity, "type", None) == "receivable":
+                clone_data["type"] = "owed"
+            elif getattr(owner_entity, "type", None) == "owed":
+                clone_data["type"] = "receivable"
+            clone_data["counterpart"] = creator_name
+
         clone = model_cls(**clone_data)
         db.add(clone)
         await db.flush()
@@ -334,8 +364,21 @@ async def add_members(
     if not template_entity:
         raise HTTPException(status_code=404, detail="Entidad base no encontrada para clonar")
 
+    actor_name = "Mi Pana"
+    if share.entity_type == "debt":
+        actor_prof = await db.get(models.Profile, actor_id)
+        if actor_prof and actor_prof.display_name:
+            actor_name = actor_prof.display_name
+
     for tid in new_targets:
         clone_data = _clone_entity_data(template_entity, tid)
+        if share.entity_type == "debt":
+            if getattr(template_entity, "type", None) == "receivable":
+                clone_data["type"] = "owed"
+            elif getattr(template_entity, "type", None) == "owed":
+                clone_data["type"] = "receivable"
+            clone_data["counterpart"] = actor_name
+
         clone = model_cls(**clone_data)
         db.add(clone)
         await db.flush()
@@ -379,13 +422,16 @@ async def remove_member(db: AsyncSession, share: models.Share, user_id_to_remove
         return
 
     cfg = ENTITY_CONFIG[share.entity_type]
-    model_cls = cfg["model"]
+    child_model_cls = cfg["child_model"]
+    child_fk = cfg["child_fk"]
 
-    # Delete target user's entity (cascade deletes its payments/checks/deposits)
-    entity_res = await db.execute(select(model_cls).where(model_cls.id == target_member.entity_id))
-    entity = entity_res.scalars().first()
-    if entity:
-        await db.delete(entity)
+    # PAN-06: No destruir la entidad del usuario expulsado para preservar su historial financiero.
+    # Desvinculamos sus registros hijos (sync_id=None) para que futuras mutaciones del share no los afecten.
+    await db.execute(
+        update(child_model_cls)
+        .where(getattr(child_model_cls, child_fk) == target_member.entity_id)
+        .values(sync_id=None)
+    )
 
     await db.delete(target_member)
     await db.flush()
@@ -427,6 +473,9 @@ async def sync_parent_fields(
     res = await db.execute(select(model_cls).where(model_cls.id.in_(target_eids)))
     for sibling in res.scalars().all():
         for k, v in fields.items():
+            # Excluir tipo y contraparte en deudas para no destruir la inversión simétrica
+            if share.entity_type == "debt" and k in ("type", "counterpart"):
+                continue
             if hasattr(sibling, k):
                 setattr(sibling, k, v)
 
@@ -454,6 +503,9 @@ async def fan_out_child_create(
     target_parent_ids = [pid for pid in siblings.values() if pid != source_parent_id]
     if not target_parent_ids:
         return
+
+    # Ordenar determinísticamente por UUID para prevenir deadlocks ABBA en fan-out concurrente
+    target_parent_ids = sorted(target_parent_ids, key=lambda x: str(x))
 
     existing_fe_ids: Set[UUID] = set()
     if share.entity_type == "fixed_expense" and "month_year" in child_data:
@@ -506,6 +558,24 @@ async def fan_out_child_update(
         for k, v in clean_fields.items():
             if hasattr(row, k):
                 setattr(row, k, v)
+        # PAN-08: Sincronizar en cascada el Expense personal del hermano si tiene un gasto vinculado
+        exp_id = getattr(row, "expense_id", None)
+        if exp_id:
+            exp_res = await db.execute(select(models.Expense).where(models.Expense.id == exp_id))
+            exp = exp_res.scalars().first()
+            if exp:
+                if 'amount' in clean_fields:
+                    exp.amount = clean_fields['amount']
+                if 'currency' in clean_fields:
+                    raw_curr = clean_fields['currency']
+                    exp.currency = raw_curr.value if hasattr(raw_curr, "value") else str(raw_curr)
+                if 'payment_date' in clean_fields:
+                    exp.date = clean_fields['payment_date']
+                elif 'deposit_date' in clean_fields:
+                    exp.date = clean_fields['deposit_date']
+                for key in ["amount_usd", "amount_bs", "amount_eur", "amount_usdt", "rate_usd_bs", "rate_eur_bs", "rate_usdt_bs"]:
+                    if key in clean_fields:
+                        setattr(exp, key, clean_fields[key])
     await db.flush()
 
 

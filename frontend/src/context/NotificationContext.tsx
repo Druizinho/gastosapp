@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback } from 'rea
 import type { ReactNode } from 'react';
 import type { Notification } from '../types';
 import { getNotifications, markNotificationsAsRead } from '../api';
-import { supabase } from '../supabaseClient';
+import { useAuth } from './AuthContext';
 import { setupForegroundMessageListener } from '../pushManager';
 
 interface NotificationContextProps {
@@ -15,24 +15,12 @@ interface NotificationContextProps {
 const NotificationContext = createContext<NotificationContextProps | undefined>(undefined);
 
 export const NotificationProvider = ({ children }: { children: ReactNode }) => {
+  const { session } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  useEffect(() => {
-    // Check auth status
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setIsAuthenticated(!!session);
-    });
-
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsAuthenticated(!!session);
-    });
-
-    return () => {
-      authListener.subscription.unsubscribe();
-    };
-  }, []);
+  // FRONT-09: Unificar el estado de autenticación consumiendo useAuth() directamente
+  const isAuthenticated = !!session;
 
   const fetchNotifications = useCallback(async () => {
     if (!isAuthenticated) return;
@@ -69,6 +57,9 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
       return () => {
         if (unsubscribe) unsubscribe();
       };
+    } else {
+      setNotifications([]);
+      setUnreadCount(0);
     }
   }, [isAuthenticated, fetchNotifications]);
 

@@ -214,12 +214,34 @@ async def delete_debt(db: AsyncSession, debt_id: UUID, user_id: UUID):
         members = await sharing.get_members(db, share.id)
         entity_ids = [m.entity_id for m in members]
         if entity_ids:
+            # Purgar autogastos vinculados antes de eliminar las deudas y sus abonos
+            linked_exp_res = await db.execute(
+                select(models.DebtPayment.expense_id).where(
+                    models.DebtPayment.debt_id.in_(entity_ids),
+                    models.DebtPayment.expense_id.isnot(None)
+                )
+            )
+            linked_exp_ids = [eid for eid in linked_exp_res.scalars().all() if eid is not None]
+            if linked_exp_ids:
+                await db.execute(delete(models.Expense).where(models.Expense.id.in_(linked_exp_ids)))
+
             res = await db.execute(select(models.Debt).where(models.Debt.id.in_(entity_ids)))
             for d_obj in res.scalars().all():
                 await db.delete(d_obj)
 
         await db.delete(share)
     else:
+        # Purgar autogastos vinculados a esta deuda personal
+        linked_exp_res = await db.execute(
+            select(models.DebtPayment.expense_id).where(
+                models.DebtPayment.debt_id == debt_id,
+                models.DebtPayment.expense_id.isnot(None)
+            )
+        )
+        linked_exp_ids = [eid for eid in linked_exp_res.scalars().all() if eid is not None]
+        if linked_exp_ids:
+            await db.execute(delete(models.Expense).where(models.Expense.id.in_(linked_exp_ids)))
+
         await db.delete(db_debt)
 
     await db.commit()

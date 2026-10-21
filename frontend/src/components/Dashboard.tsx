@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { getExpenses, getSummaryRange, createExpense, updateExpense, deleteExpense, getMonthlyBudget } from '../api';
 import type { Expense, RangeSummaryResponse, ExpenseCreate, ExpenseUpdate, DateFilter, DatePreset, MonthlyBudgetResponse } from '../types';
@@ -33,10 +33,12 @@ const Dashboard: React.FC = () => {
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState({ isOpen: false, expenseId: '' });
 
   const fetchData = async () => {
     setIsLoading(true);
+    setLoadError(false);
     try {
       // Helper function to resolve dates based on preset
       const resolveDates = (filter: DateFilter) => {
@@ -97,6 +99,7 @@ const Dashboard: React.FC = () => {
       setMonthlyBudget(budgetData || null);
     } catch (error) {
       console.error('Error fetching data:', error);
+      setLoadError(true);
     } finally {
       setIsLoading(false);
       setIsInitialLoad(false);
@@ -179,6 +182,15 @@ const Dashboard: React.FC = () => {
     return name.slice(0, 2).toUpperCase();
   };
 
+  const handleEditExpense = useCallback((e: Expense) => {
+    setEditingExpense(e);
+    setIsFormOpen(true);
+  }, []);
+
+  const handleDeleteExpense = useCallback((id: string) => {
+    setConfirmDelete({ isOpen: true, expenseId: id });
+  }, []);
+
   return (
     <div className="dashboard-container" style={{ padding: '1rem', paddingBottom: '6rem', maxWidth: '600px', margin: '0 auto' }}>
       {/* Top Header */}
@@ -202,7 +214,27 @@ const Dashboard: React.FC = () => {
       </header>
 
       <main style={{ opacity: isLoading && !isInitialLoad ? 0.5 : 1, pointerEvents: isLoading ? 'none' : 'auto', transition: 'opacity 0.2s' }}>
-        {isLoading && isInitialLoad ? (
+        {loadError ? (
+          <div className="soft-card" style={{ padding: '2.5rem 1.5rem', textAlign: 'center', marginTop: '2rem' }}>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem', fontSize: '0.95rem' }}>
+              No se pudo conectar con el servidor. Puede que esté iniciando tras unos minutos de inactividad.
+            </p>
+            <button
+              onClick={() => { setIsLoading(true); setIsInitialLoad(true); fetchData(); }}
+              style={{
+                padding: '0.75rem 1.5rem',
+                borderRadius: '12px',
+                background: 'var(--accent-primary, #863bff)',
+                color: 'white',
+                border: 'none',
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              Reintentar conexión
+            </button>
+          </div>
+        ) : isLoading && isInitialLoad ? (
           <WakeUpLoader />
         ) : (
           <>
@@ -214,8 +246,8 @@ const Dashboard: React.FC = () => {
             <ExpenseList 
               expenses={expenses} 
               categories={categories}
-              onEdit={(e) => { setEditingExpense(e); setIsFormOpen(true); }} 
-              onDelete={(id) => setConfirmDelete({ isOpen: true, expenseId: id })}
+              onEdit={handleEditExpense} 
+              onDelete={handleDeleteExpense}
             />
           </>
         )}

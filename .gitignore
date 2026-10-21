@@ -5,6 +5,17 @@
 .env.test.local
 .env.production.local
 
+# Cryptographic Keys & Secrets
+*.pem
+*.key
+firebase-adminsdk.json
+
+# Local Databases
+*.db
+*.sqlite
+*.sqlite3
+backend/gastos.db
+
 # Python
 backend/venv/
 __pycache__/

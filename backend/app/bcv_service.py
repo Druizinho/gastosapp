@@ -7,12 +7,21 @@ from decimal import Decimal
 
 # Cache for 30 minutes (1800 seconds)
 rates_cache = TTLCache(maxsize=1, ttl=1800)
+_last_valid_rates = {
+    "usd_bs": None,
+    "eur_bs": None,
+    "usdt_bs": None
+}
+_rates_lock = asyncio.Lock()
+
+def _sync_fetch_bcv():
+    bcv = Monitor(BCV)
+    return bcv.get_all_monitors()
 
 async def get_bcv_rates():
     try:
-        # PyDolarVenezuela is synchronous but we can run it here
-        bcv = Monitor(BCV)
-        data = bcv.get_all_monitors()
+        # Ejecutar en threadpool con timeout para no congelar el event loop de FastAPI
+        data = await asyncio.wait_for(asyncio.to_thread(_sync_fetch_bcv), timeout=8.0)
         usd_rate = None
         eur_rate = None
         for m in data:
@@ -42,7 +51,7 @@ async def get_binance_rate():
     }
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.post(url, json=payload, headers=headers, timeout=10.0)
+            response = await client.post(url, json=payload, headers=headers, timeout=8.0)
             data = response.json()
             rates = [Decimal(str(item['adv']['price'])) for item in data.get('data', [])]
             if rates:
@@ -54,19 +63,32 @@ async def get_binance_rate():
     return None
 
 async def get_all_rates():
+    global _last_valid_rates
     if 'rates' in rates_cache:
         return rates_cache['rates']
     
-    usd_bcv, eur_bcv = await get_bcv_rates()
-    usdt_binance = await get_binance_rate()
-    
-    rates = {
-        "usd_bs": usd_bcv,
-        "eur_bs": eur_bcv,
-        "usdt_bs": usdt_binance
-    }
-    rates_cache['rates'] = rates
-    return rates
+    async with _rates_lock:
+        if 'rates' in rates_cache:
+            return rates_cache['rates']
+
+        usd_bcv, eur_bcv = await get_bcv_rates()
+        usdt_binance = await get_binance_rate()
+        
+        rates = {
+            "usd_bs": usd_bcv or _last_valid_rates.get("usd_bs"),
+            "eur_bs": eur_bcv or _last_valid_rates.get("eur_bs"),
+            "usdt_bs": usdt_binance or _last_valid_rates.get("usdt_bs")
+        }
+        
+        # Solo cachear por 30m si obtuvimos al menos una tasa válida
+        if usd_bcv or usdt_binance:
+            rates_cache['rates'] = rates
+            _last_valid_rates = rates.copy()
+        elif _last_valid_rates.get("usd_bs") is not None:
+            # Reutilizar última tasa válida conocida si la red falló
+            rates = _last_valid_rates.copy()
+            
+        return rates
 
 def convert_amount(amount: Decimal, currency: str, rates: dict, manual_rate: Decimal = None):
     amount_usd = None
@@ -78,9 +100,9 @@ def convert_amount(amount: Decimal, currency: str, rates: dict, manual_rate: Dec
     eur_bs = rates.get("eur_bs")
     usdt_bs = rates.get("usdt_bs")
     
-    # If a manual rate is provided, it applies to the primary exchange rate of the given currency
-    if manual_rate:
-        if currency == 'USD_BCV' or currency == 'BS' or currency == 'USD_CASH':
+    # Si se provee tasa manual, aplica a la tasa primaria de la divisa
+    if manual_rate and manual_rate > 0:
+        if currency in ('USD_BCV', 'BS', 'USD_CASH'):
             usd_bs = manual_rate
         elif currency == 'EUR_BCV':
             eur_bs = manual_rate
@@ -89,42 +111,39 @@ def convert_amount(amount: Decimal, currency: str, rates: dict, manual_rate: Dec
             
     if currency == 'USD_BCV':
         amount_usd = amount
-        if usd_bs:
+        if usd_bs and usd_bs > 0:
             amount_bs = amount * usd_bs
-            if eur_bs: amount_eur = amount_bs / eur_bs
-            if usdt_bs: amount_usdt = amount_bs / usdt_bs
+            if eur_bs and eur_bs > 0: amount_eur = amount_bs / eur_bs
+            if usdt_bs and usdt_bs > 0: amount_usdt = amount_bs / usdt_bs
     elif currency == 'EUR_BCV':
         amount_eur = amount
-        if eur_bs:
+        if eur_bs and eur_bs > 0:
             amount_bs = amount * eur_bs
-            if usd_bs: amount_usd = amount_bs / usd_bs
-            if usdt_bs: amount_usdt = amount_bs / usdt_bs
+            if usd_bs and usd_bs > 0: amount_usd = amount_bs / usd_bs
+            if usdt_bs and usdt_bs > 0: amount_usdt = amount_bs / usdt_bs
     elif currency == 'BS':
         amount_bs = amount
-        if usd_bs: amount_usd = amount / usd_bs
-        if eur_bs: amount_eur = amount / eur_bs
-        if usdt_bs: amount_usdt = amount / usdt_bs
+        if usd_bs and usd_bs > 0: amount_usd = amount / usd_bs
+        if eur_bs and eur_bs > 0: amount_eur = amount / eur_bs
+        if usdt_bs and usdt_bs > 0: amount_usdt = amount / usdt_bs
     elif currency == 'USDT':
         amount_usdt = amount
-        if usdt_bs:
+        if usdt_bs and usdt_bs > 0:
             amount_bs = amount * usdt_bs
-            if usd_bs: amount_usd = amount_bs / usd_bs
-            if eur_bs: amount_eur = amount_bs / eur_bs
+            if usd_bs and usd_bs > 0: amount_usd = amount_bs / usd_bs
+            if eur_bs and eur_bs > 0: amount_eur = amount_bs / eur_bs
     elif currency == 'USD_CASH':
-        if manual_rate:
-            amount_bs = amount * manual_rate
-        else:
-            available_rates = [r for r in [usd_bs, eur_bs, usdt_bs] if r is not None]
-            highest_rate = max(available_rates) if available_rates else None
-            if highest_rate:
-                amount_bs = amount * highest_rate
-                
-        if amount_bs:
-            if usd_bs: amount_usd = amount_bs / usd_bs
-            if eur_bs: amount_eur = amount_bs / eur_bs
-            if usdt_bs: amount_usdt = amount_bs / usdt_bs
-        else:
-            amount_usd = amount
+        # Dólar en efectivo: el valor nominal en USD siempre es el monto original
+        amount_usd = amount
+        # Para bolívares, se utiliza la tasa de mercado paralelo (USDT P2P) o BCV en su defecto
+        cash_rate = usdt_bs if (usdt_bs and usdt_bs > 0) else usd_bs
+        if manual_rate and manual_rate > 0:
+            cash_rate = manual_rate
+
+        if cash_rate and cash_rate > 0:
+            amount_bs = amount * cash_rate
+            if eur_bs and eur_bs > 0: amount_eur = amount_bs / eur_bs
+            if usdt_bs and usdt_bs > 0: amount_usdt = amount_bs / usdt_bs
 
     return {
         "amount_usd": amount_usd,

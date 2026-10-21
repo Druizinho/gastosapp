@@ -1,14 +1,30 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from sqlalchemy import or_, and_, delete, text
+from sqlalchemy import or_, and_, delete, text, func
 from uuid import UUID
 from typing import List, Optional
 from datetime import datetime, timezone
 from decimal import Decimal
+import time
+from collections import defaultdict
 
 from . import models, schemas, sharing
 from .push_service import send_push_notification, send_notification_to_user
+
+_connection_request_history = defaultdict(list)
+_RATE_LIMIT_WINDOW_SECONDS = 60
+_MAX_REQUESTS_PER_WINDOW = 5
+
+def _check_connection_rate_limit(user_id: UUID) -> bool:
+    now = time.time()
+    user_times = _connection_request_history[str(user_id)]
+    valid_times = [t for t in user_times if now - t < _RATE_LIMIT_WINDOW_SECONDS]
+    _connection_request_history[str(user_id)] = valid_times
+    if len(valid_times) >= _MAX_REQUESTS_PER_WINDOW:
+        return False
+    _connection_request_history[str(user_id)].append(now)
+    return True
 
 async def find_user_by_email(db: AsyncSession, email: str) -> Optional[schemas.UserSearchResult]:
     result = await db.execute(
@@ -79,7 +95,12 @@ async def get_connections(db: AsyncSession, user_id: UUID) -> List[schemas.Conne
     return [_populate_connection_response(c, user_id, profiles) for c in connections]
 
 async def create_connection_request(db: AsyncSession, requester_id: UUID, target_email: str):
-    target = await find_user_by_email(db, target_email)
+    # SEC-09: Prevenir enumeración masiva de correos mediante rate limiting
+    if not _check_connection_rate_limit(requester_id):
+        return None, "Has realizado demasiadas solicitudes en poco tiempo. Por favor espera un minuto antes de reintentar."
+
+    clean_email = (target_email or "").strip().lower()
+    target = await find_user_by_email(db, clean_email)
     if not target:
         return None, "Usuario no encontrado"
         
@@ -182,6 +203,25 @@ async def delete_connection(db: AsyncSession, connection_id: UUID, user_id: UUID
     conn = result.scalars().first()
     if not conn:
         return False
+
+    other_user_id = conn.receiver_id if conn.requester_id == user_id else conn.requester_id
+
+    # Disolver shares bipersonales entre estos dos usuarios para evitar sincronizaciones no autorizadas
+    shared_res = await db.execute(
+        select(models.ShareMember.share_id)
+        .where(models.ShareMember.user_id.in_([user_id, other_user_id]))
+        .group_by(models.ShareMember.share_id)
+        .having(func.count(models.ShareMember.user_id) == 2)
+    )
+    candidate_share_ids = shared_res.scalars().all()
+    for sid in candidate_share_ids:
+        all_m_res = await db.execute(
+            select(func.count(models.ShareMember.user_id)).where(models.ShareMember.share_id == sid)
+        )
+        if all_m_res.scalar() == 2:
+            share_obj = await db.get(models.Share, sid)
+            if share_obj:
+                await db.delete(share_obj)
         
     await db.delete(conn)
     await db.commit()

@@ -237,6 +237,7 @@ class IncomeCheck(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     income = relationship("EstimatedIncome", back_populates="checks")
+    __table_args__ = (UniqueConstraint('income_id', 'month_year', name='_income_month_uc'),)
 
 class PushSubscription(Base):
     __tablename__ = "push_subscriptions"

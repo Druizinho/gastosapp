@@ -133,14 +133,25 @@ async def check_fixed_expense(
         manual_rate=check_data.manual_rate,
     )
 
-    # Optionally create a real Expense in the dashboard
+    # 1. Validar primero si ya está marcado como pagado este mes (evita crear gastos huérfanos)
+    existing_check = await db.execute(
+        select(models.FixedExpenseCheck).filter(
+            models.FixedExpenseCheck.fixed_expense_id == expense_id,
+            models.FixedExpenseCheck.month_year == check_data.month_year
+        )
+    )
+    if existing_check.scalars().first():
+        raise HTTPException(status_code=409, detail="Este gasto fijo ya está marcado como pagado para este mes")
+
+    # 2. Si se solicita, crear el gasto real en el dashboard
     created_expense_id = None
     if check_data.create_expense:
+        from app.time_utils import vet_today
         expense_create = schemas.ExpenseCreate(
             amount=check_data.paid_amount,
             description=f"Gasto fijo: {db_expense.name}",
             category=db_expense.category or "Sin Categoría",
-            date=check_data.paid_date or date.today(),
+            date=check_data.paid_date or vet_today(),
             currency=check_data.currency or schemas.CurrencyType.BS,
         )
         db_real_expense = await crud.create_expense(
@@ -155,6 +166,15 @@ async def check_fixed_expense(
             user_id=user_id
         )
     except Exception as e:
+        # Compensación atómica: si el cheque falla, purgar inmediatamente el gasto creado
+        if created_expense_id:
+            try:
+                exp_to_del = await db.get(models.Expense, created_expense_id)
+                if exp_to_del:
+                    await db.delete(exp_to_del)
+                    await db.commit()
+            except Exception:
+                pass
         if "unique" in str(e).lower() or "duplicate" in str(e).lower():
             raise HTTPException(status_code=409, detail="Este gasto fijo ya está marcado como pagado para este mes")
         raise

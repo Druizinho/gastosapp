@@ -407,9 +407,15 @@ async def update_saving_deposit(
         setattr(deposit, k, v)
     await db.flush()
 
-    # If linked to expense, update expense record too
+    # If linked to expense, update expense record too (only if belonging to the payer/user)
     if deposit.expense_id:
-        exp_res = await db.execute(select(models.Expense).filter(models.Expense.id == deposit.expense_id))
+        target_owner_id = deposit.paid_by_user_id or user_id
+        exp_res = await db.execute(
+            select(models.Expense).filter(
+                models.Expense.id == deposit.expense_id,
+                models.Expense.user_id == target_owner_id
+            )
+        )
         exp = exp_res.scalars().first()
         if exp:
             if 'amount' in update_dict:
@@ -454,9 +460,15 @@ async def delete_saving_deposit(db: AsyncSession, deposit_id: UUID, user_id: UUI
     sync_id = deposit.sync_id or deposit.id
     amount_label = f"{deposit.amount} {deposit.currency}"
 
-    # If linked to expense, delete the expense as well
+    # If linked to expense, delete the expense as well (only if belonging to the payer/user)
     if deposit.expense_id:
-        exp_res = await db.execute(select(models.Expense).filter(models.Expense.id == deposit.expense_id))
+        target_owner_id = deposit.paid_by_user_id or user_id
+        exp_res = await db.execute(
+            select(models.Expense).filter(
+                models.Expense.id == deposit.expense_id,
+                models.Expense.user_id == target_owner_id
+            )
+        )
         exp = exp_res.scalars().first()
         if exp:
             await db.delete(exp)

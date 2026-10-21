@@ -1,22 +1,25 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { CategoriesProvider } from './context/CategoriesContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { Auth, ResetPassword } from './components/Auth';
 import Dashboard from './components/Dashboard';
-import { ToolsHub } from './components/ToolsHub';
-import FixedExpenses from './components/FixedExpenses';
-import DebtList from './components/DebtList';
-import EstimatedIncomeList from './components/EstimatedIncomeList.tsx';
-import SavingGoals from './components/SavingGoals';
-import Budgets from './components/Budgets';
-import { RatesPage } from './components/RatesPage';
-import { SettingsPage } from './components/SettingsPage';
-import { PanasPage } from './pages/PanasPage';
 import { BottomNav } from './components/BottomNav';
 import { InstallPWA } from './components/InstallPWA';
+import { RouteErrorBoundary } from './components/ErrorBoundary';
 import './index.css';
+
+// Lazy loading de vistas y herramientas pesadas para optimizar el bundle inicial
+const ToolsHub = lazy(() => import('./components/ToolsHub').then(m => ({ default: m.ToolsHub })));
+const FixedExpenses = lazy(() => import('./components/FixedExpenses'));
+const DebtList = lazy(() => import('./components/DebtList'));
+const EstimatedIncomeList = lazy(() => import('./components/EstimatedIncomeList.tsx'));
+const SavingGoals = lazy(() => import('./components/SavingGoals'));
+const Budgets = lazy(() => import('./components/Budgets'));
+const RatesPage = lazy(() => import('./components/RatesPage').then(m => ({ default: m.RatesPage })));
+const SettingsPage = lazy(() => import('./components/SettingsPage').then(m => ({ default: m.SettingsPage })));
+const PanasPage = lazy(() => import('./pages/PanasPage').then(m => ({ default: m.PanasPage })));
 
 const ProtectedRoute = ({ children }: { children?: React.ReactNode }) => {
   const { session, loading } = useAuth();
@@ -36,7 +39,11 @@ const AppLayout = () => {
   return (
     <div className="app-container">
       <main className="main-content">
-        <Outlet />
+        <RouteErrorBoundary>
+          <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh', color: '#9CA3AF' }}>Cargando...</div>}>
+            <Outlet />
+          </Suspense>
+        </RouteErrorBoundary>
       </main>
       <BottomNav />
     </div>

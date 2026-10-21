@@ -114,4 +114,20 @@ try:
 except HTTPException as e:
     print(f"[PASS] Blocked changing owner role: {e.detail}")
 
+# Admin self-demotion allowed if another admin exists
+try:
+    assert_can_change_role(share, admin_member, admin_member, "member", all_members=[admin_member, another_admin])
+    print("[PASS] Admin can voluntarily self-demote when another admin exists")
+except Exception as e:
+    print("[FAIL] Admin self-demote failed:", e)
+    sys.exit(1)
+
+# Admin self-demotion blocked if sole admin
+try:
+    assert_can_change_role(share, admin_member, admin_member, "member", all_members=[admin_member])
+    print("[FAIL] Sole admin should NOT be allowed to self-demote")
+    sys.exit(1)
+except HTTPException as e:
+    print(f"[PASS] Blocked sole admin from self-demoting: {e.detail}")
+
 print("\nAll Hierarchy and Expulsion Tests PASSED 100%! Ready for production.")

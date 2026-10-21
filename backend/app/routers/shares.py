@@ -99,7 +99,7 @@ async def update_member_role(
     if not target:
         raise HTTPException(status_code=404, detail="El integrante no pertenece a este ítem compartido")
 
-    sharing.assert_can_change_role(share, caller, target, payload.role.value)
+    sharing.assert_can_change_role(share, caller, target, payload.role.value, all_members=members)
     target.role = payload.role.value
 
     role_label = "Administrador" if payload.role.value == "admin" else "Miembro común"

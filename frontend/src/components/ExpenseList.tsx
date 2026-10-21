@@ -19,6 +19,10 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ expenses, categories, onEdit,
   const [searchTerm, setSearchTerm] = useState('');
 
 
+  const categoryMap = useMemo(() => {
+    return new Map(categories.map(c => [c.name, c]));
+  }, [categories]);
+
   const { globalMin, globalMax } = useMemo(() => {
     if (!expenses.length) return { globalMin: 0, globalMax: 1000 };
     let min = Infinity;
@@ -277,7 +281,7 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ expenses, categories, onEdit,
       ) : (
         <div className="expense-list">
           {paginatedExpenses.map(expense => {
-            const cat = categories.find(c => c.name === expense.category);
+            const cat = categoryMap.get(expense.category);
             const color = cat ? cat.color : undefined;
             return (
               <ExpenseItem
