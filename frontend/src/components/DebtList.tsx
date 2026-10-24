@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, Trash2, Edit3, ArrowLeft, Wallet, Calendar, AlertCircle, CheckCircle, Receipt, TrendingDown, TrendingUp, ArrowLeftRight } from 'lucide-react';
+import { Plus, Trash2, Edit3, ArrowLeft, Wallet, Calendar, AlertCircle, CheckCircle, Receipt, TrendingDown, TrendingUp } from 'lucide-react';
 import type { Debt, DebtCreate, DebtUpdate, DebtPayment, DebtPaymentCreate, DebtPaymentUpdate, ExchangeRates } from '../types';
 import { getDebts, createDebt, updateDebt, addDebtPayment, updateDebtPayment, deleteDebt, getRates, deleteDebtPayment } from '../api';
 import DebtForm from './DebtForm';
@@ -252,9 +252,21 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
     return { usd: amount_usd, bs: amount_bs, eur: amount_eur, usdt: amount_usdt };
   };
 
-  const getSummaryAmount = () => {
-    if (!rates) return '0.00';
-    let totalBs = 0, totalUsd = 0, totalEur = 0, totalUsdt = 0;
+  const owedCount = debts.filter(d => d.type === 'owed').length;
+  const recCount = debts.filter(d => d.type === 'receivable').length;
+  const displayedDebts = debts.filter(d => activeTab === 'all' || d.type === activeTab);
+
+  const getNetMetrics = () => {
+    if (!rates) {
+      return {
+        netFormatted: '$ 0.00',
+        owedFormatted: '$ 0.00',
+        recFormatted: '$ 0.00',
+        isNetPositive: true,
+      };
+    }
+    let owedBs = 0, owedUsd = 0, owedEur = 0, owedUsdt = 0;
+    let recBs = 0, recUsd = 0, recEur = 0, recUsdt = 0;
     
     debts.forEach(debt => {
       let amountToSum = 0;
@@ -267,16 +279,47 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
       }
 
       const converted = convertCurrencyAmount(amountToSum, debt.currency, rates);
-      totalUsd += converted.usd;
-      totalBs += converted.bs;
-      totalEur += converted.eur;
-      totalUsdt += converted.usdt;
+      if (debt.type === 'owed') {
+        owedUsd += converted.usd;
+        owedBs += converted.bs;
+        owedEur += converted.eur;
+        owedUsdt += converted.usdt;
+      } else {
+        recUsd += converted.usd;
+        recBs += converted.bs;
+        recEur += converted.eur;
+        recUsdt += converted.usdt;
+      }
     });
 
-    const map = { bs: totalBs, usd: totalUsd, eur: totalEur, usdt: totalUsdt };
+    const netUsd = recUsd - owedUsd;
+    const netBs = recBs - owedBs;
+    const netEur = recEur - owedEur;
+    const netUsdt = recUsdt - owedUsdt;
+
+    const mapNet = { bs: netBs, usd: netUsd, eur: netEur, usdt: netUsdt };
+    const mapOwed = { bs: owedBs, usd: owedUsd, eur: owedEur, usdt: owedUsdt };
+    const mapRec = { bs: recBs, usd: recUsd, eur: recEur, usdt: recUsdt };
+
     const prefixMap = { bs: 'Bs. ', usd: '$ ', eur: '€ ', usdt: '' };
     const suffixMap = { bs: '', usd: '', eur: '', usdt: ' USDT' };
-    return `${prefixMap[displayCurrency]}${Number(map[displayCurrency]).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${suffixMap[displayCurrency]}`;
+
+    const currentNet = mapNet[displayCurrency];
+    const currentOwed = mapOwed[displayCurrency];
+    const currentRec = mapRec[displayCurrency];
+
+    const formatVal = (val: number, withSign: boolean = false) => {
+      const absVal = Math.abs(val);
+      const sign = withSign ? (val > 0.005 ? '+' : (val < -0.005 ? '-' : '')) : '';
+      return `${sign}${prefixMap[displayCurrency]}${absVal.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${suffixMap[displayCurrency]}`;
+    };
+
+    return {
+      netFormatted: formatVal(currentNet, true),
+      owedFormatted: formatVal(currentOwed, false),
+      recFormatted: formatVal(currentRec, false),
+      isNetPositive: currentNet >= 0,
+    };
   };
 
   const cycleDisplayCurrency = () => {
@@ -287,6 +330,8 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
 
   // VISTA: Detalle de Deuda
   if (selectedDebt) {
+    const isOwed = selectedDebt.type === 'owed';
+    const themeColor = isOwed ? 'var(--expense-color)' : 'var(--income-color)';
     const paid = calculatePaid(selectedDebt);
     const remaining = Math.max(selectedDebt.total_amount - paid, 0);
     const progress = Math.min((paid / selectedDebt.total_amount) * 100, 100);
@@ -570,7 +615,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
         {/* Modal: Editar Deuda desde Detalle */}
         {showForm && (
           <DebtForm
-            type={type}
+            type={selectedDebt.type}
             initialData={editingDebt}
             onSubmit={handleCreateOrUpdate}
             onCancel={() => { setShowForm(false); setEditingDebt(undefined); }}
@@ -584,7 +629,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
             initialData={editingPayment}
             debtConcept={payingDebt.concept}
             debtCategory={payingDebt.category}
-            type={type}
+            type={payingDebt.type}
             debtCurrency={payingDebt.currency || 'USD_BCV'}
             debtTotalAmount={payingDebt.total_amount}
             debtPaidAmount={calculatePaid(payingDebt)}
@@ -651,10 +696,12 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
     );
   }
 
+  const metrics = getNetMetrics();
+
   // VISTA: Lista de Deudas (Main)
   return (
     <div style={{ padding: '1rem', paddingBottom: '6rem', maxWidth: '600px', margin: '0 auto' }}>
-      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', paddingTop: '0.5rem' }}>
+      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', paddingTop: '0.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <button 
             onClick={onBack}
@@ -669,11 +716,11 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
           </button>
 
           <div>
-            <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: themeColor, margin: 0 }}>
-              {title}
+            <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+              Deudas y Préstamos
             </h1>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0 }}>
-              {isOwed ? 'A quién le debes' : 'Quién te debe'}
+              Lo que debes y lo que te deben
             </p>
           </div>
         </div>
@@ -685,14 +732,14 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
             alignItems: 'center',
             gap: '0.4rem',
             padding: '0.6rem 0.9rem',
-            background: themeColor,
+            background: 'var(--accent-color, #8B5CF6)',
             color: 'white',
             border: 'none',
             borderRadius: 'var(--radius-md)',
             fontWeight: 700,
             fontSize: '0.85rem',
             cursor: 'pointer',
-            boxShadow: isOwed ? '0 4px 14px rgba(239, 68, 68, 0.3)' : '0 4px 14px rgba(16, 185, 129, 0.3)',
+            boxShadow: '0 4px 14px rgba(139, 92, 246, 0.3)',
             transition: 'transform 0.15s ease',
           }}
         >
@@ -701,46 +748,146 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
         </button>
       </header>
 
-      {/* Summary card */}
+      {/* Summary Net Balance Card */}
       <div
         className="soft-card"
         onClick={cycleDisplayCurrency}
         style={{ 
-          marginBottom: '1.5rem', padding: '1.5rem', cursor: 'pointer',
-          background: isOwed ? 'linear-gradient(135deg, rgba(239, 68, 68, 0.06) 0%, var(--surface-color) 100%)' : 'linear-gradient(135deg, rgba(16, 185, 129, 0.06) 0%, var(--surface-color) 100%)',
+          marginBottom: '1.25rem', padding: '1.35rem', cursor: 'pointer',
+          background: metrics.isNetPositive 
+            ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, var(--surface-color) 100%)' 
+            : 'linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, var(--surface-color) 100%)',
+          border: `1px solid ${metrics.isNetPositive ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.25)'}`,
+          borderRadius: 'var(--radius-lg)',
+          boxShadow: 'var(--shadow-md)',
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            {filterSettled ? 'Deuda Total Liquidada' : 'Deuda Total Activa'}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+          <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            {filterSettled ? 'Balance Histórico Liquidado' : 'Balance Neto Pendiente'}
           </span>
           <div style={{
-            display: 'flex', alignItems: 'center', gap: '0.5rem',
-            padding: '0.25rem 0.6rem', borderRadius: 'var(--radius-full)',
-            background: isOwed ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)', color: isOwed ? '#EF4444' : '#10B981',
-            fontSize: '0.75rem', fontWeight: 600,
+            display: 'flex', alignItems: 'center', gap: '0.4rem',
+            padding: '0.2rem 0.55rem', borderRadius: 'var(--radius-full)',
+            background: 'var(--surface-muted)', color: 'var(--text-secondary)',
+            fontSize: '0.72rem', fontWeight: 600,
           }}>
-            <Wallet size={14} />
+            <Wallet size={12} />
             {debts.length} {filterSettled ? 'liquidadas' : 'activas'}
           </div>
         </div>
-        <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-          {loading ? '...' : getSummaryAmount()}
+
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginBottom: '0.75rem' }}>
+          <div style={{
+            fontSize: '2.1rem',
+            fontWeight: 800,
+            color: metrics.isNetPositive ? 'var(--income-color)' : 'var(--expense-color)',
+            letterSpacing: '-0.03em',
+            lineHeight: 1.1
+          }}>
+            {loading ? '...' : metrics.netFormatted}
+          </div>
+          <span style={{
+            fontSize: '0.8rem',
+            fontWeight: 600,
+            color: metrics.isNetPositive ? 'var(--income-color)' : 'var(--expense-color)',
+            opacity: 0.9
+          }}>
+            {metrics.isNetPositive ? '(A tu favor)' : '(En contra)'}
+          </span>
         </div>
-        <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginTop: '0.25rem' }}>
-          Toca para cambiar moneda
+
+        {/* Dual sub-metric pill row */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem', paddingTop: '0.75rem', borderTop: '1px solid var(--accent-light)' }}>
+          <div style={{
+            padding: '0.5rem 0.75rem',
+            borderRadius: 'var(--radius-md)',
+            background: 'rgba(16, 185, 129, 0.08)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.15rem'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.72rem', color: '#10B981', fontWeight: 600 }}>
+              <TrendingUp size={12} />
+              <span>Te deben ({recCount})</span>
+            </div>
+            <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              {loading ? '...' : `+${metrics.recFormatted}`}
+            </div>
+          </div>
+
+          <div style={{
+            padding: '0.5rem 0.75rem',
+            borderRadius: 'var(--radius-md)',
+            background: 'rgba(239, 68, 68, 0.08)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.15rem'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.72rem', color: '#EF4444', fontWeight: 600 }}>
+              <TrendingDown size={12} />
+              <span>Debes ({owedCount})</span>
+            </div>
+            <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              {loading ? '...' : `-${metrics.owedFormatted}`}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginTop: '0.5rem', textAlign: 'center' }}>
+          Toca para alternar moneda (USD / Bs / EUR / USDT)
         </div>
       </div>
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', background: 'var(--surface-muted)', borderRadius: 'var(--radius-full)', padding: '0.25rem', marginBottom: '1.5rem' }}>
+      {/* Sub-tabs: Todas / Por Pagar / Por Cobrar */}
+      <div style={{ display: 'flex', background: 'var(--surface-muted)', borderRadius: 'var(--radius-full)', padding: '0.25rem', marginBottom: '0.75rem', gap: '0.25rem' }}>
+        <button
+          onClick={() => handleTabChange('all')}
+          style={{
+            flex: 1, padding: '0.55rem 0.35rem', border: 'none', borderRadius: 'var(--radius-full)',
+            fontSize: '0.82rem', fontWeight: activeTab === 'all' ? 700 : 500, cursor: 'pointer', transition: 'all 0.15s',
+            background: activeTab === 'all' ? 'var(--surface-color)' : 'transparent',
+            color: activeTab === 'all' ? 'var(--text-primary)' : 'var(--text-secondary)',
+            boxShadow: activeTab === 'all' ? 'var(--shadow-sm)' : 'none'
+          }}
+        >
+          Todas ({debts.length})
+        </button>
+        <button
+          onClick={() => handleTabChange('owed')}
+          style={{
+            flex: 1, padding: '0.55rem 0.35rem', border: 'none', borderRadius: 'var(--radius-full)',
+            fontSize: '0.82rem', fontWeight: activeTab === 'owed' ? 700 : 500, cursor: 'pointer', transition: 'all 0.15s',
+            background: activeTab === 'owed' ? 'var(--surface-color)' : 'transparent',
+            color: activeTab === 'owed' ? 'var(--expense-color)' : 'var(--text-secondary)',
+            boxShadow: activeTab === 'owed' ? 'var(--shadow-sm)' : 'none'
+          }}
+        >
+          Por Pagar ({owedCount})
+        </button>
+        <button
+          onClick={() => handleTabChange('receivable')}
+          style={{
+            flex: 1, padding: '0.55rem 0.35rem', border: 'none', borderRadius: 'var(--radius-full)',
+            fontSize: '0.82rem', fontWeight: activeTab === 'receivable' ? 700 : 500, cursor: 'pointer', transition: 'all 0.15s',
+            background: activeTab === 'receivable' ? 'var(--surface-color)' : 'transparent',
+            color: activeTab === 'receivable' ? 'var(--income-color)' : 'var(--text-secondary)',
+            boxShadow: activeTab === 'receivable' ? 'var(--shadow-sm)' : 'none'
+          }}
+        >
+          Por Cobrar ({recCount})
+        </button>
+      </div>
+
+      {/* State filter: Activas / Liquidadas */}
+      <div style={{ display: 'flex', background: 'var(--surface-muted)', borderRadius: 'var(--radius-full)', padding: '0.2rem', marginBottom: '1.25rem', width: 'fit-content', margin: '0 auto 1.25rem auto' }}>
         <button
           onClick={() => setFilterSettled(false)}
           style={{
-            flex: 1, padding: '0.6rem', border: 'none', borderRadius: 'var(--radius-full)',
-            fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
+            padding: '0.4rem 1.1rem', border: 'none', borderRadius: 'var(--radius-full)',
+            fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
             background: !filterSettled ? 'var(--surface-color)' : 'transparent',
-            color: !filterSettled ? themeColor : 'var(--text-secondary)',
+            color: !filterSettled ? 'var(--text-primary)' : 'var(--text-secondary)',
             boxShadow: !filterSettled ? 'var(--shadow-sm)' : 'none'
           }}
         >
@@ -749,10 +896,10 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
         <button
           onClick={() => setFilterSettled(true)}
           style={{
-            flex: 1, padding: '0.6rem', border: 'none', borderRadius: 'var(--radius-full)',
-            fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
+            padding: '0.4rem 1.1rem', border: 'none', borderRadius: 'var(--radius-full)',
+            fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
             background: filterSettled ? 'var(--surface-color)' : 'transparent',
-            color: filterSettled ? themeColor : 'var(--text-secondary)',
+            color: filterSettled ? 'var(--text-primary)' : 'var(--text-secondary)',
             boxShadow: filterSettled ? 'var(--shadow-sm)' : 'none'
           }}
         >
@@ -760,34 +907,39 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
         </button>
       </div>
 
-      <button
-        onClick={() => { setEditingDebt(undefined); setShowForm(true); }}
-        style={{
-          width: '100%', padding: '0.875rem', marginBottom: '1.25rem',
-          background: 'var(--surface-color)', border: '2px dashed var(--accent-light)',
-          borderRadius: 'var(--radius-md)', cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
-          color: 'var(--text-secondary)', fontFamily: 'inherit', fontSize: '0.9rem', fontWeight: 600,
-          transition: 'all 0.2s ease',
-        }}
-      >
-        <Plus size={18} /> Añadir deuda
-      </button>
-
       {loading ? (
         <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-tertiary)' }}>Cargando...</div>
-      ) : debts.length === 0 ? (
-        <div className="empty-state">
-          <p style={{ fontSize: '1rem', fontWeight: 500, marginBottom: '0.5rem' }}>
-            No hay deudas {filterSettled ? 'pagadas' : 'activas'}
+      ) : displayedDebts.length === 0 ? (
+        <div className="empty-state" style={{ textAlign: 'center', padding: '2.5rem 1rem' }}>
+          <p style={{ fontSize: '1rem', fontWeight: 500, marginBottom: '0.75rem', color: 'var(--text-secondary)' }}>
+            No hay deudas {activeTab === 'owed' ? 'por pagar' : (activeTab === 'receivable' ? 'por cobrar' : '')} {filterSettled ? 'liquidadas' : 'activas'}
           </p>
+          <button
+            onClick={() => { setEditingDebt(undefined); setShowForm(true); }}
+            style={{
+              padding: '0.6rem 1.2rem',
+              background: 'var(--accent-color, #8B5CF6)',
+              color: 'white',
+              border: 'none',
+              borderRadius: 'var(--radius-md)',
+              fontWeight: 600,
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem'
+            }}
+          >
+            <Plus size={16} /> Crear primera deuda
+          </button>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {debts.map(debt => {
+          {displayedDebts.map(debt => {
             const paid = calculatePaid(debt);
             const remaining = Math.max(debt.total_amount - paid, 0);
             const progress = Math.min((paid / debt.total_amount) * 100, 100);
+            const itemThemeColor = debt.type === 'owed' ? 'var(--expense-color)' : 'var(--income-color)';
             
             let dueDateColor = 'var(--text-tertiary)';
             let isOverdue = false;
@@ -809,7 +961,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
                 className="soft-card"
                 style={{ 
                   padding: '1rem 1.25rem', cursor: 'pointer',
-                  borderLeft: debt.is_settled ? '3px solid var(--income-color)' : `3px solid ${themeColor}`,
+                  borderLeft: debt.is_settled ? '3px solid var(--income-color)' : `3px solid ${itemThemeColor}`,
                 }}
                 onClick={() => {
                   const freshDebt = debts.find(d => d.id === debt.id) || debt;
@@ -821,45 +973,61 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
                     <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                       {debt.concept}
                     </div>
-                    {debt.is_settled ? (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.7rem', fontWeight: 500, color: 'var(--income-color)', background: 'var(--surface-muted)', padding: '0.15rem 0.5rem', borderRadius: 'var(--radius-full)', marginTop: '0.25rem' }}>
-                        <CheckCircle size={10} />
-                        Liquidada
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
+                        fontSize: '0.7rem',
+                        fontWeight: 700,
+                        color: debt.type === 'owed' ? 'var(--expense-color)' : 'var(--income-color)',
+                        background: debt.type === 'owed' ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+                        padding: '0.12rem 0.5rem',
+                        borderRadius: 'var(--radius-full)',
+                      }}>
+                        {debt.type === 'owed' ? <TrendingDown size={10} /> : <TrendingUp size={10} />}
+                        {debt.type === 'owed' ? 'Debo' : 'Me deben'}
                       </span>
-                    ) : isOverdue ? (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.7rem', fontWeight: 500, color: 'var(--expense-color)', background: 'rgba(239, 68, 68, 0.1)', padding: '0.15rem 0.5rem', borderRadius: 'var(--radius-full)', marginTop: '0.25rem', marginRight: '0.5rem' }}>
-                        <AlertCircle size={10} />
-                        Vencida
-                      </span>
-                    ) : (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.7rem', fontWeight: 500, color: themeColor, background: 'var(--surface-muted)', padding: '0.15rem 0.5rem', borderRadius: 'var(--radius-full)', marginTop: '0.25rem' }}>
-                        <AlertCircle size={10} />
-                        Activa
-                      </span>
-                    )}
-                    {debt.category && (() => {
-                      const catObj = categories.find(c => c.name.toLowerCase() === debt.category?.toLowerCase());
-                      const { IconComponent, hexColor } = resolveCategoryVisuals(catObj, debt.category);
-                      return (
-                        <span style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '0.25rem',
-                          fontSize: '0.7rem',
-                          fontWeight: 600,
-                          color: hexColor,
-                          background: `${hexColor}18`,
-                          border: `1px solid ${hexColor}35`,
-                          padding: '0.12rem 0.5rem',
-                          borderRadius: 'var(--radius-full)',
-                          marginTop: '0.25rem',
-                          marginLeft: '0.4rem',
-                        }}>
-                          <IconComponent size={10} />
-                          {debt.category}
+
+                      {debt.is_settled ? (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.7rem', fontWeight: 500, color: 'var(--income-color)', background: 'var(--surface-muted)', padding: '0.12rem 0.5rem', borderRadius: 'var(--radius-full)' }}>
+                          <CheckCircle size={10} />
+                          Liquidada
                         </span>
-                      );
-                    })()}
+                      ) : isOverdue ? (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.7rem', fontWeight: 500, color: 'var(--expense-color)', background: 'rgba(239, 68, 68, 0.1)', padding: '0.12rem 0.5rem', borderRadius: 'var(--radius-full)' }}>
+                          <AlertCircle size={10} />
+                          Vencida
+                        </span>
+                      ) : (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.7rem', fontWeight: 500, color: itemThemeColor, background: 'var(--surface-muted)', padding: '0.12rem 0.5rem', borderRadius: 'var(--radius-full)' }}>
+                          <AlertCircle size={10} />
+                          Activa
+                        </span>
+                      )}
+
+                      {debt.category && (() => {
+                        const catObj = categories.find(c => c.name.toLowerCase() === debt.category?.toLowerCase());
+                        const { IconComponent, hexColor } = resolveCategoryVisuals(catObj, debt.category);
+                        return (
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.25rem',
+                            fontSize: '0.7rem',
+                            fontWeight: 600,
+                            color: hexColor,
+                            background: `${hexColor}18`,
+                            border: `1px solid ${hexColor}35`,
+                            padding: '0.12rem 0.5rem',
+                            borderRadius: 'var(--radius-full)',
+                          }}>
+                            <IconComponent size={10} />
+                            {debt.category}
+                          </span>
+                        );
+                      })()}
+                    </div>
                     {debt.is_shared && (
                       <div
                         onClick={(e) => {
@@ -874,7 +1042,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
                     )}
                   </div>
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ fontSize: '1.05rem', fontWeight: 700, color: debt.is_settled ? 'var(--income-color)' : themeColor }}>
+                    <div style={{ fontSize: '1.05rem', fontWeight: 700, color: debt.is_settled ? 'var(--income-color)' : itemThemeColor }}>
                       {formatCurrency(remaining, debt.currency)}
                     </div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
@@ -886,7 +1054,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
                 <div style={{ width: '100%', background: 'var(--surface-muted)', borderRadius: 'var(--radius-full)', height: '4px', marginBottom: '0.5rem', marginTop: '0.5rem' }}>
                   <div style={{ 
                     height: '4px', 
-                    background: debt.is_settled ? 'var(--income-color)' : themeColor, 
+                    background: debt.is_settled ? 'var(--income-color)' : itemThemeColor, 
                     width: `${progress}%`,
                     borderRadius: 'var(--radius-full)'
                   }}></div>
@@ -895,7 +1063,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                      {isOwed ? 'A:' : 'De:'} <span style={{ fontWeight: 600 }}>{debt.counterpart}</span>
+                      {debt.type === 'owed' ? 'A:' : 'De:'} <span style={{ fontWeight: 600 }}>{debt.counterpart}</span>
                     </span>
                     {debt.due_date && (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', color: dueDateColor, fontWeight: isOverdue ? 600 : 400 }}>
@@ -966,7 +1134,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
       {/* Modal: Crear / Editar Deuda */}
       {showForm && (
         <DebtForm
-          type={type}
+          type={editingDebt ? editingDebt.type : (activeTab === 'receivable' ? 'receivable' : 'owed')}
           initialData={editingDebt}
           onSubmit={handleCreateOrUpdate}
           onCancel={() => { setShowForm(false); setEditingDebt(undefined); }}
@@ -980,7 +1148,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
           initialData={editingPayment}
           debtConcept={payingDebt.concept}
           debtCategory={payingDebt.category}
-          type={type}
+          type={payingDebt.type}
           debtCurrency={payingDebt.currency || 'USD_BCV'}
           debtTotalAmount={payingDebt.total_amount}
           debtPaidAmount={calculatePaid(payingDebt)}
