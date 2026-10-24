@@ -636,7 +636,10 @@ async def get_pana_details(db: AsyncSession, user_id: UUID, partner_id: UUID) ->
                 continue
 
             curr_amount = sharing.sum_children_in_currency(g.deposits, g.currency or "BS", "amount")
-            prog_pct = float(min(round((curr_amount / Decimal(str(g.target_amount))) * 100, 1), 100.0)) if g.target_amount > 0 else 100.0
+            if g.target_amount and g.target_amount > 0:
+                prog_pct = float(min(round((curr_amount / Decimal(str(g.target_amount))) * 100, 1), 100.0))
+            else:
+                prog_pct = 0.0
 
             last_dep = None
             if g.deposits:
@@ -647,7 +650,8 @@ async def get_pana_details(db: AsyncSession, user_id: UUID, partner_id: UUID) ->
                 schemas.SharedSavingGoalBrief(
                     id=g.id,
                     name=g.name,
-                    target_amount=Decimal(str(g.target_amount)),
+                    target_amount=Decimal(str(g.target_amount)) if g.target_amount is not None else None,
+                    type=getattr(g, 'type', 'saving') or 'saving',
                     current_amount=curr_amount,
                     currency=g.currency,
                     category=g.category,

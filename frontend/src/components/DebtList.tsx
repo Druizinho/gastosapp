@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Edit3, ArrowLeft, Wallet, Calendar, AlertCircle, CheckCircle, Receipt } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { Plus, Trash2, Edit3, ArrowLeft, Wallet, Calendar, AlertCircle, CheckCircle, Receipt, TrendingDown, TrendingUp, ArrowLeftRight } from 'lucide-react';
 import type { Debt, DebtCreate, DebtUpdate, DebtPayment, DebtPaymentCreate, DebtPaymentUpdate, ExchangeRates } from '../types';
 import { getDebts, createDebt, updateDebt, addDebtPayment, updateDebtPayment, deleteDebt, getRates, deleteDebtPayment } from '../api';
 import DebtForm from './DebtForm';
@@ -28,11 +29,15 @@ const formatDate = (dateStr: string) => {
 };
 
 interface DebtListProps {
-  type: 'owed' | 'receivable';
+  type?: 'all' | 'owed' | 'receivable';
   onBack: () => void;
 }
 
-const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
+const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const queryTab = searchParams.get('tab') as 'owed' | 'receivable' | null;
+  const initialTab: 'all' | 'owed' | 'receivable' = queryTab || (propType === 'owed' || propType === 'receivable' ? propType : 'all');
+  const [activeTab, setActiveTab] = useState<'all' | 'owed' | 'receivable'>(initialTab);
   const { categories } = useCategories();
   const [debts, setDebts] = useState<Debt[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,16 +62,23 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
     setTimeout(() => setToastMessage(null), 3000);
   };
   
-  const isOwed = type === 'owed';
-  const title = isOwed ? 'Lo que Debo' : 'Me Deben';
-  
-  const themeColor = isOwed ? 'var(--expense-color)' : 'var(--income-color)';
+  const handleTabChange = (tab: 'all' | 'owed' | 'receivable') => {
+    setActiveTab(tab);
+    if (tab === 'all') {
+      setSearchParams({}, { replace: true });
+    } else {
+      setSearchParams({ tab }, { replace: true });
+    }
+  };
 
   const fetchDebts = async () => {
     try {
       setLoading(true);
       const [debtsData, ratesData] = await Promise.all([
-        getDebts(type, filterSettled),
+        getDebts(undefined, filterSettled).catch(() =>
+          Promise.all([getDebts('owed', filterSettled), getDebts('receivable', filterSettled)])
+            .then(([owed, rec]) => [...owed, ...rec])
+        ),
         getRates()
       ]);
       setDebts(debtsData);
@@ -84,7 +96,7 @@ const DebtList: React.FC<DebtListProps> = ({ type, onBack }) => {
 
   useEffect(() => {
     fetchDebts();
-  }, [type, filterSettled]);
+  }, [filterSettled]);
 
   const handleCreateOrUpdate = async (data: DebtCreate | DebtUpdate) => {
     try {

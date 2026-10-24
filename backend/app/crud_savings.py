@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from sqlalchemy import or_, and_
+from sqlalchemy import or_, and_, delete
 from typing import List, Optional
 from uuid import UUID, uuid4
 from decimal import Decimal
@@ -84,12 +84,16 @@ async def create_saving_goal(
         user_prof = user_prof_res.scalars().first()
         req_name = user_prof.display_name if user_prof and user_prof.display_name else "Tu pana"
 
+        is_proj = db_goal.type == "project"
+        title_es = "Nuevo proyecto compartido" if is_proj else "Nuevo fondo de ahorro compartido"
+        ent_desc = "un proyecto compartido" if is_proj else "un fondo de ahorro compartido"
+
         await sharing.notify_members(
             db=db,
             share_id=share.id,
             exclude_user_id=user_id,
-            title="Nuevo fondo de ahorro compartido",
-            body=f"{req_name} creó un fondo de ahorro compartido: {db_goal.name}",
+            title=title_es,
+            body=f"{req_name} creó {ent_desc}: {db_goal.name}",
             type="savings",
             url="/herramientas/ahorros"
         )
@@ -122,15 +126,26 @@ async def update_saving_goal(
 
     if extra_data is None and ('target_amount' in update_data or 'currency' in update_data):
         new_target = update_data.get('target_amount', db_goal.target_amount)
-        raw_curr = update_data.get('currency', db_goal.currency)
-        new_curr = raw_curr.value if hasattr(raw_curr, "value") else str(raw_curr)
-        rates = await bcv_service.get_all_rates()
-        extra_data = bcv_service.convert_amount(
-            amount=new_target,
-            currency=new_curr,
-            rates=rates,
-            manual_rate=manual_rate
-        )
+        if new_target is not None:
+            raw_curr = update_data.get('currency', db_goal.currency)
+            new_curr = raw_curr.value if hasattr(raw_curr, "value") else str(raw_curr)
+            rates = await bcv_service.get_all_rates()
+            extra_data = bcv_service.convert_amount(
+                amount=new_target,
+                currency=new_curr,
+                rates=rates,
+                manual_rate=manual_rate
+            )
+        else:
+            extra_data = {
+                "amount_usd": None,
+                "amount_bs": None,
+                "amount_eur": None,
+                "amount_usdt": None,
+                "rate_usd_bs": None,
+                "rate_eur_bs": None,
+                "rate_usdt_bs": None,
+            }
 
     if extra_data:
         update_data.update(extra_data)
@@ -188,12 +203,16 @@ async def update_saving_goal(
                 user_prof = user_prof_res.scalars().first()
                 req_name = user_prof.display_name if user_prof and user_prof.display_name else "Tu pana"
 
+                is_proj = db_goal.type == "project"
+                title_es = "Nuevo proyecto compartido" if is_proj else "Nuevo fondo de ahorro compartido"
+                ent_desc = "un proyecto compartido" if is_proj else "un fondo de ahorro compartido"
+
                 await sharing.notify_members(
                     db=db,
                     share_id=share.id,
                     exclude_user_id=user_id,
-                    title="Nuevo fondo de ahorro compartido",
-                    body=f"{req_name} creó un fondo de ahorro compartido: {db_goal.name}",
+                    title=title_es,
+                    body=f"{req_name} creó {ent_desc}: {db_goal.name}",
                     type="savings",
                     url="/herramientas/ahorros"
                 )
@@ -211,10 +230,14 @@ async def delete_saving_goal(db: AsyncSession, goal_id: UUID, user_id: UUID) -> 
 
     if membership:
         share, member = membership
+        is_proj = db_goal.type == "project"
+        ent_desc = "un proyecto compartido" if is_proj else "un fondo de ahorro compartido"
+        ent_noun = "proyecto" if is_proj else "fondo de ahorro"
+
         if member.role != "admin":
             raise HTTPException(
                 status_code=403,
-                detail="Solo un administrador puede eliminar un fondo de ahorro compartido. Si deseas dejar de verlo, usa la opción 'Salir'."
+                detail=f"Solo un administrador puede eliminar {ent_desc}. Si deseas dejar de verlo, usa la opción 'Salir'."
             )
 
         user_prof_res = await db.execute(select(models.Profile).where(models.Profile.id == user_id))
@@ -225,8 +248,8 @@ async def delete_saving_goal(db: AsyncSession, goal_id: UUID, user_id: UUID) -> 
             db=db,
             share_id=share.id,
             exclude_user_id=user_id,
-            title="Fondo de ahorro eliminado",
-            body=f"{user_name} eliminó el fondo de ahorro compartido '{db_goal.name}' para todos los integrantes",
+            title=f"{ent_noun.capitalize()} eliminado",
+            body=f"{user_name} eliminó el {ent_noun} compartido '{db_goal.name}' para todos los integrantes",
             type="savings",
             url="/herramientas/ahorros"
         )
@@ -234,12 +257,32 @@ async def delete_saving_goal(db: AsyncSession, goal_id: UUID, user_id: UUID) -> 
         members = await sharing.get_members(db, share.id)
         entity_ids = [m.entity_id for m in members]
         if entity_ids:
+            linked_exp_res = await db.execute(
+                select(models.SavingDeposit.expense_id).where(
+                    models.SavingDeposit.goal_id.in_(entity_ids),
+                    models.SavingDeposit.expense_id.isnot(None)
+                )
+            )
+            linked_exp_ids = [eid for eid in linked_exp_res.scalars().all() if eid is not None]
+            if linked_exp_ids:
+                await db.execute(delete(models.Expense).where(models.Expense.id.in_(linked_exp_ids)))
+
             res = await db.execute(select(models.SavingGoal).where(models.SavingGoal.id.in_(entity_ids)))
             for g_obj in res.scalars().all():
                 await db.delete(g_obj)
 
         await db.delete(share)
     else:
+        linked_exp_res = await db.execute(
+            select(models.SavingDeposit.expense_id).where(
+                models.SavingDeposit.goal_id == goal_id,
+                models.SavingDeposit.expense_id.isnot(None)
+            )
+        )
+        linked_exp_ids = [eid for eid in linked_exp_res.scalars().all() if eid is not None]
+        if linked_exp_ids:
+            await db.execute(delete(models.Expense).where(models.Expense.id.in_(linked_exp_ids)))
+
         await db.delete(db_goal)
 
     await db.commit()
@@ -257,6 +300,8 @@ async def add_saving_deposit(
     if not db_goal:
         return None
 
+    was_completed = db_goal.is_completed
+
     prof_res = await db.execute(select(models.Profile).where(models.Profile.id == user_id))
     user_prof = prof_res.scalars().first()
     user_name = user_prof.display_name if user_prof and user_prof.display_name else "Usuario"
@@ -269,14 +314,23 @@ async def add_saving_deposit(
     if extra_data:
         data.update(extra_data)
 
+    data["deposit_date"] = data.get("deposit_date") or datetime.date.today()
+
     expense_id = None
     if register_as_expense:
+        if db_goal.type == 'project':
+            exp_desc = f"Pago {db_goal.name}: {deposit.note}" if deposit.note else f"Pago de Proyecto: {db_goal.name}"
+            exp_cat = db_goal.category or "Otros"
+        else:
+            exp_desc = f"Aporte de Ahorro: {db_goal.name}"
+            exp_cat = db_goal.category or "Sin Categoría"
+
         expense_data = {
             "amount": data["amount"],
             "currency": data["currency"].value if hasattr(data["currency"], "value") else str(data["currency"]),
-            "description": f"Aporte de Ahorro: {db_goal.name}",
-            "category": db_goal.category or "Sin Categoría",
-            "date": data.get("deposit_date") or datetime.date.today(),
+            "description": exp_desc,
+            "category": exp_cat,
+            "date": data["deposit_date"],
             "user_id": user_id
         }
         for key in ["amount_usd", "amount_bs", "amount_eur", "amount_usdt", "rate_usd_bs", "rate_eur_bs", "rate_usdt_bs"]:
@@ -323,13 +377,19 @@ async def add_saving_deposit(
 
         await db.refresh(db_goal)
         curr_label = data["currency"].value if hasattr(data["currency"], "value") else str(data["currency"])
-        if db_goal.is_completed:
+        is_project = db_goal.type == "project"
+        dep_noun = "pago" if is_project else "aporte"
+        dep_verb = "pagó" if is_project else "aportó"
+        ent_noun = "el proyecto" if is_project else "el fondo"
+        ent_label = "al proyecto" if is_project else "al fondo"
+
+        if not is_project and not was_completed and db_goal.is_completed:
             await sharing.notify_members(
                 db=db,
                 share_id=share.id,
                 exclude_user_id=None,
                 title="🎉 ¡Meta de ahorro alcanzada!",
-                body=f"¡Felicidades! Se completó el fondo compartido '{db_goal.name}' con un aporte de {user_name} de {data['amount']} {curr_label}!",
+                body=f"¡Felicidades! Se completó {ent_noun} compartido '{db_goal.name}' con un {dep_noun} de {user_name} de {data['amount']} {curr_label}!",
                 type="savings",
                 url="/herramientas/ahorros"
             )
@@ -338,15 +398,16 @@ async def add_saving_deposit(
                 db=db,
                 share_id=share.id,
                 exclude_user_id=user_id,
-                title="Aporte a fondo compartido",
-                body=f"{user_name} aportó {data['amount']} {curr_label} al fondo '{db_goal.name}'",
+                title="Pago en proyecto compartido" if is_project else "Aporte a fondo compartido",
+                body=f"{user_name} {dep_verb} {data['amount']} {curr_label} {ent_label} '{db_goal.name}'",
                 type="savings",
                 url="/herramientas/ahorros"
             )
     else:
         await sharing.recompute_settlement(db, "saving_goal", [goal_id])
         await db.refresh(db_goal)
-        if db_goal.is_completed:
+        is_project = db_goal.type == "project"
+        if not is_project and not was_completed and db_goal.is_completed:
             await send_notification_to_user(
                 db=db,
                 user_id=user_id,
@@ -358,7 +419,7 @@ async def add_saving_deposit(
 
     await db.commit()
     if register_as_expense:
-        dep_date = data.get("deposit_date") or datetime.date.today()
+        dep_date = data["deposit_date"]
         await check_and_notify_budget_thresholds(db, user_id, dep_date, allow_notify=True)
     return await get_saving_goal(db, goal_id, user_id)
 
@@ -511,12 +572,15 @@ async def delete_saving_deposit(db: AsyncSession, deposit_id: UUID, user_id: UUI
         all_goal_ids = list(set(list(siblings.values()) + [goal_id]))
         await sharing.recompute_settlement(db, "saving_goal", all_goal_ids)
 
+        is_proj = g_obj.type == "project" if g_obj else False
+        dep_noun = "pago" if is_proj else "aporte"
+        ent_noun = "proyecto" if is_proj else "fondo"
         await sharing.notify_members(
             db=db,
             share_id=share.id,
             exclude_user_id=user_id,
-            title="Aporte eliminado de fondo",
-            body=f"{user_name} eliminó un aporte de {amount_label} del fondo '{goal_name}'",
+            title=f"{dep_noun.capitalize()} eliminado de {ent_noun}",
+            body=f"{user_name} eliminó un {dep_noun} de {amount_label} del {ent_noun} '{goal_name}'",
             type="savings",
             url="/herramientas/ahorros"
         )

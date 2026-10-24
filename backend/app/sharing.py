@@ -643,14 +643,16 @@ async def recompute_settlement(db: AsyncSession, entity_type: str, entity_ids: L
             item.is_settled = (total_paid >= Decimal(str(item.total_amount)))
 
         elif entity_type == "saving_goal":
-            total_saved = sum_children_in_currency(item.deposits, item.currency, "amount")
-            is_done = (total_saved >= Decimal(str(item.target_amount)))
-            if is_done and not item.is_completed:
-                item.is_completed = True
-                item.completed_at = datetime.now(timezone.utc)
-            elif not is_done and item.is_completed:
-                item.is_completed = False
-                item.completed_at = None
+            goal_type = getattr(item, 'type', 'saving') or 'saving'
+            if item.target_amount is not None and goal_type == 'saving':
+                total_saved = sum_children_in_currency(item.deposits, item.currency, "amount")
+                is_done = (total_saved >= Decimal(str(item.target_amount)))
+                if is_done and not item.is_completed:
+                    item.is_completed = True
+                    item.completed_at = datetime.now(timezone.utc)
+                elif not is_done and item.is_completed:
+                    item.is_completed = False
+                    item.completed_at = None
 
     await db.flush()
 

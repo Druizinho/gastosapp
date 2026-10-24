@@ -246,7 +246,7 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
             }}
           >
             <PiggyBank size={15} />
-            Ahorros ({detail?.shared_saving_goals?.length || 0})
+            Proyectos / Ahorros ({detail?.shared_saving_goals?.length || 0})
           </button>
         </div>
 
@@ -575,10 +575,10 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
                 <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-tertiary)' }}>
                   <PiggyBank size={36} style={{ margin: '0 auto 0.75rem', opacity: 0.4 }} />
                   <p style={{ margin: 0, fontWeight: 500, fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-                    No tienen fondos de ahorro compartidos todavía
+                    No tienen proyectos ni fondos de ahorro compartidos todavía
                   </p>
                   <p style={{ margin: '0.35rem 0 1rem', fontSize: '0.8rem' }}>
-                    Pueden crear fondos conjuntos para ahorrar para viajes, emergencias o compras juntos.
+                    Pueden crear fondos conjuntos para proyectos de remodelación, viajes, compras o reservas.
                   </p>
                   <button
                     type="button"
@@ -601,14 +601,16 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
                     }}
                   >
                     <PlusCircle size={16} />
-                    Ir a Ahorros
+                    Ir a Proyectos / Ahorros
                   </button>
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                   {detail.shared_saving_goals.map((goal) => {
                     const color = goal.color || '#10B981';
-                    const remaining = Math.max(goal.target_amount - goal.current_amount, 0);
+                    const isProject = goal.type === 'project';
+                    const hasTarget = goal.target_amount !== null && goal.target_amount !== undefined;
+                    const remaining = hasTarget ? Math.max(goal.target_amount! - goal.current_amount, 0) : null;
 
                     return (
                       <div 
@@ -629,6 +631,18 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
                               <span style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
                                 {goal.name}
                               </span>
+                              {isProject && (
+                                <span style={{
+                                  fontSize: '0.68rem',
+                                  padding: '0.12rem 0.45rem',
+                                  borderRadius: 'var(--radius-full)',
+                                  background: 'rgba(59, 130, 246, 0.12)',
+                                  color: '#3B82F6',
+                                  fontWeight: 600
+                                }}>
+                                  🛠️ Proyecto
+                                </span>
+                              )}
                               {goal.category && (
                                 <span style={{
                                   fontSize: '0.7rem',
@@ -657,7 +671,9 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
                               )}
                             </div>
                             <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-                              Meta: {goal.target_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} {goal.currency}
+                              {hasTarget
+                                ? `${isProject ? 'Presupuesto' : 'Meta'}: ${goal.target_amount!.toLocaleString(undefined, { minimumFractionDigits: 2 })} ${goal.currency}`
+                                : 'Cuenta abierta / Sin tope'}
                             </span>
                           </div>
                           <div style={{ textAlign: 'right' }}>
@@ -669,7 +685,11 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
                               borderRadius: 'var(--radius-sm)',
                               background: goal.is_completed ? 'rgba(16, 185, 129, 0.1)' : `${color}18`
                             }}>
-                              {goal.is_completed ? 'Completado 🎉' : `${Math.round(goal.progress_percentage)}% ahorrado`}
+                              {goal.is_completed
+                                ? (isProject ? 'Concluido 🎉' : 'Completado 🎉')
+                                : hasTarget
+                                  ? `${Math.round(goal.progress_percentage)}% ${isProject ? 'ejecutado' : 'ahorrado'}`
+                                  : 'Cuenta abierta'}
                             </span>
                           </div>
                         </div>
@@ -677,28 +697,36 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
                         {/* Amounts */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
                           <span style={{ color: 'var(--text-secondary)' }}>
-                            Ahorrado: <strong>{goal.current_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} {goal.currency}</strong>
+                            {isProject ? 'Pagado' : 'Ahorrado'}: <strong>{goal.current_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} {goal.currency}</strong>
                           </span>
                           <span style={{ color: goal.is_completed ? '#10B981' : 'var(--text-tertiary)', fontWeight: 600 }}>
-                            {remaining > 0 ? `Falta: ${remaining.toLocaleString(undefined, { minimumFractionDigits: 2 })} ${goal.currency}` : '¡Meta alcanzada!'}
+                            {hasTarget ? (
+                              remaining! > 0
+                                ? `Falta: ${remaining!.toLocaleString(undefined, { minimumFractionDigits: 2 })} ${goal.currency}`
+                                : (isProject ? '¡Presupuesto alcanzado!' : '¡Meta alcanzada!')
+                            ) : (
+                              'Sin tope fijado'
+                            )}
                           </span>
                         </div>
 
                         {/* Progress bar */}
-                        <div style={{
-                          width: '100%',
-                          height: '6px',
-                          background: 'var(--accent-light)',
-                          borderRadius: 'var(--radius-full)',
-                          overflow: 'hidden'
-                        }}>
+                        {hasTarget && (
                           <div style={{
-                            width: `${Math.min(goal.progress_percentage, 100)}%`,
-                            height: '100%',
-                            background: color,
-                            transition: 'width 0.3s'
-                          }} />
-                        </div>
+                            width: '100%',
+                            height: '6px',
+                            background: 'var(--accent-light)',
+                            borderRadius: 'var(--radius-full)',
+                            overflow: 'hidden'
+                          }}>
+                            <div style={{
+                              width: `${Math.min(goal.progress_percentage, 100)}%`,
+                              height: '100%',
+                              background: color,
+                              transition: 'width 0.3s'
+                            }} />
+                          </div>
+                        )}
 
                         {goal.last_deposit_by && (
                           <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', display: 'flex', justifyContent: 'space-between' }}>

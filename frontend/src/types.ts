@@ -486,7 +486,8 @@ export interface SharedDebtBrief {
 export interface SharedSavingGoalBrief {
   id: string;
   name: string;
-  target_amount: number;
+  target_amount: number | null;
+  type?: 'saving' | 'project';
   current_amount: number;
   currency: string;
   category: string | null;
@@ -583,7 +584,8 @@ export interface SavingGoal {
   id: string;
   user_id: string;
   name: string;
-  target_amount: number;
+  type?: 'saving' | 'project';
+  target_amount: number | null;
   currency: CurrencyType;
   target_date: string | null;
   category: string | null;
@@ -612,7 +614,8 @@ export interface SavingGoal {
 
 export interface SavingGoalCreate {
   name: string;
-  target_amount: number;
+  type?: 'saving' | 'project';
+  target_amount?: number | null;
   currency?: CurrencyType;
   target_date?: string | null;
   category?: string;
@@ -627,7 +630,8 @@ export interface SavingGoalCreate {
 
 export interface SavingGoalUpdate {
   name?: string;
-  target_amount?: number;
+  type?: 'saving' | 'project';
+  target_amount?: number | null;
   currency?: CurrencyType;
   target_date?: string | null;
   category?: string;

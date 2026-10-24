@@ -14,14 +14,16 @@ from .crud_budgets import check_and_notify_budget_thresholds
 
 
 def _debt_url(debt_type: Optional[str]) -> str:
-    return "/herramientas/deudas-por-cobrar" if debt_type == "receivable" else "/herramientas/deudas-nuestras"
+    if debt_type in ["owed", "receivable"]:
+        return f"/herramientas/deudas?tab={debt_type}"
+    return "/herramientas/deudas"
 
 
-async def get_debts(db: AsyncSession, user_id: UUID, debt_type: str, is_settled: Optional[bool] = None):
-    query = select(models.Debt).filter(
-        models.Debt.user_id == user_id,
-        models.Debt.type == debt_type
-    ).options(selectinload(models.Debt.payments))
+async def get_debts(db: AsyncSession, user_id: UUID, debt_type: Optional[str] = None, is_settled: Optional[bool] = None):
+    query = select(models.Debt).filter(models.Debt.user_id == user_id)
+    if debt_type:
+        query = query.filter(models.Debt.type == debt_type)
+    query = query.options(selectinload(models.Debt.payments))
     
     if is_settled is not None:
         query = query.filter(models.Debt.is_settled == is_settled)

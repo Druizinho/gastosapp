@@ -7,9 +7,10 @@ interface SavingDepositFormProps {
   initialData?: SavingDeposit;
   goalName: string;
   goalCurrency: string;
-  goalTargetAmount: number;
+  goalTargetAmount?: number | null;
   goalCurrentSaved: number;
   goalColor?: string;
+  goalType?: 'saving' | 'project';
   onSubmit: (data: SavingDepositCreate | SavingDepositUpdate) => void;
   onCancel: () => void;
   loading: boolean;
@@ -35,12 +36,16 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
   goalTargetAmount,
   goalCurrentSaved,
   goalColor = '#10B981',
+  goalType = 'saving',
   onSubmit,
   onCancel,
   loading,
 }) => {
   const isEditing = !!initialData;
-  const remaining = Math.max(goalTargetAmount - goalCurrentSaved, 0);
+  const isProject = goalType === 'project';
+  const hasTarget = goalTargetAmount != null && Number(goalTargetAmount) > 0;
+  const targetNum = hasTarget ? Number(goalTargetAmount) : 0;
+  const remaining = hasTarget ? Math.max(targetNum - goalCurrentSaved, 0) : null;
 
   const [formData, setFormData] = useState<SavingDepositCreate>({
     amount: (initialData ? initialData.amount : '') as any,
@@ -48,7 +53,7 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
     deposit_date: initialData?.deposit_date || new Date().toISOString().split('T')[0],
     note: initialData?.note || '',
     manual_rate: '' as any,
-    register_as_expense: false,
+    register_as_expense: isProject,
   });
 
   useEffect(() => {
@@ -61,8 +66,13 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
         manual_rate: '' as any,
         register_as_expense: false,
       });
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        register_as_expense: isProject,
+      }));
     }
-  }, [initialData]);
+  }, [initialData, isProject]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -91,7 +101,7 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
 
   const currentAmount = Number(formData.amount) || 0;
   const isSameCurrency = formData.currency === goalCurrency;
-  const willComplete = !isEditing && isSameCurrency && currentAmount >= remaining && remaining > 0;
+  const willComplete = !isProject && !isEditing && isSameCurrency && remaining !== null && currentAmount >= remaining && remaining > 0;
 
   return (
     <div className="modal-backdrop" onClick={onCancel}>
@@ -109,7 +119,9 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
           paddingBottom: '0.65rem'
         }}>
           <h2 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
-            {isEditing ? `Editar Aporte en "${goalName}"` : `Aporte a "${goalName}"`}
+            {isEditing 
+              ? (isProject ? `Editar Pago en "${goalName}"` : `Editar Aporte en "${goalName}"`)
+              : (isProject ? `Registrar Pago en "${goalName}"` : `Abonar a "${goalName}"`)}
           </h2>
           <button
             type="button"
@@ -132,35 +144,57 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
 
         <form onSubmit={handleSubmit}>
           {/* Target Progress Banner */}
-          <div style={{
-            background: 'var(--surface-muted)',
-            borderRadius: 'var(--radius-md)',
-            padding: '0.875rem 1rem',
-            marginBottom: '1rem',
-            border: '1px solid var(--accent-light)',
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.4rem' }}>
-              <span style={{ color: 'var(--text-secondary)' }}>Faltan para la meta:</span>
-              <strong style={{ color: goalColor }}>
-                {formatCurrency(remaining, goalCurrency)}
-              </strong>
-            </div>
+          {hasTarget && remaining !== null ? (
             <div style={{
-              width: '100%',
-              height: '6px',
-              background: 'var(--surface-color)',
-              borderRadius: 'var(--radius-full)',
-              overflow: 'hidden',
+              background: 'var(--surface-muted)',
+              borderRadius: 'var(--radius-md)',
+              padding: '0.875rem 1rem',
+              marginBottom: '1rem',
+              border: '1px solid var(--accent-light)',
             }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.4rem' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>
+                  {isProject ? 'Restante del presupuesto:' : 'Faltan para la meta:'}
+                </span>
+                <strong style={{ color: goalColor }}>
+                  {formatCurrency(remaining, goalCurrency)}
+                </strong>
+              </div>
               <div style={{
-                height: '100%',
-                width: `${Math.min(100, (goalCurrentSaved / (goalTargetAmount || 1)) * 100)}%`,
-                background: goalColor,
+                width: '100%',
+                height: '6px',
+                background: 'var(--surface-color)',
                 borderRadius: 'var(--radius-full)',
-                transition: 'width 0.3s ease',
-              }} />
+                overflow: 'hidden',
+              }}>
+                <div style={{
+                  height: '100%',
+                  width: `${Math.min(100, (goalCurrentSaved / (targetNum || 1)) * 100)}%`,
+                  background: goalColor,
+                  borderRadius: 'var(--radius-full)',
+                  transition: 'width 0.3s ease',
+                }} />
+              </div>
             </div>
-          </div>
+          ) : isProject ? (
+            <div style={{
+              background: 'var(--surface-muted)',
+              borderRadius: 'var(--radius-md)',
+              padding: '0.875rem 1rem',
+              marginBottom: '1rem',
+              border: '1px solid var(--accent-light)',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Total invertido / pagado hasta ahora:</span>
+                <strong style={{ color: goalColor }}>
+                  {formatCurrency(goalCurrentSaved, goalCurrency)}
+                </strong>
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '0.25rem' }}>
+                Cuenta abierta · Acumulando pagos continuos
+              </div>
+            </div>
+          ) : null}
 
           {willComplete && (
             <div style={{
@@ -181,7 +215,7 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
           {/* Monto y Moneda */}
           <div className="form-group row">
             <div className="form-group half">
-              <label>Monto a Aportar *</label>
+              <label>{isProject ? 'Monto del Pago *' : 'Monto a Aportar *'}</label>
               <input
                 type="number"
                 step="any"
@@ -223,9 +257,9 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
             </div>
           )}
 
-          {/* Fecha del Aporte */}
+          {/* Fecha del Aporte / Pago */}
           <div className="form-group">
-            <label>Fecha del Aporte</label>
+            <label>{isProject ? 'Fecha del Pago' : 'Fecha del Aporte'}</label>
             <input
               type="date"
               name="deposit_date"
@@ -236,14 +270,14 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
 
           {/* Nota */}
           <div className="form-group">
-            <label>Nota / Origen de los fondos (Opcional)</label>
+            <label>{isProject ? 'Nota / Concepto del pago (Opcional)' : 'Nota / Origen de los fondos (Opcional)'}</label>
             <input
               type="text"
               name="note"
-              placeholder="Ej: Bono de trabajo, venta de garaje..."
+              placeholder={isProject ? "Ej: Repuestos de bomba, refrigerante, mano de obra..." : "Ej: Bono de trabajo, venta de garaje..."}
               value={formData.note || ''}
               onChange={handleChange}
-              />
+            />
           </div>
 
           {/* Registrar como Gasto en Dashboard */}
@@ -268,7 +302,9 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
                     Registrar como gasto en el Dashboard
                   </span>
                   <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4, display: 'block', marginTop: '0.2rem' }}>
-                    Descuenta este aporte de tu presupuesto general registrándolo en la categoría &quot;Ahorro&quot;.
+                    {isProject
+                      ? 'Descuenta este pago en tus gastos del Dashboard con la categoría del proyecto para reflejar la salida de dinero real.'
+                      : 'Descuenta este aporte de tu presupuesto general registrándolo en la categoría "Ahorro".'}
                   </span>
                 </div>
               </label>
@@ -294,7 +330,7 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
                 boxShadow: `0 4px 14px ${goalColor}44`,
               }}
             >
-              {loading ? 'Guardando...' : (isEditing ? 'Guardar Cambios' : 'Aportar')}
+              {loading ? 'Guardando...' : (isEditing ? 'Guardar Cambios' : (isProject ? 'Registrar Pago' : 'Aportar'))}
             </button>
           </div>
         </form>

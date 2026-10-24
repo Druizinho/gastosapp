@@ -527,7 +527,8 @@ class SharedDebtBrief(BaseModel):
 class SharedSavingGoalBrief(BaseModel):
     id: UUID
     name: str
-    target_amount: Decimal
+    target_amount: Optional[Decimal] = None
+    type: str = 'saving'
     current_amount: Decimal
     currency: str
     category: Optional[str] = None
@@ -619,7 +620,8 @@ class SavingDepositResponse(SavingDepositBase):
 
 class SavingGoalBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
-    target_amount: Decimal = Field(..., gt=0)
+    type: str = Field(default='saving')
+    target_amount: Optional[Decimal] = Field(None, gt=0)
     currency: CurrencyType = Field(default=CurrencyType.BS)
     target_date: Optional[datetime.date] = None
     category: Optional[str] = None
@@ -646,6 +648,7 @@ class SavingGoalCreate(SavingGoalBase):
 
 class SavingGoalUpdate(BaseModel):
     name: Optional[str] = None
+    type: Optional[str] = None
     target_amount: Optional[Decimal] = Field(None, gt=0)
     currency: Optional[CurrencyType] = None
     target_date: Optional[datetime.date] = None

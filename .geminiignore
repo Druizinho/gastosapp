@@ -1,0 +1,94 @@
+# ==========================================
+# .geminiignore - Context & Token Optimization
+# ==========================================
+# Espejo de compatibilidad con .antigravityignore para Gemini CLI y Antigravity.
+
+# 1. DEPENDENCIAS Y ENTORNOS VIRTUALES
+node_modules/
+**/node_modules/
+venv/
+**/venv/
+.venv/
+**/.venv/
+env/
+**/env/
+
+# 2. COMPILADOS Y SALIDAS DE BUILD
+dist/
+**/dist/
+dev-dist/
+**/dev-dist/
+dist-ssr/
+**/dist-ssr/
+build/
+**/build/
+out/
+**/out/
+*.egg-info/
+*.egg
+
+# 3. ARCHIVOS LOCK Y CHECKSUMS DE ALTO CONSUMO
+package-lock.json
+**/package-lock.json
+yarn.lock
+pnpm-lock.yaml
+skills-lock.json
+**/skills-lock.json
+
+# 4. CACHÉS DE PYTHON Y PRUEBAS
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+**/.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage/
+htmlcov/
+
+# 5. SECRETOS, CREDENCIALES Y LLAVES PRIVADAS
+.env
+.env.*
+*.pem
+*.key
+firebase-adminsdk.json
+**/firebase-adminsdk.json
+
+# 6. BASES DE DATOS LOCALES Y VOLCADOS
+*.db
+*.sqlite
+*.sqlite3
+backend/gastos.db
+
+# 7. LOGS Y ARCHIVOS TEMPORALES
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+tmp/
+temp/
+
+# 8. DIRECTORIOS DE OTROS ASISTENTES / REPETICIÓN DE SKILLS
+backend/.agents/
+frontend/.agents/
+.claude/
+**/.claude/
+.codebuddy/
+**/.codebuddy/
+.continue/
+**/.continue/
+.junie/
+**/.junie/
+.kiro/
+**/.kiro/
+
+# 9. IDE Y SISTEMA OPERATIVO
+.git/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

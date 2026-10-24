@@ -14,12 +14,12 @@ router = APIRouter(
 
 @router.get("/", response_model=List[schemas.DebtResponse])
 async def read_debts(
-    type: str = Query(..., description="'owed' or 'receivable'"),
+    type: Optional[str] = Query(None, description="'owed' or 'receivable', or omit for all"),
     is_settled: Optional[bool] = None,
     db: AsyncSession = Depends(get_db),
     user_id: UUID = Depends(get_current_user)
 ):
-    if type not in ["owed", "receivable"]:
+    if type and type not in ["owed", "receivable"]:
         raise HTTPException(status_code=400, detail="Invalid debt type")
     return await crud_debts.get_debts(db, user_id=user_id, debt_type=type, is_settled=is_settled)
 

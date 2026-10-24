@@ -69,8 +69,9 @@ const AppRoutes = () => {
             <Route path="/" element={<Dashboard />} />
             <Route path="/herramientas" element={<ToolsHub />} />
             <Route path="/herramientas/gastos-fijos" element={<FixedExpenses />} />
-            <Route path="/herramientas/deudas-nuestras" element={<DebtList type="owed" onBack={() => navigate(-1)} />} />
-            <Route path="/herramientas/deudas-por-cobrar" element={<DebtList type="receivable" onBack={() => navigate(-1)} />} />
+            <Route path="/herramientas/deudas" element={<DebtList onBack={() => navigate('/herramientas')} />} />
+            <Route path="/herramientas/deudas-nuestras" element={<Navigate to="/herramientas/deudas?tab=owed" replace />} />
+            <Route path="/herramientas/deudas-por-cobrar" element={<Navigate to="/herramientas/deudas?tab=receivable" replace />} />
             <Route path="/herramientas/ingresos-estimados" element={<EstimatedIncomeList onBack={() => navigate(-1)} />} />
             <Route path="/herramientas/ahorros" element={<SavingGoals onBack={() => navigate(-1)} />} />
             <Route path="/herramientas/presupuestos" element={<Budgets onBack={() => navigate(-1)} />} />
@@ -79,7 +80,7 @@ const AppRoutes = () => {
             <Route path="/conexiones" element={<Navigate to="/herramientas/panas" replace />} />
             <Route path="/panas" element={<Navigate to="/herramientas/panas" replace />} />
             <Route path="/presupuestos" element={<Navigate to="/herramientas/presupuestos" replace />} />
-            <Route path="/deudas" element={<Navigate to="/herramientas/deudas-nuestras" replace />} />
+            <Route path="/deudas" element={<Navigate to="/herramientas/deudas" replace />} />
             <Route path="/gastos-fijos" element={<Navigate to="/herramientas/gastos-fijos" replace />} />
             <Route path="/ahorros" element={<Navigate to="/herramientas/ahorros" replace />} />
             <Route path="/ingresos-estimados" element={<Navigate to="/herramientas/ingresos-estimados" replace />} />

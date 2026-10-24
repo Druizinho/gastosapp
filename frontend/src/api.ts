@@ -192,8 +192,9 @@ export const markFixedExpensePaid = async (id: string, paid: boolean): Promise<F
 };
 
 // Debts
-export const getDebts = async (type: 'owed' | 'receivable', isSettled?: boolean): Promise<Debt[]> => {
-  const params: any = { type };
+export const getDebts = async (type?: 'owed' | 'receivable', isSettled?: boolean): Promise<Debt[]> => {
+  const params: any = {};
+  if (type) params.type = type;
   if (isSettled !== undefined) params.is_settled = isSettled;
   const response = await api.get('/debts/', { params });
   return response.data;

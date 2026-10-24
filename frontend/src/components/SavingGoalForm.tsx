@@ -1,5 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { Users, X, PiggyBank, SlidersHorizontal } from 'lucide-react';
+import {
+  Users,
+  X,
+  PiggyBank,
+  SlidersHorizontal,
+  FolderKanban,
+  Wrench,
+  Car,
+  Briefcase,
+  Home,
+  Hammer,
+  ShoppingBag,
+  Info
+} from 'lucide-react';
 import type { SavingGoal, SavingGoalCreate, SavingGoalUpdate, Connection } from '../types';
 import { CURRENCY_OPTIONS } from '../types';
 import { getConnections } from '../api';
@@ -16,10 +29,19 @@ interface SavingGoalFormProps {
 const COLOR_PRESETS = [
   { label: 'Esmeralda', value: '#10B981' },
   { label: 'Azul', value: '#3B82F6' },
-  { label: 'Morado', value: '#8B5CF6' },
   { label: 'Ámbar', value: '#F59E0B' },
+  { label: 'Morado', value: '#8B5CF6' },
   { label: 'Rosa', value: '#EC4899' },
   { label: 'Cian', value: '#06B6D4' },
+];
+
+const PROJECT_ICONS = [
+  { id: 'wrench', label: 'Taller / Reparación', icon: <Wrench size={16} /> },
+  { id: 'car', label: 'Vehículo', icon: <Car size={16} /> },
+  { id: 'briefcase', label: 'Trabajo / Negocio', icon: <Briefcase size={16} /> },
+  { id: 'home', label: 'Hogar / Remodelación', icon: <Home size={16} /> },
+  { id: 'hammer', label: 'Construcción', icon: <Hammer size={16} /> },
+  { id: 'shopping-bag', label: 'Compras / Evento', icon: <ShoppingBag size={16} /> },
 ];
 
 export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
@@ -29,6 +51,7 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
   loading,
 }) => {
   const isEditing = !!initialData;
+  const [goalType, setGoalType] = useState<'saving' | 'project'>(initialData?.type || 'saving');
 
   // Panas connections
   const [connections, setConnections] = useState<Connection[]>([]);
@@ -39,6 +62,7 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
 
   const [formData, setFormData] = useState<SavingGoalCreate & { is_active?: boolean }>({
     name: '',
+    type: 'saving',
     target_amount: '' as any,
     currency: 'USD_BCV',
     target_date: '',
@@ -61,14 +85,16 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
 
   useEffect(() => {
     if (initialData) {
+      setGoalType(initialData.type || 'saving');
       setFormData({
         name: initialData.name,
-        target_amount: initialData.target_amount,
+        type: initialData.type || 'saving',
+        target_amount: initialData.target_amount ?? ('' as any),
         currency: initialData.currency,
         target_date: initialData.target_date || '',
         category: initialData.category || '',
-        color: initialData.color || '#10B981',
-        icon: initialData.icon || 'piggy-bank',
+        color: initialData.color || (initialData.type === 'project' ? '#3B82F6' : '#10B981'),
+        icon: initialData.icon || (initialData.type === 'project' ? 'wrench' : 'piggy-bank'),
         notes: initialData.notes || '',
         is_active: initialData.is_active,
         manual_rate: '' as any,
@@ -93,7 +119,14 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const submitData: any = { ...formData };
-    submitData.target_amount = Number(submitData.target_amount);
+    submitData.type = goalType;
+
+    if (submitData.target_amount !== undefined && submitData.target_amount !== null && submitData.target_amount !== '') {
+      submitData.target_amount = Number(submitData.target_amount);
+    } else {
+      submitData.target_amount = null;
+    }
+
     if (!submitData.target_date) submitData.target_date = null;
     if (!submitData.category) submitData.category = null;
     if (showManualRate && submitData.manual_rate) {
@@ -114,6 +147,8 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
 
     onSubmit(submitData);
   };
+
+  const isProject = goalType === 'project';
 
   return (
     <div className="modal-backdrop" onClick={onCancel}>
@@ -141,17 +176,19 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
               width: '32px',
               height: '32px',
               borderRadius: 'var(--radius-sm)',
-              background: `${formData.color || '#10B981'}20`,
-              color: formData.color || '#10B981',
+              background: `${formData.color || (isProject ? '#3B82F6' : '#10B981')}20`,
+              color: formData.color || (isProject ? '#3B82F6' : '#10B981'),
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               flexShrink: 0
             }}>
-              <PiggyBank size={18} />
+              {isProject ? <FolderKanban size={18} /> : <PiggyBank size={18} />}
             </div>
             <h2 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
-              {isEditing ? 'Editar Fondo de Ahorro' : 'Nuevo Fondo de Ahorro'}
+              {isEditing
+                ? (isProject ? 'Editar Proyecto / Cuenta' : 'Editar Fondo de Ahorro')
+                : (isProject ? 'Nuevo Proyecto / Cuenta' : 'Nuevo Fondo de Ahorro')}
             </h2>
           </div>
           <button
@@ -173,6 +210,126 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
           </button>
         </div>
 
+        {/* Selector de Tipo: Ahorro vs Proyecto */}
+        <div style={{
+          display: 'flex',
+          background: 'var(--surface-muted)',
+          borderRadius: 'var(--radius-md)',
+          padding: '0.25rem',
+          marginBottom: '0.85rem',
+          border: '1px solid var(--accent-light)'
+        }}>
+          <button
+            type="button"
+            onClick={() => {
+              setGoalType('saving');
+              if (!isEditing) {
+                setFormData(prev => ({
+                  ...prev,
+                  type: 'saving',
+                  color: prev.color === '#3B82F6' ? '#10B981' : prev.color,
+                  icon: 'piggy-bank'
+                }));
+              }
+            }}
+            style={{
+              flex: 1,
+              padding: '0.5rem 0.75rem',
+              borderRadius: 'var(--radius-sm)',
+              border: 'none',
+              background: goalType === 'saving' ? 'var(--surface-color)' : 'transparent',
+              color: goalType === 'saving' ? '#10B981' : 'var(--text-secondary)',
+              fontWeight: goalType === 'saving' ? 700 : 500,
+              fontSize: '0.85rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.4rem',
+              cursor: 'pointer',
+              boxShadow: goalType === 'saving' ? 'var(--shadow-sm)' : 'none',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <PiggyBank size={16} />
+            <span>Fondo de Ahorro</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setGoalType('project');
+              if (!isEditing) {
+                setFormData(prev => ({
+                  ...prev,
+                  type: 'project',
+                  color: prev.color === '#10B981' ? '#3B82F6' : prev.color,
+                  icon: 'wrench'
+                }));
+              }
+            }}
+            style={{
+              flex: 1,
+              padding: '0.5rem 0.75rem',
+              borderRadius: 'var(--radius-sm)',
+              border: 'none',
+              background: goalType === 'project' ? 'var(--surface-color)' : 'transparent',
+              color: goalType === 'project' ? '#3B82F6' : 'var(--text-secondary)',
+              fontWeight: goalType === 'project' ? 700 : 500,
+              fontSize: '0.85rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.4rem',
+              cursor: 'pointer',
+              boxShadow: goalType === 'project' ? 'var(--shadow-sm)' : 'none',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <FolderKanban size={16} />
+            <span>Proyecto / Cuenta</span>
+          </button>
+        </div>
+
+        {/* Nota contextual */}
+        {isProject ? (
+          <div style={{
+            background: 'rgba(59, 130, 246, 0.08)',
+            border: '1px solid rgba(59, 130, 246, 0.2)',
+            color: 'var(--text-secondary)',
+            padding: '0.65rem 0.85rem',
+            borderRadius: 'var(--radius-md)',
+            fontSize: '0.78rem',
+            lineHeight: 1.4,
+            marginBottom: '0.85rem',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '0.45rem'
+          }}>
+            <Info size={15} style={{ color: '#3B82F6', flexShrink: 0, marginTop: '0.1rem' }} />
+            <span>
+              Diseñado para pagos acumulados (reparaciones, vehículo, remodelación, eventos). Puedes dejar el presupuesto abierto y cada pago se podrá reflejar como gasto en el Dashboard.
+            </span>
+          </div>
+        ) : (
+          <div style={{
+            background: 'rgba(16, 185, 129, 0.08)',
+            border: '1px solid rgba(16, 185, 129, 0.2)',
+            color: 'var(--text-secondary)',
+            padding: '0.65rem 0.85rem',
+            borderRadius: 'var(--radius-md)',
+            fontSize: '0.78rem',
+            lineHeight: 1.4,
+            marginBottom: '0.85rem',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '0.45rem'
+          }}>
+            <Info size={15} style={{ color: '#10B981', flexShrink: 0, marginTop: '0.1rem' }} />
+            <span>
+              Dinero que vas guardando (con meta fija o como fondo continuo sin límite).
+            </span>
+          </div>
+        )}
+
         {/* Banner compartido en edición */}
         {isEditing && initialData?.is_shared && (
           <div style={{
@@ -189,7 +346,7 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
           }}>
             <Users size={16} style={{ color: 'var(--primary-color)', flexShrink: 0 }} />
             <span>
-              Fondo compartido con <strong>{initialData.shared_partner_name}</strong>. Progreso sincronizado.
+              {isProject ? 'Proyecto compartido con' : 'Fondo compartido con'} <strong>{initialData.shared_partner_name}</strong>. Progreso sincronizado.
             </span>
           </div>
         )}
@@ -198,33 +355,34 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
           {/* Nombre */}
           <div className="form-group" style={{ marginBottom: '0.75rem' }}>
             <label style={{ fontSize: '0.82rem', marginBottom: '0.25rem', fontWeight: 600 }}>
-              Nombre del Fondo *
+              {isProject ? 'Nombre del Proyecto / Cuenta *' : 'Nombre del Fondo *'}
             </label>
             <input
               type="text"
               name="name"
               required
-              placeholder="Ej: Fondo de Emergencia, Vacaciones, Laptop..."
+              placeholder={isProject ? 'Ej: Reparación de Motor, Remodelación Cocina, Boda...' : 'Ej: Fondo de Emergencia, Vacaciones, Laptop...'}
               value={formData.name}
               onChange={handleChange}
               style={{ padding: '0.65rem 0.75rem' }}
             />
           </div>
 
-          {/* Fila: Meta y Moneda */}
+          {/* Fila: Meta / Presupuesto y Moneda */}
           <div className="form-group row" style={{ gap: '0.75rem', marginBottom: '0.75rem' }}>
             <div className="form-group half">
-              <label style={{ fontSize: '0.82rem', marginBottom: '0.25rem', fontWeight: 600 }}>
-                Monto Objetivo *
+              <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginBottom: '0.25rem', fontWeight: 600 }}>
+                <span>{isProject ? 'Presupuesto Estimado' : 'Monto Objetivo'}</span>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', fontWeight: 400 }}>(Opcional)</span>
               </label>
               <input
                 type="number"
                 step="0.01"
                 min="0.01"
                 name="target_amount"
-                required
-                placeholder="0.00"
-                value={formData.target_amount || ''}
+                required={false}
+                placeholder={isProject ? "Dejar vacío si es abierto" : "Dejar vacío si es ahorro libre / fondo de emergencia"}
+                value={formData.target_amount ?? ''}
                 onChange={handleChange}
                 style={{ padding: '0.65rem 0.75rem' }}
               />
@@ -272,7 +430,52 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
             </div>
           </div>
 
-          {/* Color del Fondo (Inline compacto) */}
+          {/* Iconos sugeridos para proyectos */}
+          {isProject && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '0.45rem 0.65rem',
+              background: 'var(--surface-muted)',
+              borderRadius: 'var(--radius-sm)',
+              marginBottom: '0.75rem',
+              border: '1px solid var(--accent-light)'
+            }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                Ícono sugerido:
+              </span>
+              <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+                {PROJECT_ICONS.map((item) => {
+                  const isSelected = (formData.icon || 'wrench') === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, icon: item.id }))}
+                      style={{
+                        padding: '0.35rem',
+                        borderRadius: 'var(--radius-sm)',
+                        background: isSelected ? (formData.color || '#3B82F6') : 'transparent',
+                        color: isSelected ? 'white' : 'var(--text-secondary)',
+                        border: isSelected ? 'none' : '1px solid var(--accent-light)',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transition: 'all 0.15s ease'
+                      }}
+                      title={item.label}
+                    >
+                      {item.icon}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Color del Fondo / Proyecto (Inline compacto) */}
           <div style={{
             display: 'flex',
             alignItems: 'center',
@@ -479,14 +682,14 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
               disabled={loading}
               className="btn-submit"
               style={{
-                background: formData.color || 'var(--income-color)',
-                boxShadow: `0 4px 14px ${(formData.color || '#10B981')}44`,
+                background: formData.color || (isProject ? '#3B82F6' : 'var(--income-color)'),
+                boxShadow: `0 4px 14px ${(formData.color || (isProject ? '#3B82F6' : '#10B981'))}44`,
                 padding: '0.75rem 1.25rem',
                 fontSize: '0.9rem',
                 fontWeight: 700
               }}
             >
-              {loading ? 'Guardando...' : (isEditing ? 'Guardar Cambios' : 'Crear Fondo')}
+              {loading ? 'Guardando...' : (isEditing ? 'Guardar Cambios' : (isProject ? 'Crear Proyecto' : 'Crear Fondo'))}
             </button>
           </div>
         </form>

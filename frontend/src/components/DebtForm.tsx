@@ -109,8 +109,9 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
     color: 'var(--text-secondary)'
   };
 
-  const themeColor = type === 'owed' ? 'var(--expense-color)' : 'var(--income-color)';
-  const themeBg = type === 'owed' ? 'var(--expense-bg)' : 'var(--income-bg)';
+  const currentType = formData.type || type;
+  const themeColor = currentType === 'owed' ? 'var(--expense-color)' : 'var(--income-color)';
+  const themeBg = currentType === 'owed' ? 'var(--expense-bg)' : 'var(--income-bg)';
 
   return (
     <div className="modal-backdrop" onClick={onCancel}>
@@ -149,8 +150,8 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
             </div>
             <h2 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
               {isEditing 
-                ? (type === 'owed' ? 'Editar Deuda Pendiente' : 'Editar Cuenta por Cobrar')
-                : (type === 'owed' ? 'Nueva Deuda (Debo)' : 'Nueva Deuda (Me Deben)')}
+                ? (currentType === 'owed' ? 'Editar Deuda Pendiente' : 'Editar Cuenta por Cobrar')
+                : (currentType === 'owed' ? 'Nueva Deuda (Debo)' : 'Nueva Cuenta (Me Deben)')}
             </h2>
           </div>
           <button
@@ -172,6 +173,54 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
             <X size={20} />
           </button>
         </div>
+
+        {!isEditing && (
+          <div style={{
+            display: 'flex',
+            background: 'var(--surface-muted, rgba(255,255,255,0.06))',
+            padding: '0.25rem',
+            borderRadius: 'var(--radius-md)',
+            gap: '0.35rem',
+            marginBottom: '1rem'
+          }}>
+            <button
+              type="button"
+              onClick={() => setFormData(prev => ({ ...prev, type: 'owed' }))}
+              style={{
+                flex: 1,
+                padding: '0.55rem',
+                borderRadius: 'var(--radius-sm)',
+                border: 'none',
+                background: currentType === 'owed' ? 'var(--expense-color)' : 'transparent',
+                color: currentType === 'owed' ? '#fff' : 'var(--text-secondary)',
+                fontWeight: currentType === 'owed' ? 700 : 500,
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              Debo dinero
+            </button>
+            <button
+              type="button"
+              onClick={() => setFormData(prev => ({ ...prev, type: 'receivable' }))}
+              style={{
+                flex: 1,
+                padding: '0.55rem',
+                borderRadius: 'var(--radius-sm)',
+                border: 'none',
+                background: currentType === 'receivable' ? 'var(--income-color)' : 'transparent',
+                color: currentType === 'receivable' ? '#fff' : 'var(--text-secondary)',
+                fontWeight: currentType === 'receivable' ? 700 : 500,
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              Me deben dinero
+            </button>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {isSharedDebt && (
@@ -197,7 +246,7 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
 
           <div>
             <label style={labelStyle}>
-              {type === 'owed' ? '¿A quién le debes? *' : '¿Quién te debe? *'}
+              {currentType === 'owed' ? '¿A quién le debes? (Acreedor) *' : '¿Quién te debe? (Deudor) *'}
             </label>
             <input
               type="text"
