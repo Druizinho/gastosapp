@@ -58,7 +58,16 @@ async def create_fixed_expense(db: AsyncSession, expense: schemas.FixedExpenseCr
 
 
 async def get_fixed_expenses(db: AsyncSession, user_id: UUID, active_only: bool = False):
-    query = select(models.FixedExpense).options(selectinload(models.FixedExpense.checks)).filter(models.FixedExpense.user_id == user_id)
+    query = (
+        select(models.FixedExpense)
+        .options(selectinload(models.FixedExpense.checks))
+        .filter(
+            or_(
+                models.FixedExpense.user_id == user_id,
+                models.FixedExpense.id.in_(sharing.shared_entity_ids_subquery(user_id, "fixed_expense"))
+            )
+        )
+    )
     
     if active_only:
         query = query.filter(models.FixedExpense.is_active == True)
@@ -76,7 +85,10 @@ async def get_fixed_expense(db: AsyncSession, expense_id: UUID, user_id: UUID):
         .options(selectinload(models.FixedExpense.checks))
         .filter(
             models.FixedExpense.id == expense_id,
-            models.FixedExpense.user_id == user_id
+            or_(
+                models.FixedExpense.user_id == user_id,
+                models.FixedExpense.id.in_(sharing.shared_entity_ids_subquery(user_id, "fixed_expense"))
+            )
         )
     )
     fe = result.scalars().first()
@@ -99,17 +111,22 @@ async def update_fixed_expense(db: AsyncSession, expense_id: UUID, expense: sche
     if extra_data:
         update_data.update(extra_data)
 
-    membership = await sharing.get_membership(db, expense_id)
+    membership = await sharing.get_membership(db, expense_id, user_id)
 
     if membership:
         share, member = membership
-        sharing.require_admin(member)
+        if 'category' in update_data:
+            new_cat = update_data.pop('category')
+            member.local_category = new_cat
+            if db_expense.user_id == user_id:
+                db_expense.category = new_cat
 
-        for key, value in update_data.items():
-            setattr(db_expense, key, value)
-        await db.flush()
-
-        await sharing.sync_parent_fields(db, share, expense_id, update_data)
+        changing_fields = {k: v for k, v in update_data.items() if getattr(db_expense, k, None) != v}
+        if changing_fields:
+            sharing.require_admin(member)
+            for key, value in changing_fields.items():
+                setattr(db_expense, key, value)
+            await db.flush()
     else:
         for key, value in update_data.items():
             setattr(db_expense, key, value)
@@ -151,7 +168,7 @@ async def delete_fixed_expense(db: AsyncSession, expense_id: UUID, user_id: UUID
     if not db_expense:
         return False
 
-    membership = await sharing.get_membership(db, expense_id)
+    membership = await sharing.get_membership(db, expense_id, user_id)
     if membership:
         share, member = membership
         if member.role != "admin":
@@ -199,12 +216,7 @@ async def delete_fixed_expense(db: AsyncSession, expense_id: UUID, user_id: UUID
                 url="/herramientas/gastos-fijos"
             )
 
-            members = await sharing.get_members(db, share.id)
-            entity_ids = [m.entity_id for m in members]
-            if entity_ids:
-                res = await db.execute(select(models.FixedExpense).where(models.FixedExpense.id.in_(entity_ids)))
-                for fe_obj in res.scalars().all():
-                    await db.delete(fe_obj)
+            await db.delete(db_expense)
             await db.delete(share)
         else:
             await db.delete(db_expense)
@@ -222,26 +234,6 @@ async def delete_fixed_expense(db: AsyncSession, expense_id: UUID, user_id: UUID
             user_prof = user_prof_res.scalars().first()
             user_name = user_prof.display_name if user_prof and user_prof.display_name else "Usuario"
             expense_name = db_expense.name
-
-            members = await sharing.get_members(db, share.id)
-            sibling_ids = [m.entity_id for m in members if m.entity_id != expense_id]
-            if sibling_ids:
-                res = await db.execute(
-                    select(models.FixedExpense)
-                    .options(selectinload(models.FixedExpense.checks))
-                    .where(models.FixedExpense.id.in_(sibling_ids))
-                )
-                for m_fe in res.scalars().all():
-                    m_fe.is_active = False
-                    m_fe.deactivated_at = end_of_prev_month
-                    m_checks_to_remove = [mc for mc in (m_fe.checks or []) if mc.month_year >= month_year]
-                    for mc in m_checks_to_remove:
-                        if mc.expense_id:
-                            exp_res = await db.execute(select(models.Expense).where(models.Expense.id == mc.expense_id))
-                            exp = exp_res.scalars().first()
-                            if exp:
-                                await db.delete(exp)
-                        await db.delete(mc)
 
             await sharing.notify_members(
                 db=db,
@@ -266,8 +258,13 @@ async def get_fixed_expenses_summary(db: AsyncSession, user_id: UUID, month_year
     _, last_day = calendar.monthrange(year, month)
     end_date = datetime(year, month, last_day, 23, 59, 59, 999999, tzinfo=timezone.utc)
 
-    active_condition = and_(
+    user_scope = or_(
         models.FixedExpense.user_id == user_id,
+        models.FixedExpense.id.in_(sharing.shared_entity_ids_subquery(user_id, "fixed_expense"))
+    )
+
+    active_condition = and_(
+        user_scope,
         models.FixedExpense.is_active == True,
         models.FixedExpense.created_at <= end_date,
         or_(
@@ -284,7 +281,7 @@ async def get_fixed_expenses_summary(db: AsyncSession, user_id: UUID, month_year
     paid_result = await db.execute(
         select(func.count(models.FixedExpenseCheck.id))
         .join(models.FixedExpense, models.FixedExpenseCheck.fixed_expense_id == models.FixedExpense.id)
-        .filter(models.FixedExpense.user_id == user_id)
+        .filter(user_scope)
         .filter(models.FixedExpenseCheck.month_year == month_year)
     )
     total_paid = paid_result.scalar() or 0
@@ -356,21 +353,10 @@ async def check_fixed_expense(
     if fe:
         fe.last_paid_month = check_data.month_year
 
-    membership = await sharing.get_membership(db, fixed_expense_id)
+    membership = await sharing.get_membership(db, fixed_expense_id, user_id)
 
     if membership:
         share, _ = membership
-        await sharing.fan_out_child_create(
-            db=db,
-            share=share,
-            source_child=db_check,
-            child_data=data,
-            child_model=models.FixedExpenseCheck,
-            parent_fk_name="fixed_expense_id",
-            payer_id=user_id,
-            payer_name=payer_name
-        )
-
         expense_name = fe.name if fe else "Gasto Fijo"
         await sharing.notify_members(
             db=db,
@@ -399,14 +385,17 @@ async def update_fixed_expense_check(
         .join(models.FixedExpense, models.FixedExpenseCheck.fixed_expense_id == models.FixedExpense.id)
         .filter(
             models.FixedExpenseCheck.id == check_id,
-            models.FixedExpense.user_id == user_id
+            or_(
+                models.FixedExpense.user_id == user_id,
+                models.FixedExpense.id.in_(sharing.shared_entity_ids_subquery(user_id, "fixed_expense"))
+            )
         )
     )
     check = result.scalars().first()
     if not check:
         return None
 
-    membership = await sharing.get_membership(db, check.fixed_expense_id)
+    membership = await sharing.get_membership(db, check.fixed_expense_id, user_id)
     if membership:
         share, member = membership
         if not sharing.can_edit_child(member, check.paid_by_user_id):
@@ -434,8 +423,17 @@ async def update_fixed_expense_check(
         setattr(check, k, v)
     await db.flush()
 
-    if membership and check.sync_id:
-        await sharing.fan_out_child_update(db, models.FixedExpenseCheck, check.sync_id, update_dict)
+    if check.expense_id:
+        exp_res = await db.execute(select(models.Expense).where(models.Expense.id == check.expense_id))
+        linked_exp = exp_res.scalars().first()
+        if linked_exp:
+            if 'paid_amount' in update_dict:
+                linked_exp.amount = update_dict['paid_amount']
+            if 'currency' in update_dict:
+                linked_exp.currency = update_dict['currency'].value if hasattr(update_dict['currency'], 'value') else str(update_dict['currency'])
+            for key in ["amount_usd", "amount_bs", "amount_eur", "amount_usdt", "rate_usd_bs", "rate_eur_bs", "rate_usdt_bs"]:
+                if key in update_dict:
+                    setattr(linked_exp, key, update_dict[key])
 
     await db.commit()
     await db.refresh(check)
@@ -454,37 +452,27 @@ async def uncheck_fixed_expense(db: AsyncSession, fixed_expense_id: UUID, month_
         return None, None
     
     expense_id = check.expense_id
-    sync_id = check.sync_id or check.id
 
-    membership = await sharing.get_membership(db, fixed_expense_id)
+    membership = await sharing.get_membership(db, fixed_expense_id, user_id)
 
     if membership:
         share, member = membership
         if user_id and not sharing.can_edit_child(member, check.paid_by_user_id):
             raise HTTPException(status_code=403, detail="Solo puedes desmarcar pagos que tú realizaste o debes ser administrador")
 
-        linked_expense_ids = await sharing.fan_out_child_delete(db, models.FixedExpenseCheck, sync_id)
-        for lexp_id in set(linked_expense_ids):
-            exp_res = await db.execute(select(models.Expense).where(models.Expense.id == lexp_id))
-            exp_obj = exp_res.scalars().first()
-            if exp_obj:
-                await db.delete(exp_obj)
-        expense_id = None  # Already deleted above across all synced checks
+    if expense_id:
+        exp_res = await db.execute(select(models.Expense).where(models.Expense.id == expense_id))
+        exp_obj = exp_res.scalars().first()
+        if exp_obj:
+            await db.delete(exp_obj)
+        expense_id = None
 
-        # Update last_paid_month on members in one batch query
-        members = await sharing.get_members(db, share.id)
-        entity_ids = [m.entity_id for m in members]
-        if entity_ids:
-            exp_res = await db.execute(select(models.FixedExpense).where(models.FixedExpense.id.in_(entity_ids)))
-            for fe_item in exp_res.scalars().all():
-                if fe_item.last_paid_month == month_year:
-                    fe_item.last_paid_month = None
-    else:
-        await db.delete(check)
-        exp = await db.execute(select(models.FixedExpense).where(models.FixedExpense.id == fixed_expense_id))
-        fe_item = exp.scalars().first()
-        if fe_item and fe_item.last_paid_month == month_year:
-            fe_item.last_paid_month = None
+    await db.delete(check)
+
+    exp = await db.execute(select(models.FixedExpense).where(models.FixedExpense.id == fixed_expense_id))
+    fe_item = exp.scalars().first()
+    if fe_item and fe_item.last_paid_month == month_year:
+        fe_item.last_paid_month = None
 
     await db.commit()
     return True, expense_id
@@ -496,6 +484,11 @@ async def get_monthly_fixed_expenses(db: AsyncSession, user_id: UUID, month_year
     _, last_day = calendar.monthrange(year, month)
     end_date = datetime(year, month, last_day, 23, 59, 59, 999999, tzinfo=timezone.utc)
 
+    user_scope = or_(
+        models.FixedExpense.user_id == user_id,
+        models.FixedExpense.id.in_(sharing.shared_entity_ids_subquery(user_id, "fixed_expense"))
+    )
+
     query = (
         select(models.FixedExpense)
         .options(selectinload(models.FixedExpense.checks))
@@ -503,7 +496,7 @@ async def get_monthly_fixed_expenses(db: AsyncSession, user_id: UUID, month_year
                    (models.FixedExpenseCheck.fixed_expense_id == models.FixedExpense.id) & 
                    (models.FixedExpenseCheck.month_year == month_year))
         .filter(
-            models.FixedExpense.user_id == user_id,
+            user_scope,
             models.FixedExpense.created_at <= end_date,
             or_(
                 models.FixedExpense.deactivated_at == None,

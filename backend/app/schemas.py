@@ -546,6 +546,22 @@ class SharedSavingGoalBrief(BaseModel):
     member_names: List[str] = []
 
 
+class SharedSubBudgetBrief(BaseModel):
+    id: UUID
+    name: str
+    month_year: str
+    currency: str = "USD_BCV"
+    effective_global_limit: float = 0.0
+    total_spent_budget_currency: float = 0.0
+    global_spent_percentage: float = 0.0
+    global_traffic_light: str = "green"
+    categories_count: int = 0
+    is_mine: bool = True
+    owner_name: Optional[str] = None
+    members_count: int = 1
+    member_names: List[str] = []
+
+
 class PanaSummary(BaseModel):
     id: UUID
     partner_id: UUID
@@ -559,6 +575,7 @@ class PanaSummary(BaseModel):
     total_debts_remaining: Decimal = Decimal(0)
     debts_currency_summary: dict = {}
     shared_saving_goals_count: int = 0
+    shared_sub_budgets_count: int = 0
 
 
 class PanasGlobalOverview(BaseModel):
@@ -579,6 +596,7 @@ class PanaDetail(BaseModel):
     shared_fixed_expenses: List[SharedFixedExpenseBrief]
     shared_debts: List[SharedDebtBrief]
     shared_saving_goals: List[SharedSavingGoalBrief] = []
+    shared_sub_budgets: List[SharedSubBudgetBrief] = []
 
 
 # Saving Goals Schemas
@@ -797,6 +815,14 @@ class SingleBudgetOut(BaseModel):
     allocated_usdt: Decimal = Decimal("0")
     category_limits: List[BudgetCategorySummaryOut] = []
     categories_count: int = 0
+    is_shared: bool = False
+    share_id: Optional[UUID] = None
+    my_role: Optional[ShareRole] = None
+    shared_members: List[ShareMemberOut] = []
+    shared_partner_name: Optional[str] = None
+    shared_by: Optional[str] = None
+    owner_id: Optional[UUID] = None
+    is_read_only: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -808,6 +834,7 @@ class MonthlyBudgetCreate(BaseModel):
     manual_global_limit: Optional[Decimal] = Field(None, ge=0)
     is_primary: Optional[bool] = False
     categories: Optional[List[str]] = None
+    shared_with_ids: Optional[List[UUID]] = None
 
 class MonthlyBudgetUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
@@ -817,6 +844,7 @@ class MonthlyBudgetUpdate(BaseModel):
     manual_global_limit: Optional[Decimal] = Field(None, ge=0)
     is_primary: Optional[bool] = None
     categories: Optional[List[str]] = None
+    shared_with_ids: Optional[List[UUID]] = None
 
 class MonthlyBudgetResponse(BaseModel):
     id: Optional[UUID] = None
@@ -853,6 +881,7 @@ class MonthlyBudgetResponse(BaseModel):
     unbudgeted_categories: List[str] = []
     exists: bool = False
     budgets: List[SingleBudgetOut] = []
+    shared_with_me_budgets: List[SingleBudgetOut] = []
     available_categories: List[str] = []
     category_spending: List[CategoryMonthSpendOut] = []
 

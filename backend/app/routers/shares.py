@@ -20,7 +20,7 @@ async def get_share_by_entity(
     db: AsyncSession = Depends(get_db),
     user_id: UUID = Depends(get_current_user)
 ):
-    membership = await sharing.get_membership(db, entity_id)
+    membership = await sharing.get_membership(db, entity_id, user_id)
     if not membership:
         raise HTTPException(status_code=404, detail="Este ítem no está compartido")
     share, _ = membership
@@ -53,13 +53,15 @@ async def add_share_members(
     item_type_label = {
         "debt": "una deuda compartida",
         "fixed_expense": "un gasto fijo compartido",
-        "saving_goal": "un fondo de ahorro compartido"
+        "saving_goal": "un fondo de ahorro compartido",
+        "sub_budget": "un sub-presupuesto compartido"
     }.get(share.entity_type, "un ítem compartido")
 
     url_by_type = {
         "debt": "/deudas",
         "fixed_expense": "/gastos-fijos",
-        "saving_goal": "/herramientas/ahorros"
+        "saving_goal": "/herramientas/ahorros",
+        "sub_budget": "/herramientas/presupuestos"
     }.get(share.entity_type, "/dashboard")
 
     for tid in payload.user_ids:
@@ -148,7 +150,8 @@ async def remove_share_member(
     item_type_label = {
         "debt": "la deuda compartida",
         "fixed_expense": "el gasto fijo compartido",
-        "saving_goal": "el fondo de ahorro compartido"
+        "saving_goal": "el fondo de ahorro compartido",
+        "sub_budget": "el sub-presupuesto compartido"
     }.get(share.entity_type, "el ítem compartido")
 
     if is_voluntary:

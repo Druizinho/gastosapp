@@ -23,7 +23,10 @@ async def get_saving_goals(
     await ensure_categories_and_debts_schema()
 
     query = select(models.SavingGoal).filter(
-        models.SavingGoal.user_id == user_id
+        or_(
+            models.SavingGoal.user_id == user_id,
+            models.SavingGoal.id.in_(sharing.shared_entity_ids_subquery(user_id, "saving_goal"))
+        )
     ).options(selectinload(models.SavingGoal.deposits))
 
     if is_completed is not None:
@@ -41,7 +44,13 @@ async def get_saving_goals(
 async def get_saving_goal(db: AsyncSession, goal_id: UUID, user_id: UUID) -> Optional[models.SavingGoal]:
     result = await db.execute(
         select(models.SavingGoal)
-        .filter(models.SavingGoal.id == goal_id, models.SavingGoal.user_id == user_id)
+        .filter(
+            models.SavingGoal.id == goal_id,
+            or_(
+                models.SavingGoal.user_id == user_id,
+                models.SavingGoal.id.in_(sharing.shared_entity_ids_subquery(user_id, "saving_goal"))
+            )
+        )
         .options(selectinload(models.SavingGoal.deposits))
     )
     goal = result.scalars().first()
@@ -156,28 +165,33 @@ async def update_saving_goal(
     if extra_data:
         update_data.update(extra_data)
 
-    membership = await sharing.get_membership(db, goal_id)
+    membership = await sharing.get_membership(db, goal_id, user_id)
 
     if membership:
         share, member = membership
-        sharing.require_admin(member)
 
-        if 'is_completed' in update_data:
-            if update_data['is_completed'] and not db_goal.is_completed:
-                update_data['completed_at'] = datetime.datetime.now(datetime.timezone.utc)
-            elif not update_data['is_completed']:
-                update_data['completed_at'] = None
+        if 'category' in update_data:
+            new_cat = update_data.pop('category')
+            member.local_category = new_cat
+            if db_goal.user_id == user_id:
+                db_goal.category = new_cat
 
-        for key, value in update_data.items():
-            setattr(db_goal, key, value)
-        await db.flush()
+        changing_fields = {k: v for k, v in update_data.items() if getattr(db_goal, k, None) != v}
+        if changing_fields:
+            sharing.require_admin(member)
 
-        await sharing.sync_parent_fields(db, share, goal_id, update_data)
+            if 'is_completed' in changing_fields:
+                if changing_fields['is_completed'] and not db_goal.is_completed:
+                    changing_fields['completed_at'] = datetime.datetime.now(datetime.timezone.utc)
+                elif not changing_fields['is_completed']:
+                    changing_fields['completed_at'] = None
 
-        if 'target_amount' in update_data or 'currency' in update_data:
-            siblings = await sharing.sibling_entity_ids(db, share.id)
-            all_ids = list(set(list(siblings.values()) + [goal_id]))
-            await sharing.recompute_settlement(db, "saving_goal", all_ids)
+            for key, value in changing_fields.items():
+                setattr(db_goal, key, value)
+            await db.flush()
+
+            if 'target_amount' in changing_fields or 'currency' in changing_fields:
+                await sharing.recompute_settlement(db, "saving_goal", [goal_id])
     else:
         if 'is_completed' in update_data:
             if update_data['is_completed'] and not db_goal.is_completed:
@@ -232,7 +246,7 @@ async def delete_saving_goal(db: AsyncSession, goal_id: UUID, user_id: UUID) -> 
     if not db_goal:
         return False
 
-    membership = await sharing.get_membership(db, goal_id)
+    membership = await sharing.get_membership(db, goal_id, user_id)
 
     if membership:
         share, member = membership
@@ -240,11 +254,7 @@ async def delete_saving_goal(db: AsyncSession, goal_id: UUID, user_id: UUID) -> 
         ent_desc = "un proyecto compartido" if is_proj else "un fondo de ahorro compartido"
         ent_noun = "proyecto" if is_proj else "fondo de ahorro"
 
-        if member.role != "admin":
-            raise HTTPException(
-                status_code=403,
-                detail=f"Solo un administrador puede eliminar {ent_desc}. Si deseas dejar de verlo, usa la opción 'Salir'."
-            )
+        sharing.require_admin(member)
 
         user_prof_res = await db.execute(select(models.Profile).where(models.Profile.id == user_id))
         user_prof = user_prof_res.scalars().first()
@@ -260,23 +270,17 @@ async def delete_saving_goal(db: AsyncSession, goal_id: UUID, user_id: UUID) -> 
             url="/herramientas/ahorros"
         )
 
-        members = await sharing.get_members(db, share.id)
-        entity_ids = [m.entity_id for m in members]
-        if entity_ids:
-            linked_exp_res = await db.execute(
-                select(models.SavingDeposit.expense_id).where(
-                    models.SavingDeposit.goal_id.in_(entity_ids),
-                    models.SavingDeposit.expense_id.isnot(None)
-                )
+        linked_exp_res = await db.execute(
+            select(models.SavingDeposit.expense_id).where(
+                models.SavingDeposit.goal_id == goal_id,
+                models.SavingDeposit.expense_id.isnot(None)
             )
-            linked_exp_ids = [eid for eid in linked_exp_res.scalars().all() if eid is not None]
-            if linked_exp_ids:
-                await db.execute(delete(models.Expense).where(models.Expense.id.in_(linked_exp_ids)))
+        )
+        linked_exp_ids = [eid for eid in linked_exp_res.scalars().all() if eid is not None]
+        if linked_exp_ids:
+            await db.execute(delete(models.Expense).where(models.Expense.id.in_(linked_exp_ids)))
 
-            res = await db.execute(select(models.SavingGoal).where(models.SavingGoal.id.in_(entity_ids)))
-            for g_obj in res.scalars().all():
-                await db.delete(g_obj)
-
+        await db.delete(db_goal)
         await db.delete(share)
     else:
         linked_exp_res = await db.execute(
@@ -312,14 +316,16 @@ async def add_saving_deposit(
     user_prof = prof_res.scalars().first()
     user_name = user_prof.display_name if user_prof and user_prof.display_name else "Usuario"
 
+    membership = await sharing.get_membership(db, goal_id, user_id)
+
     data = deposit.model_dump(exclude_unset=True)
     if 'manual_rate' in data:
         del data['manual_rate']
     register_as_expense = data.pop('register_as_expense', False)
 
     deposit_cat = data.get("category")
-    resolved_cat = deposit_cat or db_goal.category or ("Proyectos" if db_goal.type == "project" else "Ahorro")
-    data["category"] = resolved_cat
+    effective_cat = deposit_cat or (membership[1].local_category if membership else None) or db_goal.category or ("Proyectos" if db_goal.type == "project" else "Ahorro")
+    data["category"] = effective_cat
 
     if extra_data:
         data.update(extra_data)
@@ -328,7 +334,7 @@ async def add_saving_deposit(
 
     expense_id = None
     if register_as_expense:
-        exp_cat = resolved_cat
+        exp_cat = effective_cat
         if db_goal.type == 'project':
             exp_desc = f"Pago {db_goal.name}: {deposit.note}" if deposit.note else f"Pago de Proyecto: {db_goal.name}"
         else:
@@ -362,29 +368,15 @@ async def add_saving_deposit(
         sync_id=sync_uuid
     )
     db.add(db_deposit)
-    db_goal.deposits.append(db_deposit)
+    if hasattr(db_goal, 'deposits'):
+        db_goal.deposits.append(db_deposit)
     await db.flush()
 
-    membership = await sharing.get_membership(db, goal_id)
+    await sharing.recompute_settlement(db, "saving_goal", [goal_id])
+    await db.refresh(db_goal)
 
     if membership:
         share, member = membership
-        await sharing.fan_out_child_create(
-            db=db,
-            share=share,
-            source_child=db_deposit,
-            child_data=data,
-            child_model=models.SavingDeposit,
-            parent_fk_name="goal_id",
-            payer_id=user_id,
-            payer_name=user_name
-        )
-
-        siblings = await sharing.sibling_entity_ids(db, share.id)
-        all_goal_ids = list(set(list(siblings.values()) + [goal_id]))
-        await sharing.recompute_settlement(db, "saving_goal", all_goal_ids)
-
-        await db.refresh(db_goal)
         curr_label = data["currency"].value if hasattr(data["currency"], "value") else str(data["currency"])
         is_project = db_goal.type == "project"
         dep_noun = "pago" if is_project else "aporte"
@@ -413,8 +405,6 @@ async def add_saving_deposit(
                 url="/herramientas/ahorros"
             )
     else:
-        await sharing.recompute_settlement(db, "saving_goal", [goal_id])
-        await db.refresh(db_goal)
         is_project = db_goal.type == "project"
         if not is_project and not was_completed and db_goal.is_completed:
             await send_notification_to_user(
@@ -443,23 +433,48 @@ async def update_saving_deposit(
     result = await db.execute(
         select(models.SavingDeposit)
         .join(models.SavingGoal)
-        .filter(models.SavingDeposit.id == deposit_id, models.SavingGoal.user_id == user_id)
+        .filter(
+            models.SavingDeposit.id == deposit_id,
+            or_(
+                models.SavingGoal.user_id == user_id,
+                models.SavingGoal.id.in_(sharing.shared_entity_ids_subquery(user_id, "saving_goal"))
+            )
+        )
     )
     deposit = result.scalars().first()
     if not deposit:
         return None
 
-    membership = await sharing.get_membership(db, deposit.goal_id)
-    if membership:
-        share, member = membership
-        if not sharing.can_edit_child(member, deposit.paid_by_user_id):
-            raise HTTPException(status_code=403, detail="Solo puedes editar tus propios aportes o debes ser administrador")
+    goal_id = deposit.goal_id
+    membership = await sharing.get_membership(db, goal_id, user_id)
 
     update_dict = deposit_update.model_dump(exclude_unset=True)
     manual_rate = update_dict.pop('manual_rate', None)
     register_as_expense = update_dict.pop('register_as_expense', None)
 
-    if extra_data is None and ('amount' in update_dict or 'currency' in update_dict):
+    if 'category' in update_dict:
+        new_cat = update_dict.pop('category')
+        if membership:
+            member = membership[1]
+            if deposit.paid_by_user_id != user_id:
+                member.local_category = new_cat
+            else:
+                deposit.category = new_cat
+                member.local_category = new_cat
+        else:
+            deposit.category = new_cat
+
+        if not (update_dict or register_as_expense is not None or manual_rate is not None):
+            await db.commit()
+            return await get_saving_goal(db, goal_id, user_id)
+
+    if membership:
+        share, member = membership
+        if update_dict or register_as_expense is not None or manual_rate is not None:
+            if not sharing.can_edit_child(member, deposit.paid_by_user_id):
+                raise HTTPException(status_code=403, detail="Solo puedes editar tus propios aportes o debes ser administrador")
+
+    if extra_data is None and ('amount' in update_dict or 'currency' in update_dict or manual_rate is not None):
         new_amount = update_dict.get('amount', deposit.amount)
         raw_curr = update_dict.get('currency', deposit.currency)
         new_curr = raw_curr.value if hasattr(raw_curr, "value") else str(raw_curr)
@@ -478,14 +493,12 @@ async def update_saving_deposit(
         setattr(deposit, k, v)
     await db.flush()
 
-    # If linked to expense, update expense record too (only if belonging to the payer/user)
+    target_owner_id = deposit.paid_by_user_id or user_id
+
+    # If linked to expense, update expense record too
     if deposit.expense_id:
-        target_owner_id = deposit.paid_by_user_id or user_id
         exp_res = await db.execute(
-            select(models.Expense).filter(
-                models.Expense.id == deposit.expense_id,
-                models.Expense.user_id == target_owner_id
-            )
+            select(models.Expense).filter(models.Expense.id == deposit.expense_id)
         )
         exp = exp_res.scalars().first()
         if exp:
@@ -495,15 +508,14 @@ async def update_saving_deposit(
                 exp.currency = update_dict['currency'].value if hasattr(update_dict['currency'], 'value') else str(update_dict['currency'])
             if 'deposit_date' in update_dict:
                 exp.date = update_dict['deposit_date']
-            if 'category' in update_dict:
-                exp.category = update_dict['category']
+            if deposit.category:
+                exp.category = deposit.category
             for key in ["amount_usd", "amount_bs", "amount_eur", "amount_usdt", "rate_usd_bs", "rate_eur_bs", "rate_usdt_bs"]:
                 if key in update_dict:
                     setattr(exp, key, update_dict[key])
 
     # Handle register_as_expense toggle
     if register_as_expense is True and not deposit.expense_id:
-        target_owner_id = deposit.paid_by_user_id or user_id
         g_res = await db.execute(select(models.SavingGoal).where(models.SavingGoal.id == deposit.goal_id))
         db_goal = g_res.scalars().first()
         is_project = db_goal.type == 'project' if db_goal else False
@@ -536,12 +548,8 @@ async def update_saving_deposit(
         deposit.expense_id = db_expense.id
         deposit.create_expense = True
     elif register_as_expense is False and deposit.expense_id:
-        target_owner_id = deposit.paid_by_user_id or user_id
         exp_res = await db.execute(
-            select(models.Expense).filter(
-                models.Expense.id == deposit.expense_id,
-                models.Expense.user_id == target_owner_id
-            )
+            select(models.Expense).filter(models.Expense.id == deposit.expense_id)
         )
         exp = exp_res.scalars().first()
         if exp:
@@ -549,14 +557,7 @@ async def update_saving_deposit(
         deposit.expense_id = None
         deposit.create_expense = False
 
-    if membership and deposit.sync_id:
-        share, _ = membership
-        await sharing.fan_out_child_update(db, models.SavingDeposit, deposit.sync_id, update_dict)
-        siblings = await sharing.sibling_entity_ids(db, share.id)
-        all_goal_ids = list(set(list(siblings.values()) + [deposit.goal_id]))
-        await sharing.recompute_settlement(db, "saving_goal", all_goal_ids)
-    else:
-        await sharing.recompute_settlement(db, "saving_goal", [deposit.goal_id])
+    await sharing.recompute_settlement(db, "saving_goal", [deposit.goal_id])
 
     had_expense = deposit.expense_id is not None
     dep_date = deposit.deposit_date
@@ -571,30 +572,23 @@ async def delete_saving_deposit(db: AsyncSession, deposit_id: UUID, user_id: UUI
     result = await db.execute(
         select(models.SavingDeposit)
         .join(models.SavingGoal)
-        .filter(models.SavingDeposit.id == deposit_id, models.SavingGoal.user_id == user_id)
+        .filter(
+            models.SavingDeposit.id == deposit_id,
+            or_(
+                models.SavingGoal.user_id == user_id,
+                models.SavingGoal.id.in_(sharing.shared_entity_ids_subquery(user_id, "saving_goal"))
+            )
+        )
     )
     deposit = result.scalars().first()
     if not deposit:
         return None
 
     goal_id = deposit.goal_id
-    sync_id = deposit.sync_id or deposit.id
     amount_label = f"{deposit.amount} {deposit.currency}"
+    linked_expense_id = deposit.expense_id
 
-    # If linked to expense, delete the expense as well (only if belonging to the payer/user)
-    if deposit.expense_id:
-        target_owner_id = deposit.paid_by_user_id or user_id
-        exp_res = await db.execute(
-            select(models.Expense).filter(
-                models.Expense.id == deposit.expense_id,
-                models.Expense.user_id == target_owner_id
-            )
-        )
-        exp = exp_res.scalars().first()
-        if exp:
-            await db.delete(exp)
-
-    membership = await sharing.get_membership(db, goal_id)
+    membership = await sharing.get_membership(db, goal_id, user_id)
 
     if membership:
         share, member = membership
@@ -609,28 +603,21 @@ async def delete_saving_deposit(db: AsyncSession, deposit_id: UUID, user_id: UUI
         g_obj = g_res.scalars().first()
         goal_name = g_obj.name if g_obj else "Fondo"
 
-        if deposit.sync_id:
-            linked_expense_ids = await sharing.fan_out_child_delete(db, models.SavingDeposit, deposit.sync_id)
-            for lexp_id in set(linked_expense_ids):
-                exp_res = await db.execute(select(models.Expense).where(models.Expense.id == lexp_id))
-                exp_obj = exp_res.scalars().first()
-                if exp_obj:
-                    await db.delete(exp_obj)
-        
-        res_chk = await db.execute(select(models.SavingDeposit).where(models.SavingDeposit.id == deposit_id))
-        dep_chk = res_chk.scalars().first()
-        if dep_chk:
-            if dep_chk.goal and hasattr(dep_chk.goal, 'deposits') and dep_chk in dep_chk.goal.deposits:
-                dep_chk.goal.deposits.remove(dep_chk)
-            else:
-                await db.delete(dep_chk)
+        if linked_expense_id:
+            exp_res = await db.execute(select(models.Expense).where(models.Expense.id == linked_expense_id))
+            exp_obj = exp_res.scalars().first()
+            if exp_obj:
+                await db.delete(exp_obj)
+
+        if deposit.goal and hasattr(deposit.goal, 'deposits') and deposit in deposit.goal.deposits:
+            deposit.goal.deposits.remove(deposit)
+        else:
+            await db.delete(deposit)
         await db.flush()
         if deposit.goal:
             db.expire(deposit.goal, ['deposits'])
 
-        siblings = await sharing.sibling_entity_ids(db, share.id)
-        all_goal_ids = list(set(list(siblings.values()) + [goal_id]))
-        await sharing.recompute_settlement(db, "saving_goal", all_goal_ids)
+        await sharing.recompute_settlement(db, "saving_goal", [goal_id])
 
         is_proj = g_obj.type == "project" if g_obj else False
         dep_noun = "pago" if is_proj else "aporte"
@@ -645,6 +632,12 @@ async def delete_saving_deposit(db: AsyncSession, deposit_id: UUID, user_id: UUI
             url="/herramientas/ahorros"
         )
     else:
+        if linked_expense_id:
+            exp_res = await db.execute(select(models.Expense).where(models.Expense.id == linked_expense_id))
+            exp_obj = exp_res.scalars().first()
+            if exp_obj:
+                await db.delete(exp_obj)
+
         if deposit.goal and hasattr(deposit.goal, 'deposits') and deposit in deposit.goal.deposits:
             deposit.goal.deposits.remove(deposit)
         else:
@@ -654,7 +647,7 @@ async def delete_saving_deposit(db: AsyncSession, deposit_id: UUID, user_id: UUI
             db.expire(deposit.goal, ['deposits'])
         await sharing.recompute_settlement(db, "saving_goal", [goal_id])
 
-    had_expense = deposit.expense_id is not None
+    had_expense = linked_expense_id is not None
     dep_date = deposit.deposit_date
 
     await db.commit()

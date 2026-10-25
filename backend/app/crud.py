@@ -231,7 +231,132 @@ async def ensure_categories_and_debts_schema() -> None:
         "ALTER TABLE saving_deposits ADD COLUMN IF NOT EXISTS expense_id UUID",
         # 7. fixed_expenses columns
         "ALTER TABLE fixed_expenses ADD COLUMN IF NOT EXISTS category VARCHAR(100) DEFAULT 'Gastos Fijos'",
-        # 8. Migrate legacy categories rows where color holds an icon name
+        # 8. share_members columns for localized per-user settings
+        "ALTER TABLE share_members ADD COLUMN IF NOT EXISTS local_category VARCHAR(100)",
+        "ALTER TABLE share_members ADD COLUMN IF NOT EXISTS perspective_type VARCHAR(20)",
+        "ALTER TABLE share_members ADD COLUMN IF NOT EXISTS counterpart_label VARCHAR(200)",
+        # Drop UNIQUE constraint on share_members(entity_id) if it exists
+        """
+        DO $$
+        DECLARE
+            r RECORD;
+        BEGIN
+            FOR r IN (
+                SELECT tc.constraint_name
+                FROM information_schema.table_constraints tc
+                JOIN information_schema.constraint_column_usage ccu ON tc.constraint_name = ccu.constraint_name
+                WHERE tc.table_name = 'share_members'
+                  AND tc.constraint_type = 'UNIQUE'
+                  AND ccu.column_name = 'entity_id'
+            ) LOOP
+                EXECUTE 'ALTER TABLE share_members DROP CONSTRAINT ' || quote_ident(r.constraint_name);
+            END LOOP;
+        EXCEPTION WHEN OTHERS THEN
+            NULL;
+        END $$;
+        """,
+        # Consolidate legacy clone shares so member entity_id matches the canonical share entity_id
+        """
+        DO $$
+        DECLARE
+            r RECORD;
+            canon_id UUID;
+        BEGIN
+            -- (a) Backfill local_category and debt perspective on share_members from current entities
+            UPDATE share_members sm
+            SET local_category = d.category,
+                perspective_type = COALESCE(sm.perspective_type, d.type),
+                counterpart_label = COALESCE(sm.counterpart_label, d.counterpart)
+            FROM debts d
+            WHERE sm.entity_id = d.id
+              AND (sm.local_category IS NULL OR sm.perspective_type IS NULL);
+
+            UPDATE share_members sm
+            SET local_category = sg.category
+            FROM saving_goals sg
+            WHERE sm.entity_id = sg.id
+              AND sm.local_category IS NULL;
+
+            UPDATE share_members sm
+            SET local_category = fe.category
+            FROM fixed_expenses fe
+            WHERE sm.entity_id = fe.id
+              AND sm.local_category IS NULL;
+
+            -- (b) Loop over shares having multiple distinct entity_id
+            FOR r IN (
+                SELECT sm.share_id, s.entity_type, s.owner_id
+                FROM share_members sm
+                JOIN shares s ON sm.share_id = s.id
+                GROUP BY sm.share_id, s.entity_type, s.owner_id
+                HAVING COUNT(DISTINCT sm.entity_id) > 1
+            ) LOOP
+                -- Determine canon_id: owner's entity_id first, fallback to earliest joined_at
+                SELECT entity_id INTO canon_id
+                FROM share_members
+                WHERE share_id = r.share_id
+                ORDER BY (user_id = r.owner_id) DESC, joined_at ASC
+                LIMIT 1;
+
+                IF canon_id IS NOT NULL THEN
+                    -- (c) Copy expense_id and create_expense from cloned child rows to canonical child row
+                    IF r.entity_type = 'debt' THEN
+                        UPDATE debt_payments canon_dp
+                        SET expense_id = clone_dp.expense_id,
+                            create_expense = clone_dp.create_expense
+                        FROM debt_payments clone_dp
+                        WHERE canon_dp.debt_id = canon_id
+                          AND clone_dp.debt_id IN (SELECT entity_id FROM share_members WHERE share_id = r.share_id AND entity_id != canon_id)
+                          AND canon_dp.sync_id IS NOT NULL
+                          AND canon_dp.sync_id = clone_dp.sync_id
+                          AND canon_dp.expense_id IS NULL
+                          AND clone_dp.expense_id IS NOT NULL;
+
+                        -- (d) Delete non-canonical cloned parent rows (cascades to payments)
+                        DELETE FROM debts
+                        WHERE id IN (SELECT entity_id FROM share_members WHERE share_id = r.share_id AND entity_id != canon_id);
+
+                    ELSIF r.entity_type = 'saving_goal' THEN
+                        UPDATE saving_deposits canon_sd
+                        SET expense_id = clone_sd.expense_id,
+                            create_expense = clone_sd.create_expense
+                        FROM saving_deposits clone_sd
+                        WHERE canon_sd.goal_id = canon_id
+                          AND clone_sd.goal_id IN (SELECT entity_id FROM share_members WHERE share_id = r.share_id AND entity_id != canon_id)
+                          AND canon_sd.sync_id IS NOT NULL
+                          AND canon_sd.sync_id = clone_sd.sync_id
+                          AND canon_sd.expense_id IS NULL
+                          AND clone_sd.expense_id IS NOT NULL;
+
+                        DELETE FROM saving_goals
+                        WHERE id IN (SELECT entity_id FROM share_members WHERE share_id = r.share_id AND entity_id != canon_id);
+
+                    ELSIF r.entity_type = 'fixed_expense' THEN
+                        UPDATE fixed_expense_checks canon_fec
+                        SET expense_id = clone_fec.expense_id
+                        FROM fixed_expense_checks clone_fec
+                        WHERE canon_fec.fixed_expense_id = canon_id
+                          AND clone_fec.fixed_expense_id IN (SELECT entity_id FROM share_members WHERE share_id = r.share_id AND entity_id != canon_id)
+                          AND canon_fec.sync_id IS NOT NULL
+                          AND canon_fec.sync_id = clone_fec.sync_id
+                          AND canon_fec.expense_id IS NULL
+                          AND clone_fec.expense_id IS NOT NULL;
+
+                        DELETE FROM fixed_expenses
+                        WHERE id IN (SELECT entity_id FROM share_members WHERE share_id = r.share_id AND entity_id != canon_id);
+                    END IF;
+
+                    -- (e) Point all share_members to canon_id
+                    UPDATE share_members
+                    SET entity_id = canon_id
+                    WHERE share_id = r.share_id;
+                END IF;
+            END LOOP;
+        EXCEPTION WHEN OTHERS THEN
+            NULL;
+        END $$;
+        """,
+        # 9. Migrate legacy categories rows where color holds an icon name
         """
         UPDATE categories 
         SET icon = color 
@@ -590,11 +715,16 @@ async def get_categories(db: AsyncSession, user_id: UUID):
     except Exception:
         await db.rollback()
 
+    shared_subquery = select(models.ShareMember.entity_id).where(models.ShareMember.user_id == user_id)
+
     fe_counts = {}
     try:
         fe_res = await db.execute(
             select(models.FixedExpense.category, func.count(models.FixedExpense.id))
-            .where(models.FixedExpense.user_id == user_id)
+            .where(
+                models.FixedExpense.user_id == user_id,
+                ~models.FixedExpense.id.in_(shared_subquery)
+            )
             .group_by(models.FixedExpense.category)
         )
         fe_counts = {row[0].strip().lower(): row[1] for row in fe_res.all() if row[0]}
@@ -605,7 +735,10 @@ async def get_categories(db: AsyncSession, user_id: UUID):
     try:
         debt_res = await db.execute(
             select(models.Debt.category, func.count(models.Debt.id))
-            .where(models.Debt.user_id == user_id)
+            .where(
+                models.Debt.user_id == user_id,
+                ~models.Debt.id.in_(shared_subquery)
+            )
             .group_by(models.Debt.category)
         )
         debt_counts = {row[0].strip().lower(): row[1] for row in debt_res.all() if row[0]}
@@ -616,7 +749,10 @@ async def get_categories(db: AsyncSession, user_id: UUID):
     try:
         saving_res = await db.execute(
             select(models.SavingGoal.category, func.count(models.SavingGoal.id))
-            .where(models.SavingGoal.user_id == user_id)
+            .where(
+                models.SavingGoal.user_id == user_id,
+                ~models.SavingGoal.id.in_(shared_subquery)
+            )
             .group_by(models.SavingGoal.category)
         )
         saving_counts = {row[0].strip().lower(): row[1] for row in saving_res.all() if row[0]}
@@ -643,6 +779,27 @@ async def get_categories(db: AsyncSession, user_id: UUID):
             .group_by(models.EstimatedIncome.category)
         )
         inc_counts = {row[0].strip().lower(): row[1] for row in inc_res.all() if row[0]}
+    except Exception:
+        await db.rollback()
+
+    try:
+        sm_res = await db.execute(
+            select(models.Share.entity_type, models.ShareMember.local_category, func.count(models.ShareMember.share_id))
+            .join(models.Share, models.ShareMember.share_id == models.Share.id)
+            .where(models.ShareMember.user_id == user_id)
+            .where(models.ShareMember.local_category.isnot(None))
+            .group_by(models.Share.entity_type, models.ShareMember.local_category)
+        )
+        for ent_type, loc_cat, cnt in sm_res.all():
+            if not loc_cat:
+                continue
+            cat_key = loc_cat.strip().lower()
+            if ent_type == "fixed_expense":
+                fe_counts[cat_key] = fe_counts.get(cat_key, 0) + cnt
+            elif ent_type == "debt":
+                debt_counts[cat_key] = debt_counts.get(cat_key, 0) + cnt
+            elif ent_type == "saving_goal":
+                saving_counts[cat_key] = saving_counts.get(cat_key, 0) + cnt
     except Exception:
         await db.rollback()
 
@@ -817,6 +974,14 @@ async def update_category(db: AsyncSession, category_id: UUID, category_update: 
                 .values(category=new_name)
             )
 
+        # 8. Update share_members local_category for this user
+        await db.execute(
+            models.ShareMember.__table__.update()
+            .where(models.ShareMember.user_id == user_id)
+            .where(models.ShareMember.local_category == old_name)
+            .values(local_category=new_name)
+        )
+
         # 6. Synchronize BudgetCategoryLimit for user's budgets
         user_budgets_res = await db.execute(
             select(models.MonthlyBudget.id).where(models.MonthlyBudget.user_id == user_id)
@@ -944,6 +1109,14 @@ async def delete_category(db: AsyncSession, category_id: UUID, user_id: UUID, re
             .where(models.SavingDeposit.category == category_name)
             .values(category=reassign_to if reassign_to else None)
         )
+
+    # 8. Reassign share_members local_category for this user
+    await db.execute(
+        models.ShareMember.__table__.update()
+        .where(models.ShareMember.user_id == user_id)
+        .where(models.ShareMember.local_category == category_name)
+        .values(local_category=reassign_to if reassign_to else None)
+    )
 
     # 6. Synchronize BudgetCategoryLimit rows
     user_budgets_res = await db.execute(

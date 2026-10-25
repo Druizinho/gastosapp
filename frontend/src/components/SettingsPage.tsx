@@ -3,9 +3,8 @@ import CategoryManager from './CategoryManager';
 import ProfileManager from './ProfileManager';
 import { NotificationSettings } from './NotificationSettings';
 
-import { LogOut, User, Folder, ChevronRight, ChevronDown, ArrowLeft, Globe, Palette, Bell, Users, Check } from 'lucide-react';
+import { LogOut, User, Folder, ChevronRight, ChevronDown, ArrowLeft, Globe, Palette, Bell, Check } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
 import { useCurrencyPreference } from '../context/CurrencyPreferenceContext';
 import type { MainCurrencyPreference } from '../types';
 
@@ -21,7 +20,6 @@ const MAIN_CURRENCY_OPTIONS: { id: MainCurrencyPreference; label: string; symbol
 export const SettingsPage: React.FC = () => {
   const [currentView, setCurrentView] = useState<SettingsView>('menu');
   const { user, displayName, avatarUrl, signOut } = useAuth();
-  const navigate = useNavigate();
   const { mainCurrency, setMainCurrency } = useCurrencyPreference();
   const [currencyExpanded, setCurrencyExpanded] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -146,29 +144,6 @@ export const SettingsPage: React.FC = () => {
                 <Folder size={18} />
               </div>
               Mis Categorías
-            </div>
-            <ChevronRight size={20} color="var(--text-tertiary)" />
-          </button>
-
-          <button 
-            onClick={() => navigate('/herramientas/panas')}
-            style={{
-              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '1.25rem 1.25rem', background: 'transparent', border: 'none', 
-              cursor: 'pointer', textAlign: 'left', transition: 'background 0.2s'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-hover)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', color: 'var(--text-primary)', fontWeight: 600 }}>
-              <div style={{ 
-                width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(16, 185, 129, 0.05) 100%)', 
-                color: '#10B981', borderRadius: '12px'
-              }}>
-                <Users size={18} />
-              </div>
-              Mis Panas
             </div>
             <ChevronRight size={20} color="var(--text-tertiary)" />
           </button>
@@ -403,23 +378,36 @@ export const SettingsPage: React.FC = () => {
       {toastMessage && (
         <div style={{
           position: 'fixed',
-          bottom: '2rem',
+          bottom: '5.5rem',
           left: '50%',
           transform: 'translateX(-50%)',
-          background: 'var(--surface-card, #1E293B)',
-          color: 'var(--text-primary, #F8FAFC)',
-          padding: '0.75rem 1.5rem',
-          borderRadius: '12px',
-          boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1)',
+          background: 'var(--surface-color, #FFFFFF)',
+          color: 'var(--text-primary, #111827)',
+          border: '1px solid var(--border-color, #E5E7EB)',
+          boxShadow: '0 8px 32px -8px rgba(0, 0, 0, 0.08), 0 4px 16px -4px rgba(0, 0, 0, 0.04)',
+          borderRadius: 'var(--radius-full, 9999px)',
+          padding: '0.625rem 1.25rem',
           zIndex: 9999,
-          fontSize: '0.9rem',
+          fontSize: '0.875rem',
           fontWeight: 600,
+          letterSpacing: '-0.01em',
           animation: 'toastSlideUp 0.3s ease',
           display: 'flex',
           alignItems: 'center',
           gap: '0.5rem'
         }}>
-          <Check size={16} color="#10B981" />
+          <div style={{
+            width: '24px',
+            height: '24px',
+            borderRadius: '50%',
+            background: 'var(--income-bg, rgba(16, 185, 129, 0.1))',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0
+          }}>
+            <Check size={14} color="var(--income-color, #10B981)" strokeWidth={2.5} />
+          </div>
           <span>{toastMessage}</span>
         </div>
       )}

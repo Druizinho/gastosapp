@@ -7,7 +7,8 @@ from datetime import datetime, timezone, date
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from sqlalchemy import or_, and_, delete, text, update
+from sqlalchemy.orm.attributes import set_committed_value
+from sqlalchemy import or_, and_, delete, text, update, func
 from fastapi import HTTPException
 
 from . import models, schemas
@@ -41,6 +42,15 @@ ENTITY_CONFIG = {
         "name_attr": "name",
         "label": "meta de ahorro",
         "url": "/herramientas/ahorros",
+    },
+    "sub_budget": {
+        "model": models.MonthlyBudget,
+        "child_model": None,
+        "child_fk": None,
+        "child_attr": None,
+        "name_attr": "name",
+        "label": "un sub-presupuesto compartido",
+        "url": "/herramientas/presupuestos",
     },
 }
 
@@ -152,6 +162,12 @@ def assert_can_change_role(
     new_role: str,
     all_members: Optional[List[models.ShareMember]] = None
 ):
+    if share.entity_type == "sub_budget":
+        raise HTTPException(
+            status_code=400,
+            detail="Los sub-presupuestos compartidos son de solo lectura."
+        )
+
     if target_member.user_id == share.owner_id:
         raise HTTPException(status_code=403, detail="No se puede cambiar el rol del creador del ítem")
 
@@ -188,12 +204,30 @@ def assert_can_change_role(
 # Membership queries
 # ==============================================================================
 
-async def get_membership(db: AsyncSession, entity_id: UUID) -> Optional[Tuple[models.Share, models.ShareMember]]:
-    res = await db.execute(
+def shared_entity_ids_subquery(user_id: UUID, entity_type: str):
+    return (
+        select(models.ShareMember.entity_id)
+        .join(models.Share, models.Share.id == models.ShareMember.share_id)
+        .where(
+            models.ShareMember.user_id == user_id,
+            models.Share.entity_type == entity_type,
+        )
+    )
+
+
+async def get_membership(
+    db: AsyncSession,
+    entity_id: UUID,
+    user_id: Optional[UUID] = None
+) -> Optional[Tuple[models.Share, models.ShareMember]]:
+    stmt = (
         select(models.Share, models.ShareMember)
         .join(models.ShareMember, models.Share.id == models.ShareMember.share_id)
         .where(models.ShareMember.entity_id == entity_id)
     )
+    if user_id is not None:
+        stmt = stmt.where(models.ShareMember.user_id == user_id)
+    res = await db.execute(stmt)
     row = res.first()
     if not row:
         return None
@@ -209,32 +243,46 @@ async def get_members(db: AsyncSession, share_id: UUID) -> List[models.ShareMemb
     return res.scalars().all()
 
 
-async def sibling_entity_ids(
+async def resolve_initial_member_category(
     db: AsyncSession,
-    share_id: UUID,
-    exclude_user_id: Optional[UUID] = None
-) -> Dict[UUID, UUID]:
-    members = await get_members(db, share_id)
-    return {
-        m.user_id: m.entity_id
-        for m in members
-        if exclude_user_id is None or m.user_id != exclude_user_id
-    }
+    target_user_id: UUID,
+    entity_type: str,
+    owner_entity: Any
+) -> str:
+    if entity_type == "debt":
+        default_cat = "Deudas"
+    elif entity_type == "fixed_expense":
+        default_cat = "Gastos Fijos"
+    elif entity_type == "saving_goal":
+        default_cat = "Proyectos" if getattr(owner_entity, "type", "saving") == "project" else "Ahorro"
+    else:
+        default_cat = "Sin Categoría"
+
+    owner_cat = getattr(owner_entity, "category", None)
+    if not owner_cat or not str(owner_cat).strip():
+        return default_cat
+
+    owner_cat = str(owner_cat).strip()
+    standard_defaults = {"deudas", "gastos fijos", "proyectos", "ahorro"}
+    if owner_cat.lower() in standard_defaults:
+        return owner_cat
+
+    res = await db.execute(
+        select(models.Category.name).where(
+            models.Category.user_id == target_user_id,
+            func.lower(models.Category.name) == func.lower(owner_cat)
+        )
+    )
+    matched_cat = res.scalars().first()
+    if matched_cat:
+        return matched_cat
+
+    return default_cat
 
 
 # ==============================================================================
 # Share Lifecycle (Create, Add, Remove, Sync)
 # ==============================================================================
-
-def _clone_entity_data(entity: Any, new_user_id: UUID) -> dict:
-    data = {}
-    for col in entity.__table__.columns:
-        if col.name in ("id", "user_id", "created_at", "deactivated_at", "completed_at"):
-            continue
-        data[col.name] = getattr(entity, col.name)
-    data["user_id"] = new_user_id
-    return data
-
 
 async def create_share(
     db: AsyncSession,
@@ -245,7 +293,9 @@ async def create_share(
     admin_ids: Optional[List[UUID]] = None
 ) -> models.Share:
     admin_set = set(admin_ids or [])
-    clean_targets = [tid for tid in target_ids if tid != owner_id]
+    if entity_type == "sub_budget":
+        admin_set = set()
+    clean_targets = list(dict.fromkeys(tid for tid in target_ids if tid and tid != owner_id))
 
     share = models.Share(
         entity_type=entity_type,
@@ -260,72 +310,40 @@ async def create_share(
         user_id=owner_id,
         entity_id=owner_entity.id,
         role="admin",
-        added_by=owner_id
+        added_by=owner_id,
+        local_category=getattr(owner_entity, "category", None),
+        perspective_type=getattr(owner_entity, "type", None) if entity_type == "debt" else None,
+        counterpart_label=getattr(owner_entity, "counterpart", None) if entity_type == "debt" else None
     )
     db.add(owner_member)
 
-    cfg = ENTITY_CONFIG[entity_type]
-    model_cls = cfg["model"]
-    child_model_cls = cfg["child_model"]
-    child_fk = cfg["child_fk"]
-    child_attr = cfg["child_attr"]
-
-    # Copy existing child records (payments/checks/deposits) to the clone
-    ch_res = await db.execute(
-        select(child_model_cls).where(getattr(child_model_cls, child_fk) == owner_entity.id)
-    )
-    existing_children = ch_res.scalars().all()
-
-    # Obtener nombre del creador para asignar como contraparte en clones de deudas
     creator_name = "Mi Pana"
     if entity_type == "debt":
         creator_prof = await db.get(models.Profile, owner_id)
         if creator_prof and creator_prof.display_name:
             creator_name = creator_prof.display_name
 
-    # Clone for each target
     for tid in clean_targets:
-        clone_data = _clone_entity_data(owner_entity, tid)
         if entity_type == "debt":
-            # Inversión simétrica obligatoria de deudas:
-            # Si el creador cobra ('receivable'), el pana debe ('owed'); y viceversa
-            if getattr(owner_entity, "type", None) == "receivable":
-                clone_data["type"] = "owed"
-            elif getattr(owner_entity, "type", None) == "owed":
-                clone_data["type"] = "receivable"
-            clone_data["counterpart"] = creator_name
+            inv_type = "owed" if getattr(owner_entity, "type", None) == "receivable" else "receivable"
+            c_label = creator_name
+        else:
+            inv_type = None
+            c_label = None
 
-        clone = model_cls(**clone_data)
-        db.add(clone)
-        await db.flush()
+        init_cat = await resolve_initial_member_category(db, tid, entity_type, owner_entity)
 
-        role = "admin" if tid in admin_set else "member"
         member = models.ShareMember(
             share_id=share.id,
             user_id=tid,
-            entity_id=clone.id,
-            role=role,
-            added_by=owner_id
+            entity_id=owner_entity.id,
+            role="admin" if tid in admin_set else "member",
+            added_by=owner_id,
+            local_category=init_cat,
+            perspective_type=inv_type,
+            counterpart_label=c_label
         )
         db.add(member)
-
-        for ch in existing_children:
-            if not ch.sync_id:
-                ch.sync_id = ch.id
-            ch_data = {}
-            for col in ch.__table__.columns:
-                if col.name in ("id", child_fk, "created_at"):
-                    continue
-                ch_data[col.name] = getattr(ch, col.name)
-            ch_data[child_fk] = clone.id
-            ch_data["sync_id"] = ch.sync_id
-            ch_data["paid_by_user_id"] = ch.paid_by_user_id or owner_id
-            if "create_expense" in ch_data:
-                ch_data["create_expense"] = False
-            if "expense_id" in ch_data:
-                ch_data["expense_id"] = None
-            ch_clone = child_model_cls(**ch_data)
-            db.add(ch_clone)
 
     await db.flush()
     return share
@@ -339,9 +357,11 @@ async def add_members(
     admin_ids: Optional[List[UUID]] = None
 ):
     admin_set = set(admin_ids or [])
+    if share.entity_type == "sub_budget":
+        admin_set = set()
     existing_members = await get_members(db, share.id)
     existing_user_ids = {m.user_id for m in existing_members}
-    new_targets = [tid for tid in target_ids if tid not in existing_user_ids]
+    new_targets = list(dict.fromkeys(tid for tid in target_ids if tid and tid not in existing_user_ids))
 
     if not new_targets:
         return
@@ -350,67 +370,41 @@ async def add_members(
 
     cfg = ENTITY_CONFIG[share.entity_type]
     model_cls = cfg["model"]
-    child_model_cls = cfg["child_model"]
-    child_fk = cfg["child_fk"]
-    child_attr = cfg["child_attr"]
 
-    # Use first existing member's entity as template
-    template_entity_res = await db.execute(
-        select(model_cls)
-        .options(selectinload(getattr(model_cls, child_attr)))
-        .where(model_cls.id == existing_members[0].entity_id)
+    canonical_entity_res = await db.execute(
+        select(model_cls).where(model_cls.id == existing_members[0].entity_id)
     )
-    template_entity = template_entity_res.scalars().first()
-    if not template_entity:
-        raise HTTPException(status_code=404, detail="Entidad base no encontrada para clonar")
+    canonical_entity = canonical_entity_res.scalars().first()
+    if not canonical_entity:
+        raise HTTPException(status_code=404, detail="Entidad base no encontrada para agregar integrantes")
 
-    actor_name = "Mi Pana"
+    owner_name = "Mi Pana"
     if share.entity_type == "debt":
-        actor_prof = await db.get(models.Profile, actor_id)
-        if actor_prof and actor_prof.display_name:
-            actor_name = actor_prof.display_name
+        owner_prof = await db.get(models.Profile, share.owner_id)
+        if owner_prof and owner_prof.display_name:
+            owner_name = owner_prof.display_name
 
     for tid in new_targets:
-        clone_data = _clone_entity_data(template_entity, tid)
         if share.entity_type == "debt":
-            if getattr(template_entity, "type", None) == "receivable":
-                clone_data["type"] = "owed"
-            elif getattr(template_entity, "type", None) == "owed":
-                clone_data["type"] = "receivable"
-            clone_data["counterpart"] = actor_name
+            inv_type = "owed" if getattr(canonical_entity, "type", None) == "receivable" else "receivable"
+            c_label = owner_name
+        else:
+            inv_type = None
+            c_label = None
 
-        clone = model_cls(**clone_data)
-        db.add(clone)
-        await db.flush()
+        init_cat = await resolve_initial_member_category(db, tid, share.entity_type, canonical_entity)
 
-        role = "admin" if tid in admin_set else "member"
         member = models.ShareMember(
             share_id=share.id,
             user_id=tid,
-            entity_id=clone.id,
-            role=role,
-            added_by=actor_id
+            entity_id=canonical_entity.id,
+            role="admin" if tid in admin_set else "member",
+            added_by=actor_id,
+            local_category=init_cat,
+            perspective_type=inv_type,
+            counterpart_label=c_label
         )
         db.add(member)
-
-        # Copy existing child records to new member
-        existing_children = getattr(template_entity, child_attr, []) or []
-        for ch in existing_children:
-            if not ch.sync_id:
-                ch.sync_id = ch.id
-            ch_data = {}
-            for col in ch.__table__.columns:
-                if col.name in ("id", child_fk, "created_at"):
-                    continue
-                ch_data[col.name] = getattr(ch, col.name)
-            ch_data[child_fk] = clone.id
-            ch_data["sync_id"] = ch.sync_id
-            if "create_expense" in ch_data:
-                ch_data["create_expense"] = False
-            if "expense_id" in ch_data:
-                ch_data["expense_id"] = None
-            ch_clone = child_model_cls(**ch_data)
-            db.add(ch_clone)
 
     await db.flush()
 
@@ -422,180 +416,58 @@ async def remove_member(db: AsyncSession, share: models.Share, user_id_to_remove
         return
 
     cfg = ENTITY_CONFIG[share.entity_type]
-    child_model_cls = cfg["child_model"]
-    child_fk = cfg["child_fk"]
+    model_cls = cfg["model"]
 
-    # PAN-06: No destruir la entidad del usuario expulsado para preservar su historial financiero.
-    # Desvinculamos sus registros hijos (sync_id=None) para que futuras mutaciones del share no los afecten.
-    await db.execute(
-        update(child_model_cls)
-        .where(getattr(child_model_cls, child_fk) == target_member.entity_id)
-        .values(sync_id=None)
+    canonical_entity_res = await db.execute(
+        select(model_cls).where(model_cls.id == target_member.entity_id)
     )
+    canonical_entity = canonical_entity_res.scalars().first()
 
     await db.delete(target_member)
     await db.flush()
 
     remaining_members = [m for m in members if m.user_id != user_id_to_remove]
 
-    # If owner was removed, transfer ownership
-    if share.owner_id == user_id_to_remove and remaining_members:
-        admins = [m for m in remaining_members if m.role == "admin"]
-        if admins:
-            share.owner_id = admins[0].user_id
-        else:
-            remaining_members[0].role = "admin"
-            share.owner_id = remaining_members[0].user_id
+    if share.entity_type == "sub_budget":
+        if user_id_to_remove == share.owner_id or len(remaining_members) <= 1:
+            await db.delete(share)
+            await db.commit()
+            return None
+        await db.flush()
+        return None
 
-    # If only 1 member remains, dissolve the share (they keep their entity as personal)
+    if remaining_members:
+        if share.owner_id == user_id_to_remove:
+            admins = [m for m in remaining_members if m.role == "admin"]
+            new_owner_member = admins[0] if admins else remaining_members[0]
+            new_owner_member.role = "admin"
+            share.owner_id = new_owner_member.user_id
+
+        if canonical_entity and canonical_entity.user_id == user_id_to_remove:
+            owner_m = next((m for m in remaining_members if m.user_id == share.owner_id), remaining_members[0])
+            canonical_entity.user_id = owner_m.user_id
+            if owner_m.local_category:
+                canonical_entity.category = owner_m.local_category
+            if share.entity_type == "debt":
+                if owner_m.perspective_type:
+                    canonical_entity.type = owner_m.perspective_type
+                if owner_m.counterpart_label:
+                    canonical_entity.counterpart = owner_m.counterpart_label
+
     if len(remaining_members) <= 1:
+        if len(remaining_members) == 1 and canonical_entity:
+            last_m = remaining_members[0]
+            canonical_entity.user_id = last_m.user_id
+            if last_m.local_category:
+                canonical_entity.category = last_m.local_category
+            if share.entity_type == "debt":
+                if last_m.perspective_type:
+                    canonical_entity.type = last_m.perspective_type
+                if last_m.counterpart_label:
+                    canonical_entity.counterpart = last_m.counterpart_label
         await db.delete(share)
 
     await db.flush()
-
-
-async def sync_parent_fields(
-    db: AsyncSession,
-    share: models.Share,
-    source_entity_id: UUID,
-    fields: dict
-):
-    if not fields:
-        return
-    cfg = ENTITY_CONFIG[share.entity_type]
-    model_cls = cfg["model"]
-
-    siblings = await sibling_entity_ids(db, share.id, exclude_user_id=None)
-    target_eids = [eid for eid in siblings.values() if eid != source_entity_id]
-    if not target_eids:
-        return
-
-    res = await db.execute(select(model_cls).where(model_cls.id.in_(target_eids)))
-    for sibling in res.scalars().all():
-        for k, v in fields.items():
-            # Excluir tipo y contraparte en deudas para no destruir la inversión simétrica
-            if share.entity_type == "debt" and k in ("type", "counterpart"):
-                continue
-            if hasattr(sibling, k):
-                setattr(sibling, k, v)
-
-
-# ==============================================================================
-# Child Rows Fan-out (Payments, Checks, Deposits)
-# ==============================================================================
-
-async def fan_out_child_create(
-    db: AsyncSession,
-    share: models.Share,
-    source_child: Any,
-    child_data: dict,
-    child_model: Any,
-    parent_fk_name: str,
-    payer_id: UUID,
-    payer_name: str
-):
-    if not source_child.sync_id:
-        source_child.sync_id = source_child.id
-    sync_id = source_child.sync_id
-
-    siblings = await sibling_entity_ids(db, share.id)
-    source_parent_id = getattr(source_child, parent_fk_name)
-    target_parent_ids = [pid for pid in siblings.values() if pid != source_parent_id]
-    if not target_parent_ids:
-        return
-
-    # Ordenar determinísticamente por UUID para prevenir deadlocks ABBA en fan-out concurrente
-    target_parent_ids = sorted(target_parent_ids, key=lambda x: str(x))
-
-    existing_fe_ids: Set[UUID] = set()
-    if share.entity_type == "fixed_expense" and "month_year" in child_data:
-        chk = await db.execute(
-            select(models.FixedExpenseCheck.fixed_expense_id).where(
-                models.FixedExpenseCheck.fixed_expense_id.in_(target_parent_ids),
-                models.FixedExpenseCheck.month_year == child_data["month_year"]
-            )
-        )
-        existing_fe_ids = set(chk.scalars().all())
-
-    for parent_id in target_parent_ids:
-        if parent_id in existing_fe_ids:
-            continue
-
-        copy_data = {**child_data}
-        copy_data[parent_fk_name] = parent_id
-        copy_data["sync_id"] = sync_id
-        copy_data["paid_by_name"] = payer_name
-        copy_data["paid_by_user_id"] = payer_id
-
-        # Do not cascade personal expense creation to other users
-        if "create_expense" in copy_data:
-            copy_data["create_expense"] = False
-        if "expense_id" in copy_data:
-            copy_data["expense_id"] = None
-        if "register_as_expense" in copy_data:
-            del copy_data["register_as_expense"]
-
-        child_copy = child_model(**copy_data)
-        db.add(child_copy)
-
-    await db.flush()
-
-
-async def fan_out_child_update(
-    db: AsyncSession,
-    child_model: Any,
-    sync_id: UUID,
-    fields: dict
-):
-    if not sync_id or not fields:
-        return
-    clean_fields = {k: v for k, v in fields.items() if k not in ("expense_id", "create_expense", "register_as_expense")}
-    if not clean_fields:
-        return
-    res = await db.execute(select(child_model).where(child_model.sync_id == sync_id))
-    rows = res.scalars().all()
-    for row in rows:
-        for k, v in clean_fields.items():
-            if hasattr(row, k):
-                setattr(row, k, v)
-        # PAN-08: Sincronizar en cascada el Expense personal del hermano si tiene un gasto vinculado
-        exp_id = getattr(row, "expense_id", None)
-        if exp_id:
-            exp_res = await db.execute(select(models.Expense).where(models.Expense.id == exp_id))
-            exp = exp_res.scalars().first()
-            if exp:
-                if 'amount' in clean_fields:
-                    exp.amount = clean_fields['amount']
-                if 'currency' in clean_fields:
-                    raw_curr = clean_fields['currency']
-                    exp.currency = raw_curr.value if hasattr(raw_curr, "value") else str(raw_curr)
-                if 'payment_date' in clean_fields:
-                    exp.date = clean_fields['payment_date']
-                elif 'deposit_date' in clean_fields:
-                    exp.date = clean_fields['deposit_date']
-                for key in ["amount_usd", "amount_bs", "amount_eur", "amount_usdt", "rate_usd_bs", "rate_eur_bs", "rate_usdt_bs"]:
-                    if key in clean_fields:
-                        setattr(exp, key, clean_fields[key])
-    await db.flush()
-
-
-async def fan_out_child_delete(
-    db: AsyncSession,
-    child_model: Any,
-    sync_id: UUID
-) -> List[UUID]:
-    if not sync_id:
-        return []
-    res = await db.execute(select(child_model).where(child_model.sync_id == sync_id))
-    rows = res.scalars().all()
-    linked_expense_ids: List[UUID] = []
-    for row in rows:
-        exp_id = getattr(row, "expense_id", None)
-        if exp_id:
-            linked_expense_ids.append(exp_id)
-        await db.delete(row)
-    await db.flush()
-    return linked_expense_ids
 
 
 # ==============================================================================
@@ -645,8 +517,10 @@ async def recompute_settlement(db: AsyncSession, entity_type: str, entity_ids: L
     if not entity_ids:
         return
     cfg = ENTITY_CONFIG[entity_type]
+    child_attr = cfg.get("child_attr")
+    if not child_attr:
+        return
     model_cls = cfg["model"]
-    child_attr = cfg["child_attr"]
 
     res = await db.execute(
         select(model_cls)
@@ -719,7 +593,10 @@ async def populate_share_meta(
 
     # Query 1: Find all share_members for these entities
     sm_res = await db.execute(
-        select(models.ShareMember).where(models.ShareMember.entity_id.in_(entity_ids))
+        select(models.ShareMember).where(
+            models.ShareMember.entity_id.in_(entity_ids),
+            models.ShareMember.user_id == user_id
+        )
     )
     my_memberships = sm_res.scalars().all()
     if not my_memberships:
@@ -730,9 +607,11 @@ async def populate_share_meta(
             e.shared_members = []
             e.shared_partner_name = None
             e.shared_by = None
+            e.owner_id = getattr(e, "user_id", None)
+            e.is_read_only = False
             # can_edit defaults to True for personal items
             cfg = ENTITY_CONFIG[entity_type]
-            children = e.__dict__.get(cfg["child_attr"], []) or []
+            children = (getattr(e, cfg["child_attr"], []) if cfg.get("child_attr") else []) or []
             for ch in children:
                 ch.can_edit = True
         return entities
@@ -827,11 +706,48 @@ async def populate_share_meta(
             e.shared_members = members_out
             e.shared_by = owner_name
             e.shared_partner_name = ", ".join(partner_names) if partner_names else "Pana"
+            e.owner_id = share.owner_id if share else getattr(e, "user_id", None)
+            e.is_read_only = (entity_type == "sub_budget" and my_sm.user_id != (share.owner_id if share else None))
+
+            eff_cat = my_sm.local_category or getattr(e, "category", None)
+            if entity_type != "sub_budget" and hasattr(type(e), "category"):
+                try:
+                    set_committed_value(e, "category", eff_cat)
+                except Exception:
+                    setattr(e, "category", eff_cat)
+
+            if entity_type == "debt":
+                if my_sm.perspective_type:
+                    try:
+                        set_committed_value(e, "type", my_sm.perspective_type)
+                    except Exception:
+                        setattr(e, "type", my_sm.perspective_type)
+                if my_sm.counterpart_label:
+                    try:
+                        set_committed_value(e, "counterpart", my_sm.counterpart_label)
+                    except Exception:
+                        setattr(e, "counterpart", my_sm.counterpart_label)
 
             # Compute can_edit on child items
-            children = e.__dict__.get(cfg["child_attr"], []) or []
+            children = (getattr(e, cfg["child_attr"], []) if cfg.get("child_attr") else []) or []
             for ch in children:
                 ch.can_edit = can_edit_child(my_sm, ch.paid_by_user_id)
+                if ch.paid_by_user_id and ch.paid_by_user_id != user_id:
+                    if hasattr(ch, "category"):
+                        try:
+                            set_committed_value(ch, "category", eff_cat)
+                        except Exception:
+                            setattr(ch, "category", eff_cat)
+                    if hasattr(ch, "create_expense"):
+                        try:
+                            set_committed_value(ch, "create_expense", False)
+                        except Exception:
+                            setattr(ch, "create_expense", False)
+                    if hasattr(ch, "expense_id"):
+                        try:
+                            set_committed_value(ch, "expense_id", None)
+                        except Exception:
+                            setattr(ch, "expense_id", None)
         else:
             e.is_shared = False
             e.share_id = None
@@ -839,7 +755,9 @@ async def populate_share_meta(
             e.shared_members = []
             e.shared_partner_name = None
             e.shared_by = None
-            children = e.__dict__.get(cfg["child_attr"], []) or []
+            e.owner_id = getattr(e, "user_id", None)
+            e.is_read_only = False
+            children = (getattr(e, cfg["child_attr"], []) if cfg.get("child_attr") else []) or []
             for ch in children:
                 ch.can_edit = True
 

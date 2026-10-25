@@ -9,15 +9,15 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from sqlalchemy import text
+from sqlalchemy import text, or_
 
-from . import models, schemas, bcv_service
+from . import models, schemas, bcv_service, sharing
 from .database import engine
 from .push_service import send_notification_to_user
 
 _schema_ensured = False
 
-async def ensure_budget_schema() -> None:
+async def ensure_budget_schema(db: Optional[AsyncSession] = None) -> None:
     global _schema_ensured
     if _schema_ensured:
         return
@@ -36,6 +36,74 @@ async def ensure_budget_schema() -> None:
         except Exception:
             pass
         _schema_ensured = True
+
+    drop_shares_check = text("""
+DO $$
+DECLARE r RECORD;
+BEGIN
+    FOR r IN (
+        SELECT conname
+        FROM pg_constraint
+        WHERE conrelid = 'shares'::regclass AND contype = 'c'
+    ) LOOP
+        EXECUTE 'ALTER TABLE shares DROP CONSTRAINT IF EXISTS ' || quote_ident(r.conname);
+    END LOOP;
+END $$;
+""")
+
+    drop_share_members_unique = text("""
+DO $$
+DECLARE r RECORD;
+BEGIN
+    FOR r IN (
+        SELECT c.conname
+        FROM pg_constraint c
+        JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
+        WHERE c.conrelid = 'share_members'::regclass
+          AND c.contype = 'u'
+          AND a.attname = 'entity_id'
+    ) LOOP
+        EXECUTE 'ALTER TABLE share_members DROP CONSTRAINT IF EXISTS ' || quote_ident(r.conname);
+    END LOOP;
+    FOR r IN (
+        SELECT i.relname AS index_name
+        FROM pg_class t
+        JOIN pg_index ix ON t.oid = ix.indrelid
+        JOIN pg_class i ON i.oid = ix.indexrelid
+        JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey)
+        WHERE t.relname = 'share_members'
+          AND ix.indisunique = true
+          AND ix.indisprimary = false
+          AND a.attname = 'entity_id'
+    ) LOOP
+        EXECUTE 'DROP INDEX IF EXISTS ' || quote_ident(r.index_name);
+    END LOOP;
+END $$;
+""")
+
+    if db is not None:
+        try:
+            await db.execute(drop_shares_check)
+            await db.commit()
+        except Exception:
+            await db.rollback()
+
+        try:
+            await db.execute(drop_share_members_unique)
+            await db.commit()
+        except Exception:
+            await db.rollback()
+    else:
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(drop_shares_check)
+        except Exception:
+            pass
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(drop_share_members_unique)
+        except Exception:
+            pass
 
 
 async def get_available_budget_categories(db: AsyncSession, user_id: UUID) -> List[str]:
@@ -199,10 +267,11 @@ async def get_or_clone_monthly_budgets(
     Retrieves all MonthlyBudgets for (user_id, month_year).
     If none exist and allow_auto_clone is True, auto-clones all budgets from the most recent prior month.
     """
-    await ensure_budget_schema()
+    await ensure_budget_schema(db)
 
     res = await db.execute(
         select(models.MonthlyBudget)
+        .execution_options(populate_existing=True)
         .options(
             selectinload(models.MonthlyBudget.category_limits),
             selectinload(models.MonthlyBudget.linked_income)
@@ -243,9 +312,9 @@ async def get_or_clone_monthly_budgets(
                 url="/herramientas/presupuestos"
             )
             await db.commit()
-            db.expire_all()
             res = await db.execute(
                 select(models.MonthlyBudget)
+                .execution_options(populate_existing=True)
                 .options(
                     selectinload(models.MonthlyBudget.category_limits),
                     selectinload(models.MonthlyBudget.linked_income)
@@ -287,12 +356,12 @@ async def get_or_clone_monthly_budgets(
         db.add(default_primary)
         try:
             await db.commit()
-            db.expire_all()
         except IntegrityError:
             await db.rollback()
 
         re_res = await db.execute(
             select(models.MonthlyBudget)
+            .execution_options(populate_existing=True)
             .options(
                 selectinload(models.MonthlyBudget.category_limits),
                 selectinload(models.MonthlyBudget.linked_income)
@@ -323,7 +392,9 @@ async def get_or_clone_monthly_budgets(
 
     # Clone each budget
     any_prior_primary = any(pb.is_primary for pb in prior_budgets)
+    cloned_id_map: Dict[UUID, UUID] = {}
     for idx, pb in enumerate(prior_budgets):
+        is_prim = bool(pb.is_primary) if any_prior_primary else (idx == 0)
         nb = models.MonthlyBudget(
             user_id=user_id,
             month_year=month_year,
@@ -333,7 +404,7 @@ async def get_or_clone_monthly_budgets(
             linked_income_id=pb.linked_income_id,
             manual_global_limit=pb.manual_global_limit,
             is_confirmed=False,
-            is_primary=bool(pb.is_primary) if any_prior_primary else (idx == 0),
+            is_primary=is_prim,
             notified_month_start=False,
             notified_global_80=False,
             notified_global_100=False,
@@ -349,16 +420,34 @@ async def get_or_clone_monthly_budgets(
                 )
             )
         db.add(nb)
+        if not is_prim:
+            cloned_id_map[pb.id] = nb.id
+
+    await db.flush()
+
+    if cloned_id_map:
+        sm_res = await db.execute(
+            select(models.ShareMember)
+            .join(models.Share, models.Share.id == models.ShareMember.share_id)
+            .where(
+                models.ShareMember.entity_id.in_(list(cloned_id_map.keys())),
+                models.Share.entity_type == "sub_budget",
+                models.Share.owner_id == user_id,
+            )
+        )
+        for sm in sm_res.scalars().all():
+            if sm.entity_id in cloned_id_map:
+                sm.entity_id = cloned_id_map[sm.entity_id]
 
     try:
         await db.commit()
-        db.expire_all()
     except IntegrityError:
         await db.rollback()
 
     # Re-fetch cloned budgets
     re_res = await db.execute(
         select(models.MonthlyBudget)
+        .execution_options(populate_existing=True)
         .options(
             selectinload(models.MonthlyBudget.category_limits),
             selectinload(models.MonthlyBudget.linked_income)
@@ -396,9 +485,9 @@ async def get_or_clone_monthly_budgets(
             url="/herramientas/presupuestos"
         )
         await db.commit()
-        db.expire_all()
         re_res = await db.execute(
             select(models.MonthlyBudget)
+            .execution_options(populate_existing=True)
             .options(
                 selectinload(models.MonthlyBudget.category_limits),
                 selectinload(models.MonthlyBudget.linked_income)
@@ -436,7 +525,8 @@ async def get_monthly_budget_view(
     db: AsyncSession,
     user_id: UUID,
     month_year: str,
-    allow_auto_clone: bool = True
+    allow_auto_clone: bool = True,
+    include_shared_with_me: bool = True
 ) -> schemas.MonthlyBudgetResponse:
     """
     Computes full budget response for month_year, aggregating real expenses,
@@ -510,19 +600,17 @@ async def get_monthly_budget_view(
             )
         )
 
-    # Map of category_name.lower() -> list of budget.names that have this category
-    cat_to_budget_names: Dict[str, List[str]] = {}
-    for b in budgets:
-        for cl in b.category_limits:
-            cat_to_budget_names.setdefault(cl.category_name.strip().lower(), []).append(b.name)
-
     # Ensure all available categories exist in Primary Budget representation so they can be configured
+    from types import SimpleNamespace
+    import uuid
+
+    primary_limits_list = list(primary_budget.category_limits) if primary_budget else []
     if primary_budget:
-        existing_prim_cats = {cl.category_name.strip().lower() for cl in primary_budget.category_limits}
+        existing_prim_cats = {cl.category_name.strip().lower() for cl in primary_limits_list}
         for acat in available_categories:
             if acat.strip().lower() not in existing_prim_cats:
-                # FIN-06: Create in-memory limit for view response without performing DB writes on GET
-                new_prim_cl = models.BudgetCategoryLimit(
+                synthetic_cl = SimpleNamespace(
+                    id=uuid.uuid4(),
                     budget_id=primary_budget.id,
                     category_name=acat,
                     limit_amount=Decimal("0"),
@@ -530,10 +618,45 @@ async def get_monthly_budget_view(
                     notified_80=False,
                     notified_100=False,
                 )
-                primary_budget.category_limits.append(new_prim_cl)
-        primary_limits_map = {cl.category_name.strip().lower(): cl for cl in primary_budget.category_limits}
+                primary_limits_list.append(synthetic_cl)
+        primary_limits_map = {cl.category_name.strip().lower(): cl for cl in primary_limits_list}
     else:
         primary_limits_map = {}
+
+    # Map of category_name.lower() -> list of budget.names that have this category
+    cat_to_budget_names: Dict[str, List[str]] = {}
+    for b in budgets:
+        b_cls = primary_limits_list if b.is_primary else b.category_limits
+        for cl in b_cls:
+            cat_to_budget_names.setdefault(cl.category_name.strip().lower(), []).append(b.name)
+
+    # Load share metadata for owned non-primary budgets
+    non_primary_budgets = [b for b in budgets if not b.is_primary]
+    if non_primary_budgets:
+        owned_shares_res = await db.execute(
+            select(models.Share)
+            .options(selectinload(models.Share.members).selectinload(models.ShareMember.profile))
+            .where(
+                models.Share.entity_type == "sub_budget",
+                models.Share.owner_id == user_id
+            )
+        )
+        owned_shares = owned_shares_res.scalars().all()
+        did_reanchor = False
+        for s in owned_shares:
+            if s.members:
+                anchor_id = s.members[0].entity_id
+                anchor_b = await db.get(models.MonthlyBudget, anchor_id)
+                if anchor_b and anchor_b.month_year <= month_year:
+                    match_b = next((b for b in non_primary_budgets if b.id == anchor_id or b.name.strip().lower() == anchor_b.name.strip().lower()), None)
+                    if match_b and match_b.id != anchor_id:
+                        for m in s.members:
+                            m.entity_id = match_b.id
+                        did_reanchor = True
+        if did_reanchor:
+            await db.flush()
+            await db.commit()
+        await sharing.populate_share_meta(db, non_primary_budgets, user_id, "sub_budget")
 
     # Build SingleBudgetOut for each budget
     single_budgets: List[schemas.SingleBudgetOut] = []
@@ -548,19 +671,22 @@ async def get_monthly_budget_view(
         b_allocated_eur = Decimal("0")
         b_allocated_usdt = Decimal("0")
 
+        b_category_limits = primary_limits_list if b.is_primary else list(b.category_limits)
         b_cats = set()
-        for cl in b.category_limits:
+        for cl in b_category_limits:
             b_cats.add(cl.category_name)
             is_inherited = False
+            effective_limit_amount = cl.limit_amount
+            effective_currency = cl.currency or b_curr
             if not b.is_primary:
                 # Sub-budgets inherit limit and currency directly from Primary Budget
                 pcl = primary_limits_map.get(cl.category_name.strip().lower())
                 if pcl:
-                    cl.limit_amount = pcl.limit_amount
-                    cl.currency = pcl.currency or (primary_budget.currency if primary_budget else b_curr)
+                    effective_limit_amount = pcl.limit_amount
+                    effective_currency = pcl.currency or (primary_budget.currency if primary_budget else b_curr)
                 is_inherited = True
 
-            cl_curr = cl.currency or b_curr
+            cl_curr = effective_currency
             cat_exps = [
                 e for cat_key, exps_list in expenses_by_cat.items()
                 if cat_key.strip().lower() == cl.category_name.strip().lower()
@@ -573,7 +699,7 @@ async def get_monthly_budget_view(
             cat_spent_eur = sum((_expense_amount_in_currency(e, 'EUR_BCV', rates) for e in cat_exps), Decimal("0"))
             cat_spent_usdt = sum((_expense_amount_in_currency(e, 'USDT', rates) for e in cat_exps), Decimal("0"))
 
-            limit_amt = Decimal(str(cl.limit_amount or 0))
+            limit_amt = Decimal(str(effective_limit_amount or 0))
             limit_usd = _convert_value_between_currencies(limit_amt, cl_curr, 'USD_BCV', rates)
             limit_bs = _convert_value_between_currencies(limit_amt, cl_curr, 'BS', rates)
             limit_eur = _convert_value_between_currencies(limit_amt, cl_curr, 'EUR_BCV', rates)
@@ -675,7 +801,15 @@ async def get_monthly_budget_view(
                 allocated_eur=round(b_allocated_eur, 2),
                 allocated_usdt=round(b_allocated_usdt, 2),
                 category_limits=b_cat_summaries,
-                categories_count=len(b_cat_summaries)
+                categories_count=len(b_cat_summaries),
+                is_shared=getattr(b, "is_shared", False),
+                share_id=getattr(b, "share_id", None),
+                my_role=getattr(b, "my_role", None),
+                shared_members=getattr(b, "shared_members", []),
+                shared_partner_name=getattr(b, "shared_partner_name", None),
+                shared_by=getattr(b, "shared_by", None),
+                owner_id=getattr(b, "owner_id", user_id),
+                is_read_only=getattr(b, "is_read_only", False)
             )
         )
 
@@ -745,6 +879,115 @@ async def get_monthly_budget_view(
             cons_pct = float((total_spent_budget_curr / cons_eff_global) * 100)
             cons_tl = _calc_traffic_light(cons_pct)
 
+    shared_with_me_budgets: List[schemas.SingleBudgetOut] = []
+    if include_shared_with_me:
+        shared_shares_res = await db.execute(
+            select(models.Share)
+            .options(
+                selectinload(models.Share.members).selectinload(models.ShareMember.profile)
+            )
+            .where(
+                models.Share.entity_type == "sub_budget",
+                models.Share.owner_id != user_id,
+                models.Share.id.in_(
+                    select(models.ShareMember.share_id).where(models.ShareMember.user_id == user_id)
+                )
+            )
+        )
+        shared_shares = shared_shares_res.scalars().all()
+
+        if shared_shares:
+            conn_res = await db.execute(
+                select(models.Connection).where(
+                    or_(
+                        models.Connection.requester_id == user_id,
+                        models.Connection.receiver_id == user_id
+                    )
+                )
+            )
+            conns = conn_res.scalars().all()
+            my_pana_ids_set = {
+                (c.receiver_id if c.requester_id == user_id else c.requester_id)
+                for c in conns if c.status == "accepted"
+            }
+            pending_pana_ids_set = {
+                (c.receiver_id if c.requester_id == user_id else c.requester_id)
+                for c in conns if c.status == "pending"
+            }
+
+            for share in shared_shares:
+                try:
+                    if not share.members:
+                        continue
+                    anchor_id = share.members[0].entity_id
+                    if not anchor_id:
+                        continue
+                    anchor_budget = await db.get(models.MonthlyBudget, anchor_id)
+                    if not anchor_budget:
+                        continue
+
+                    share_id_val = share.id
+                    share_owner_id = share.owner_id
+                    anchor_budget_id = anchor_budget.id
+                    anchor_budget_name = anchor_budget.name
+
+                    members_info = []
+                    for m in share.members:
+                        m_prof = m.profile or await db.get(models.Profile, m.user_id)
+                        members_info.append({
+                            "user_id": m.user_id,
+                            "role": m.role,
+                            "name": m_prof.display_name if m_prof and m_prof.display_name else "Pana",
+                            "avatar_url": m_prof.avatar_url if m_prof else None,
+                        })
+
+                    owner_prof = await db.get(models.Profile, share_owner_id)
+                    owner_name = owner_prof.display_name if owner_prof and owner_prof.display_name else "Pana"
+
+                    owner_view = await get_monthly_budget_view(
+                        db, share_owner_id, month_year, allow_auto_clone=True, include_shared_with_me=False
+                    )
+                    target_sb = None
+                    for sb in owner_view.budgets:
+                        if not sb.is_primary and (sb.id == anchor_budget_id or sb.name.strip().lower() == anchor_budget_name.strip().lower()):
+                            target_sb = sb
+                            break
+
+                    if target_sb:
+                        members_out: List[schemas.ShareMemberOut] = []
+                        for minfo in members_info:
+                            m_uid = minfo["user_id"]
+                            is_me = (m_uid == user_id)
+                            is_owner = (m_uid == share_owner_id)
+                            members_out.append(
+                                schemas.ShareMemberOut(
+                                    user_id=m_uid,
+                                    name=minfo["name"],
+                                    role=schemas.ShareRole(minfo["role"]),
+                                    avatar_url=minfo["avatar_url"],
+                                    is_me=is_me,
+                                    is_owner=is_owner,
+                                    is_my_pana=(m_uid in my_pana_ids_set or is_me),
+                                    pana_request_pending=(m_uid in pending_pana_ids_set)
+                                )
+                            )
+
+                        copied_sb = target_sb.model_copy(
+                            update={
+                                "is_shared": True,
+                                "share_id": share_id_val,
+                                "my_role": schemas.ShareRole.member,
+                                "shared_members": members_out,
+                                "shared_by": owner_name,
+                                "shared_partner_name": owner_name,
+                                "owner_id": share_owner_id,
+                                "is_read_only": True,
+                            }
+                        )
+                        shared_with_me_budgets.append(copied_sb)
+                except Exception:
+                    continue
+
     return schemas.MonthlyBudgetResponse(
         id=primary_budget.id if primary_budget else None,
         name=primary_budget.name if primary_budget else None,
@@ -780,6 +1023,7 @@ async def get_monthly_budget_view(
         unbudgeted_categories=unbudgeted_categories,
         exists=len(budgets) > 0,
         budgets=single_budgets,
+        shared_with_me_budgets=shared_with_me_budgets,
         available_categories=available_categories,
         category_spending=category_spending
     )
@@ -825,6 +1069,12 @@ async def create_monthly_budget(
             if eb.is_primary:
                 eb.is_primary = False
 
+    if payload.shared_with_ids and make_primary:
+        raise HTTPException(
+            status_code=400,
+            detail="El Presupuesto Principal no se puede compartir; crea un sub-presupuesto."
+        )
+
     curr_val = payload.currency.value if hasattr(payload.currency, "value") else str(payload.currency)
     mode_val = payload.income_mode.value if hasattr(payload.income_mode, "value") else str(payload.income_mode)
 
@@ -869,6 +1119,16 @@ async def create_monthly_budget(
                 )
             )
 
+    if payload.shared_with_ids and not make_primary:
+        await sharing.create_share(
+            db=db,
+            entity_type="sub_budget",
+            owner_id=user_id,
+            owner_entity=new_budget,
+            target_ids=payload.shared_with_ids,
+            admin_ids=[]
+        )
+
     await db.commit()
     db.expire_all()
 
@@ -895,6 +1155,9 @@ async def update_monthly_budget_by_id(
     budget = res.scalars().first()
     if not budget:
         raise HTTPException(status_code=404, detail="Presupuesto no encontrado")
+
+    target_month_year = str(budget.month_year)
+    old_budget_name = str(budget.name)
 
     if payload.linked_income_id:
         inc_res = await db.execute(
@@ -941,6 +1204,20 @@ async def update_monthly_budget_by_id(
         )
         others = list(other_res.scalars().all())
         if payload.is_primary:
+            share_chk = await db.execute(
+                select(models.Share)
+                .join(models.ShareMember, models.Share.id == models.ShareMember.share_id)
+                .where(
+                    models.ShareMember.entity_id == budget.id,
+                    models.Share.entity_type == "sub_budget"
+                )
+            )
+            if share_chk.scalars().first():
+                if payload.shared_with_ids is None or len(payload.shared_with_ids) > 0:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="El Presupuesto Principal no se puede compartir; deja de compartir este grupo antes de hacerlo principal."
+                    )
             for ob in others:
                 ob.is_primary = False
             budget.is_primary = True
@@ -996,15 +1273,92 @@ async def update_monthly_budget_by_id(
                     )
                 )
 
-    month_year = budget.month_year
+    if payload.shared_with_ids is not None:
+        if budget.is_primary and len(payload.shared_with_ids) > 0:
+            raise HTTPException(
+                status_code=400,
+                detail="El Presupuesto Principal no se puede compartir; crea un sub-presupuesto."
+            )
+        share_res = await db.execute(
+            select(models.Share)
+            .options(selectinload(models.Share.members))
+            .join(models.ShareMember, models.Share.id == models.ShareMember.share_id)
+            .where(
+                models.ShareMember.entity_id == budget.id,
+                models.Share.entity_type == "sub_budget"
+            )
+        )
+        existing_share = share_res.scalars().first()
+
+        if not existing_share:
+            all_owned_shares_res = await db.execute(
+                select(models.Share)
+                .options(selectinload(models.Share.members))
+                .where(
+                    models.Share.owner_id == user_id,
+                    models.Share.entity_type == "sub_budget"
+                )
+            )
+            for s in all_owned_shares_res.scalars().all():
+                owner_m = next((m for m in s.members if m.user_id == user_id), None)
+                anchor_entity_id = owner_m.entity_id if owner_m else (s.members[0].entity_id if s.members else None)
+                if anchor_entity_id:
+                    anchor_b = await db.get(models.MonthlyBudget, anchor_entity_id)
+                    if anchor_b:
+                        cand_names = {old_budget_name.strip().lower(), budget.name.strip().lower()}
+                        if anchor_b.name.strip().lower() in cand_names:
+                            existing_share = s
+                            break
+
+        if existing_share:
+            for m in existing_share.members:
+                m.entity_id = budget.id
+            await db.flush()
+
+        if len(payload.shared_with_ids) == 0:
+            if existing_share:
+                await db.delete(existing_share)
+        elif not existing_share:
+            await sharing.create_share(
+                db=db,
+                entity_type="sub_budget",
+                owner_id=user_id,
+                owner_entity=budget,
+                target_ids=payload.shared_with_ids,
+                admin_ids=[]
+            )
+        else:
+            current_members_res = await db.execute(
+                select(models.ShareMember).where(models.ShareMember.share_id == existing_share.id)
+            )
+            current_members = list(current_members_res.scalars().all())
+            target_set = set(payload.shared_with_ids)
+
+            for m in current_members:
+                if m.user_id != user_id and m.user_id not in target_set:
+                    await db.delete(m)
+
+            current_uids = {m.user_id for m in current_members}
+            new_uids = [uid for uid in target_set if uid not in current_uids]
+            if new_uids:
+                await sharing.add_members(
+                    db=db,
+                    share=existing_share,
+                    actor_id=user_id,
+                    target_ids=new_uids,
+                    admin_ids=[]
+                )
+            if not target_set:
+                await db.delete(existing_share)
+
     budget.is_confirmed = True
     await db.commit()
     db.expire_all()
 
     await check_and_notify_budget_thresholds(
-        db, user_id, date(int(month_year[:4]), int(month_year[5:7]), 1), allow_notify=False
+        db, user_id, date(int(target_month_year[:4]), int(target_month_year[5:7]), 1), allow_notify=False
     )
-    return await get_monthly_budget_view(db, user_id, month_year)
+    return await get_monthly_budget_view(db, user_id, target_month_year)
 
 
 async def set_primary_monthly_budget(
@@ -1021,6 +1375,23 @@ async def set_primary_monthly_budget(
     budget = res.scalars().first()
     if not budget:
         raise HTTPException(status_code=404, detail="Presupuesto no encontrado")
+
+    target_month_year = str(budget.month_year)
+    old_budget_name = str(budget.name)
+
+    share_res = await db.execute(
+        select(models.Share)
+        .join(models.ShareMember, models.Share.id == models.ShareMember.share_id)
+        .where(
+            models.ShareMember.entity_id == budget.id,
+            models.Share.entity_type == "sub_budget"
+        )
+    )
+    if share_res.scalars().first():
+        raise HTTPException(
+            status_code=400,
+            detail="El Presupuesto Principal no se puede compartir; deja de compartir este grupo antes de hacerlo principal."
+        )
 
     month_year = budget.month_year
     all_res = await db.execute(
@@ -1052,6 +1423,9 @@ async def delete_monthly_budget_by_id(
     if not budget:
         raise HTTPException(status_code=404, detail="Presupuesto no encontrado")
 
+    target_month_year = str(budget.month_year)
+    old_budget_name = str(budget.name)
+
     if budget.is_primary:
         raise HTTPException(
             status_code=400,
@@ -1060,6 +1434,19 @@ async def delete_monthly_budget_by_id(
 
     month_year = budget.month_year
     was_primary = bool(budget.is_primary)
+
+    share_res = await db.execute(
+        select(models.Share)
+        .join(models.ShareMember, models.Share.id == models.ShareMember.share_id)
+        .where(
+            models.ShareMember.entity_id == budget.id,
+            models.Share.entity_type == "sub_budget"
+        )
+    )
+    for s in share_res.scalars().all():
+        await db.delete(s)
+    await db.flush()
+
     await db.delete(budget)
     await db.flush()
     if was_primary:
@@ -1099,6 +1486,9 @@ async def upsert_category_limit_by_budget_id(
     budget = res.scalars().first()
     if not budget:
         raise HTTPException(status_code=404, detail="Presupuesto no encontrado")
+
+    target_month_year = str(budget.month_year)
+    old_budget_name = str(budget.name)
 
     if not budget.is_primary:
         raise HTTPException(
@@ -1175,6 +1565,9 @@ async def delete_category_limit_by_budget_id(
     budget = res.scalars().first()
     if not budget:
         raise HTTPException(status_code=404, detail="Presupuesto no encontrado")
+
+    target_month_year = str(budget.month_year)
+    old_budget_name = str(budget.name)
 
     month_year = budget.month_year
     target_cat = category_name.strip().lower()

@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
 import type { SavingDeposit, SavingDepositCreate, SavingDepositUpdate, CurrencyType, Category } from '../types';
 import { CURRENCY_OPTIONS } from '../types';
 import { getCategories } from '../api';
@@ -127,39 +126,24 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
       <div 
         className="expense-form-container" 
         onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: '460px', maxHeight: '92vh', overflowY: 'auto', padding: '1.25rem 1.4rem' }}
+        style={{ maxWidth: '460px', maxHeight: '92vh', overflowY: 'auto' }}
       >
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: '0.85rem',
-          borderBottom: '1px solid var(--accent-light)',
-          paddingBottom: '0.65rem'
-        }}>
-          <h2 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
-            {isEditing 
-              ? (isProject ? `Editar Pago en "${goalName}"` : `Editar Aporte en "${goalName}"`)
-              : (isProject ? `Registrar Pago en "${goalName}"` : `Abonar a "${goalName}"`)}
-          </h2>
-          <button
-            type="button"
-            onClick={onCancel}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'var(--text-secondary)',
-              cursor: 'pointer',
-              padding: '0.25rem',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: 'var(--radius-full)'
-            }}
-          >
-            <X size={20} />
-          </button>
-        </div>
+        <h2>
+          {isEditing 
+            ? (isProject ? 'Editar Pago' : 'Editar Aporte')
+            : (isProject ? 'Registrar Pago' : 'Abonar a Fondo')}
+        </h2>
+        {goalName && (
+          <p style={{
+            fontSize: '0.85rem',
+            color: 'var(--text-secondary)',
+            marginTop: '-1rem',
+            marginBottom: '1.25rem',
+            fontWeight: 500,
+          }}>
+            {goalName}
+          </p>
+        )}
 
         <form onSubmit={handleSubmit}>
           {/* Target Progress Banner */}
@@ -264,7 +248,10 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
           {/* Tasa manual si es USD_CASH */}
           {formData.currency === 'USD_CASH' && (
             <div className="form-group">
-              <label>Tasa personalizada Bs./$ (opcional)</label>
+              <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Tasa personalizada Bs./$</span>
+                <span className="form-hint-inline">(Opcional)</span>
+              </label>
               <input
                 type="number"
                 step="any"
@@ -289,7 +276,10 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
 
           {/* Nota */}
           <div className="form-group">
-            <label>{isProject ? 'Nota / Concepto del pago (Opcional)' : 'Nota / Origen de los fondos (Opcional)'}</label>
+            <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>{isProject ? 'Nota / Concepto del pago' : 'Nota / Origen de los fondos'}</span>
+              <span className="form-hint-inline">(Opcional)</span>
+            </label>
             <input
               type="text"
               name="note"

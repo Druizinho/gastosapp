@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { UserPlus, X, AlertCircle, Home, CreditCard, Bell } from 'lucide-react';
+import { UserPlus, AlertCircle, Home, CreditCard, Bell } from 'lucide-react';
 import { requestConnection } from '../api';
 
 interface InvitePanaModalProps {
@@ -44,38 +44,16 @@ export const InvitePanaModal: React.FC<InvitePanaModalProps> = ({
         onClick={(e) => e.stopPropagation()}
         style={{ maxWidth: '440px' }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-            <div style={{ 
-              width: '38px', 
-              height: '38px', 
-              borderRadius: 'var(--radius-full)', 
-              background: 'rgba(99, 102, 241, 0.12)', 
-              color: 'var(--primary-color)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}>
-              <UserPlus size={20} />
-            </div>
-            <div>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
-                Invitar a un Pana
-              </h2>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0 }}>
-                Finanzas compartidas en equipo
-              </p>
-            </div>
-          </div>
-          <button 
-            type="button" 
-            onClick={onClose} 
-            className="btn-icon"
-            style={{ color: 'var(--text-secondary)' }}
-          >
-            <X size={20} />
-          </button>
-        </div>
+        <h2>Invitar a un Pana</h2>
+        <p style={{
+          fontSize: '0.85rem',
+          color: 'var(--text-secondary)',
+          marginTop: '-1rem',
+          marginBottom: '1.25rem',
+          fontWeight: 500,
+        }}>
+          Finanzas compartidas en equipo
+        </p>
 
         {error && (
           <div style={{ 
@@ -121,8 +99,8 @@ export const InvitePanaModal: React.FC<InvitePanaModalProps> = ({
         </div>
 
         <form onSubmit={handleSubmit}>
-          <div className="form-group" style={{ marginBottom: '1.5rem' }}>
-            <label htmlFor="pana-email" style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.35rem', display: 'block' }}>
+          <div className="form-group">
+            <label htmlFor="pana-email">
               Correo electrónico del usuario
             </label>
             <input
@@ -133,35 +111,18 @@ export const InvitePanaModal: React.FC<InvitePanaModalProps> = ({
               placeholder="ejemplo@correo.com"
               required
               autoFocus
-              style={{
-                width: '100%',
-                padding: '0.75rem',
-                border: '1px solid var(--accent-light)',
-                borderRadius: 'var(--radius-md)',
-                background: 'var(--surface-color)',
-                color: 'var(--text-primary)',
-                fontSize: '0.95rem'
-              }}
             />
             <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '0.25rem', display: 'block' }}>
               Debe ser el correo con el que tu pana se registró en GastosApp.
             </span>
           </div>
 
-          <div className="form-actions" style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+          <div className="form-actions">
             <button
               type="button"
               onClick={onClose}
               className="btn-cancel"
               disabled={loading}
-              style={{
-                padding: '0.6rem 1.25rem',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--accent-light)',
-                background: 'transparent',
-                color: 'var(--text-secondary)',
-                cursor: 'pointer'
-              }}
             >
               Cancelar
             </button>
@@ -170,17 +131,10 @@ export const InvitePanaModal: React.FC<InvitePanaModalProps> = ({
               className="btn-submit"
               disabled={loading || !email.trim()}
               style={{
-                padding: '0.6rem 1.25rem',
-                borderRadius: 'var(--radius-md)',
-                border: 'none',
-                background: 'var(--primary-color)',
-                color: 'white',
-                fontWeight: 600,
-                cursor: loading || !email.trim() ? 'not-allowed' : 'pointer',
-                opacity: loading || !email.trim() ? 0.7 : 1,
                 display: 'flex',
                 alignItems: 'center',
-                gap: '0.4rem'
+                justifyContent: 'center',
+                gap: '0.4rem',
               }}
             >
               {loading ? 'Enviando...' : (

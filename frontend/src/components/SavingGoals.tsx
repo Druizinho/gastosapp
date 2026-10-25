@@ -1291,6 +1291,7 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
       {/* Status Filter Pills: Activos | Completados | Todos */}
       <div style={{
         display: 'flex',
+        justifyContent: 'center',
         gap: '0.4rem',
         marginBottom: '1.25rem',
         alignItems: 'center',
@@ -1361,14 +1362,8 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
                 rates
               );
               secondaryAmount = `de ${formatCurrencyAmount(targetInMain, mainCurrency)}`;
-              if (!isSameCurrency(goal.currency, mainCurrency)) {
-                secondaryAmount += ` · Orig: ${formatCurrency(saved, goal.currency)} de ${formatCurrency(target, goal.currency)}`;
-              }
             } else {
               secondaryAmount = 'Sin límite · Abierto';
-              if (!isSameCurrency(goal.currency, mainCurrency)) {
-                secondaryAmount += ` · Orig: ${formatCurrency(saved, goal.currency)}`;
-              }
             }
 
             const titleNode = (

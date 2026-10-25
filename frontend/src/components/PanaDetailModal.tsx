@@ -11,7 +11,8 @@ import {
   PlusCircle, 
   ExternalLink,
   Check,
-  Undo2
+  Undo2,
+  Layers
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -40,7 +41,7 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'expenses' | 'debts' | 'savings'>('expenses');
+  const [activeTab, setActiveTab] = useState<'expenses' | 'debts' | 'savings' | 'budgets'>('expenses');
 
   const now = new Date();
   const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -246,7 +247,31 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
             }}
           >
             <PiggyBank size={15} />
-            Proyectos / Ahorros ({detail?.shared_saving_goals?.length || 0})
+            Ahorros ({detail?.shared_saving_goals?.length || 0})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('budgets')}
+            style={{
+              flex: 1,
+              padding: '0.5rem 0.25rem',
+              border: 'none',
+              borderRadius: 'var(--radius-sm)',
+              background: activeTab === 'budgets' ? 'var(--surface-color)' : 'transparent',
+              color: activeTab === 'budgets' ? 'var(--text-primary)' : 'var(--text-secondary)',
+              fontWeight: activeTab === 'budgets' ? 600 : 500,
+              fontSize: '0.8rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.35rem',
+              cursor: 'pointer',
+              boxShadow: activeTab === 'budgets' ? 'var(--shadow-sm)' : 'none',
+              transition: 'all 0.2s'
+            }}
+          >
+            <Layers size={15} />
+            Presupuestos ({detail?.shared_sub_budgets?.length || 0})
           </button>
         </div>
 
@@ -568,7 +593,7 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
                 </div>
               )}
             </div>
-          ) : (
+          ) : activeTab === 'savings' ? (
             /* TAB: AHORROS COMPARTIDOS */
             <div>
               {(!detail?.shared_saving_goals || detail.shared_saving_goals.length === 0) ? (
@@ -758,6 +783,187 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
                           >
                             <ExternalLink size={13} />
                             Gestionar en Ahorros
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ) : (
+            /* TAB: PRESUPUESTOS COMPARTIDOS */
+            <div>
+              {(!detail?.shared_sub_budgets || detail.shared_sub_budgets.length === 0) ? (
+                <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-tertiary)' }}>
+                  <Layers size={36} style={{ margin: '0 auto 0.75rem', opacity: 0.4 }} />
+                  <p style={{ margin: 0, fontWeight: 500, fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                    No tienen sub-presupuestos compartidos.
+                  </p>
+                  <p style={{ margin: '0.35rem 0 1rem', fontSize: '0.8rem' }}>
+                    Al crear un grupo en Presupuestos puedes elegir compartirlo con tu pana en modo solo lectura.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      navigate('/herramientas/presupuestos');
+                    }}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      background: 'var(--primary-color)',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: 'var(--radius-md)',
+                      fontSize: '0.85rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.4rem'
+                    }}
+                  >
+                    <PlusCircle size={16} />
+                    Ir a Presupuestos
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {detail.shared_sub_budgets.map((b) => {
+                    const trafficColor =
+                      b.global_traffic_light === 'red'
+                        ? '#ef4444'
+                        : b.global_traffic_light === 'yellow'
+                        ? '#f59e0b'
+                        : '#10b981';
+                    const currSymbol =
+                      b.currency === 'BS' ? 'Bs' : b.currency === 'EUR_BCV' ? '€' : '$';
+
+                    return (
+                      <div
+                        key={b.id}
+                        style={{
+                          background: 'var(--surface-color)',
+                          border: '1px solid var(--accent-light)',
+                          borderRadius: 'var(--radius-md)',
+                          padding: '0.85rem',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '0.5rem',
+                          position: 'relative'
+                        }}
+                      >
+                        {/* Title and Badges */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                              <span style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-primary)' }}>
+                                {b.name}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: '0.68rem',
+                                  padding: '0.12rem 0.45rem',
+                                  borderRadius: 'var(--radius-full)',
+                                  background: b.is_mine ? 'rgba(16, 185, 129, 0.12)' : 'rgba(59, 130, 246, 0.12)',
+                                  color: b.is_mine ? '#10b981' : '#3B82F6',
+                                  fontWeight: 600
+                                }}
+                              >
+                                {b.is_mine
+                                  ? 'Creado por ti'
+                                  : `De ${b.owner_name || detail.partner_name} · Solo lectura`}
+                              </span>
+                              {b.members_count > 2 && (
+                                <span
+                                  title={b.member_names?.join(', ')}
+                                  style={{
+                                    fontSize: '0.68rem',
+                                    padding: '0.12rem 0.45rem',
+                                    borderRadius: 'var(--radius-full)',
+                                    background: 'var(--surface-muted)',
+                                    color: 'var(--text-secondary)',
+                                    fontWeight: 600
+                                  }}
+                                >
+                                  {b.members_count} panas
+                                </span>
+                              )}
+                            </div>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                              {b.categories_count} categorías asignadas • {b.month_year}
+                            </span>
+                          </div>
+
+                          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                            <span
+                              style={{
+                                fontSize: '0.75rem',
+                                fontWeight: 600,
+                                color: trafficColor,
+                                padding: '0.15rem 0.5rem',
+                                borderRadius: 'var(--radius-sm)',
+                                background: `${trafficColor}18`
+                              }}
+                            >
+                              {Math.round(b.global_spent_percentage)}% consumido
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Spent vs Limit */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+                          <span style={{ color: 'var(--text-secondary)' }}>
+                            Gastado: <strong>{b.total_spent_budget_currency.toFixed(2)} {currSymbol}</strong>
+                          </span>
+                          <span style={{ color: 'var(--text-tertiary)', fontWeight: 600 }}>
+                            Tope: {b.effective_global_limit.toFixed(2)} {currSymbol}
+                          </span>
+                        </div>
+
+                        {/* Progress Bar */}
+                        <div
+                          style={{
+                            width: '100%',
+                            height: '6px',
+                            background: 'var(--accent-light)',
+                            borderRadius: 'var(--radius-full)',
+                            overflow: 'hidden'
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: `${Math.min(Math.max(b.global_spent_percentage, 0), 100)}%`,
+                              height: '100%',
+                              background: trafficColor,
+                              transition: 'width 0.3s'
+                            }}
+                          />
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.25rem' }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onClose();
+                              navigate('/herramientas/presupuestos');
+                            }}
+                            style={{
+                              padding: '0.3rem 0.75rem',
+                              borderRadius: 'var(--radius-sm)',
+                              border: '1px solid var(--accent-light)',
+                              background: 'transparent',
+                              color: 'var(--primary-color)',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.3rem'
+                            }}
+                          >
+                            <ExternalLink size={13} />
+                            Ver en Presupuestos
                           </button>
                         </div>
                       </div>

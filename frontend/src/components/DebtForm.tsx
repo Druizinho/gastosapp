@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Users, X, Wallet } from 'lucide-react';
+import { Users } from 'lucide-react';
 import type { Debt, DebtCreate, DebtUpdate, Connection } from '../types';
 import { CURRENCY_OPTIONS } from '../types';
 import { getConnections } from '../api';
 import { ParticipantPicker } from './panas/ParticipantPicker';
 import CategorySelect from './CategorySelect';
+import { SegmentedTabs, type TabItem } from './ui/SegmentedTabs';
 
 interface DebtFormProps {
   initialData?: Debt;
@@ -13,6 +14,11 @@ interface DebtFormProps {
   onCancel: () => void;
   loading: boolean;
 }
+
+const typeTabs: TabItem<'owed' | 'receivable'>[] = [
+  { id: 'owed', label: 'Debo dinero' },
+  { id: 'receivable', label: 'Me deben dinero' },
+];
 
 const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCancel, loading }) => {
   const isEditing = !!initialData;
@@ -89,140 +95,33 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
     onSubmit(submitData);
   };
 
-  const inputStyle: React.CSSProperties = {
-    width: '100%',
-    padding: '0.75rem',
-    background: 'var(--surface-color)',
-    border: '1px solid var(--accent-light)',
-    borderRadius: 'var(--radius-sm)',
-    color: 'var(--text-primary)',
-    fontSize: '0.95rem',
-    fontFamily: 'inherit',
-    marginTop: '0.25rem',
-    boxSizing: 'border-box'
-  };
-
-  const labelStyle: React.CSSProperties = {
-    display: 'block',
-    fontSize: '0.85rem',
-    fontWeight: 600,
-    color: 'var(--text-secondary)'
-  };
-
   const currentType = formData.type || type;
   const themeColor = currentType === 'owed' ? 'var(--expense-color)' : 'var(--income-color)';
-  const themeBg = currentType === 'owed' ? 'var(--expense-bg)' : 'var(--income-bg)';
 
   return (
     <div className="modal-backdrop" onClick={onCancel}>
       <div
         className="expense-form-container"
         onClick={(e) => e.stopPropagation()}
-        style={{
-          maxWidth: '480px',
-          maxHeight: '92vh',
-          overflowY: 'auto',
-          padding: '1.35rem 1.4rem'
-        }}
       >
-        {/* Header con botón de cierre */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: '1rem',
-          borderBottom: '1px solid var(--accent-light)',
-          paddingBottom: '0.75rem'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-            <div style={{
-              width: '34px',
-              height: '34px',
-              borderRadius: 'var(--radius-sm)',
-              background: themeBg,
-              color: themeColor,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0
-            }}>
-              <Wallet size={18} />
-            </div>
-            <h2 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
-              {isEditing 
-                ? (currentType === 'owed' ? 'Editar Deuda Pendiente' : 'Editar Cuenta por Cobrar')
-                : (currentType === 'owed' ? 'Nueva Deuda (Debo)' : 'Nueva Cuenta (Me Deben)')}
-            </h2>
-          </div>
-          <button
-            type="button"
-            onClick={onCancel}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'var(--text-secondary)',
-              cursor: 'pointer',
-              padding: '0.25rem',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: 'var(--radius-full)'
-            }}
-            aria-label="Cerrar"
-          >
-            <X size={20} />
-          </button>
-        </div>
+        <h2>
+          {isEditing 
+            ? (currentType === 'owed' ? 'Editar Deuda Pendiente' : 'Editar Cuenta por Cobrar')
+            : (currentType === 'owed' ? 'Nueva Deuda (Debo)' : 'Nueva Cuenta (Me Deben)')}
+        </h2>
 
         {!isEditing && (
-          <div style={{
-            display: 'flex',
-            background: 'var(--surface-muted, rgba(255,255,255,0.06))',
-            padding: '0.25rem',
-            borderRadius: 'var(--radius-md)',
-            gap: '0.35rem',
-            marginBottom: '1rem'
-          }}>
-            <button
-              type="button"
-              onClick={() => setFormData(prev => ({ ...prev, type: 'owed' }))}
-              style={{
-                flex: 1,
-                padding: '0.55rem',
-                borderRadius: 'var(--radius-sm)',
-                border: 'none',
-                background: currentType === 'owed' ? 'var(--expense-color)' : 'transparent',
-                color: currentType === 'owed' ? '#fff' : 'var(--text-secondary)',
-                fontWeight: currentType === 'owed' ? 700 : 500,
-                fontSize: '0.85rem',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              Debo dinero
-            </button>
-            <button
-              type="button"
-              onClick={() => setFormData(prev => ({ ...prev, type: 'receivable' }))}
-              style={{
-                flex: 1,
-                padding: '0.55rem',
-                borderRadius: 'var(--radius-sm)',
-                border: 'none',
-                background: currentType === 'receivable' ? 'var(--income-color)' : 'transparent',
-                color: currentType === 'receivable' ? '#fff' : 'var(--text-secondary)',
-                fontWeight: currentType === 'receivable' ? 700 : 500,
-                fontSize: '0.85rem',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              Me deben dinero
-            </button>
+          <div style={{ marginBottom: '1.25rem' }}>
+            <SegmentedTabs<'owed' | 'receivable'>
+              tabs={typeTabs}
+              activeTab={currentType}
+              onChange={(tabId) => setFormData(prev => ({ ...prev, type: tabId }))}
+              activeColor={themeColor}
+            />
           </div>
         )}
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <form onSubmit={handleSubmit}>
           {isSharedDebt && (
             <div style={{
               background: 'rgba(59, 130, 246, 0.1)',
@@ -233,7 +132,8 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
               display: 'flex',
               alignItems: 'center',
               gap: '0.5rem',
-              border: '1px solid rgba(59, 130, 246, 0.2)'
+              border: '1px solid rgba(59, 130, 246, 0.2)',
+              marginBottom: '1rem'
             }}>
               <Users size={16} style={{ flexShrink: 0 }} />
               <span>
@@ -244,8 +144,8 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
             </div>
           )}
 
-          <div>
-            <label style={labelStyle}>
+          <div className="form-group">
+            <label>
               {currentType === 'owed' ? '¿A quién le debes? (Acreedor) *' : '¿Quién te debe? (Deudor) *'}
             </label>
             <input
@@ -255,13 +155,12 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
               disabled={isReadOnlyMember}
               value={formData.counterpart}
               onChange={handleChange}
-              style={{ ...inputStyle, ...(isReadOnlyMember ? { opacity: 0.65, cursor: 'not-allowed' } : {}) }}
               placeholder="Ej: Banco, María, Empresa XYZ..."
             />
           </div>
 
-          <div>
-            <label style={labelStyle}>Concepto *</label>
+          <div className="form-group">
+            <label>Concepto *</label>
             <input
               type="text"
               name="concept"
@@ -269,12 +168,11 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
               disabled={isReadOnlyMember}
               value={formData.concept}
               onChange={handleChange}
-              style={{ ...inputStyle, ...(isReadOnlyMember ? { opacity: 0.65, cursor: 'not-allowed' } : {}) }}
               placeholder="Ej: Préstamo personal, Compra de equipos..."
             />
           </div>
 
-          <div>
+          <div className="form-group">
             <CategorySelect
               label="Categoría"
               value={formData.category || ''}
@@ -285,9 +183,9 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
             />
           </div>
 
-          <div className="form-group row" style={{ gap: '0.75rem' }}>
-            <div className="form-group half" style={{ flex: 1 }}>
-              <label style={labelStyle}>Monto Total *</label>
+          <div className="form-group row">
+            <div className="form-group half">
+              <label>Monto Total *</label>
               <input
                 type="number"
                 name="total_amount"
@@ -298,18 +196,16 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
                 disabled={isReadOnlyMember}
                 value={formData.total_amount || ''}
                 onChange={handleChange}
-                style={{ ...inputStyle, ...(isReadOnlyMember ? { opacity: 0.65, cursor: 'not-allowed' } : {}) }}
               />
             </div>
 
-            <div className="form-group half" style={{ flex: 1 }}>
-              <label style={labelStyle}>Moneda *</label>
+            <div className="form-group half">
+              <label>Moneda *</label>
               <select
                 name="currency"
                 disabled={isReadOnlyMember}
                 value={formData.currency}
                 onChange={handleChange}
-                style={{ ...inputStyle, ...(isReadOnlyMember ? { opacity: 0.65, cursor: 'not-allowed' } : {}) }}
               >
                 {CURRENCY_OPTIONS.map(opt => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -319,11 +215,11 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
           </div>
 
           {!isSharedDebt && (
-            <div style={{
-              background: 'var(--surface-muted)',
+            <div className="form-group" style={{
+              background: 'var(--surface-muted, rgba(0,0,0,0.03))',
               padding: '0.875rem 1rem',
               borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--accent-light)'
+              border: '1px solid var(--border-color, rgba(0,0,0,0.08))'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                 <input
@@ -340,7 +236,7 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
                   }}
                   style={{ width: '18px', height: '18px', accentColor: themeColor, cursor: 'pointer' }}
                 />
-                <label htmlFor="share_debt" style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <label htmlFor="share_debt" style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', margin: 0 }}>
                   <Users size={16} /> Compartir con Panas (Grupos)
                 </label>
               </div>
@@ -365,45 +261,42 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
             </div>
           )}
 
-          <div className="form-group row" style={{ gap: '0.75rem' }}>
-            <div className="form-group half" style={{ flex: 1 }}>
-              <label style={labelStyle}>Fecha de Inicio *</label>
+          <div className="form-group row">
+            <div className="form-group half">
+              <label>Fecha de Inicio *</label>
               <input
                 type="date"
                 name="start_date"
                 required
                 value={formData.start_date || ''}
                 onChange={handleChange}
-                style={inputStyle}
               />
             </div>
 
-            <div className="form-group half" style={{ flex: 1 }}>
-              <label style={labelStyle}>Fecha Límite (Opcional)</label>
+            <div className="form-group half">
+              <label>Fecha Límite (Opcional)</label>
               <input
                 type="date"
                 name="due_date"
                 value={formData.due_date || ''}
                 onChange={handleChange}
-                style={inputStyle}
               />
             </div>
           </div>
 
-          <div>
-            <label style={labelStyle}>Notas Adicionales</label>
+          <div className="form-group">
+            <label>Notas Adicionales</label>
             <textarea
               name="notes"
               value={formData.notes || ''}
               onChange={handleChange}
               rows={2}
-              style={{ ...inputStyle, resize: 'vertical' }}
               placeholder="Detalles sobre el pago, condiciones, etc."
             />
           </div>
           
           {isEditing && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
+            <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <input
                 type="checkbox"
                 name="is_settled"
@@ -412,13 +305,13 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
                 onChange={(e) => setFormData(prev => ({ ...prev, is_settled: e.target.checked }))}
                 style={{ width: '16px', height: '16px', accentColor: themeColor }}
               />
-              <label htmlFor="is_settled" style={{ fontSize: '0.85rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
+              <label htmlFor="is_settled" style={{ fontSize: '0.85rem', color: 'var(--text-primary)', cursor: 'pointer', margin: 0 }}>
                 Marcar como liquidada (pagada)
               </label>
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+          <div className="form-actions">
             <button
               type="button"
               onClick={onCancel}

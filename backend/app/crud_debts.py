@@ -23,10 +23,12 @@ async def get_debts(db: AsyncSession, user_id: UUID, debt_type: Optional[str] = 
     from .crud import ensure_categories_and_debts_schema
     await ensure_categories_and_debts_schema()
 
-    query = select(models.Debt).filter(models.Debt.user_id == user_id)
-    if debt_type:
-        query = query.filter(models.Debt.type == debt_type)
-    query = query.options(selectinload(models.Debt.payments))
+    query = select(models.Debt).filter(
+        or_(
+            models.Debt.user_id == user_id,
+            models.Debt.id.in_(sharing.shared_entity_ids_subquery(user_id, "debt"))
+        )
+    ).options(selectinload(models.Debt.payments))
     
     if is_settled is not None:
         query = query.filter(models.Debt.is_settled == is_settled)
@@ -35,13 +37,21 @@ async def get_debts(db: AsyncSession, user_id: UUID, debt_type: Optional[str] = 
     result = await db.execute(query)
     debts = result.scalars().all()
     await sharing.populate_share_meta(db, debts, user_id, "debt")
+    if debt_type:
+        debts = [d for d in debts if d.type == debt_type]
     return debts
 
 
 async def get_debt(db: AsyncSession, debt_id: UUID, user_id: UUID):
     result = await db.execute(
         select(models.Debt)
-        .filter(models.Debt.id == debt_id, models.Debt.user_id == user_id)
+        .filter(
+            models.Debt.id == debt_id,
+            or_(
+                models.Debt.user_id == user_id,
+                models.Debt.id.in_(sharing.shared_entity_ids_subquery(user_id, "debt"))
+            )
+        )
         .options(selectinload(models.Debt.payments))
     )
     debt = result.scalars().first()
@@ -108,40 +118,43 @@ async def update_debt(db: AsyncSession, debt_id: UUID, debt: schemas.DebtUpdate,
     update_data.pop('shared_with', None)
 
     # Check if this debt is currently shared
-    membership = await sharing.get_membership(db, debt_id)
+    membership = await sharing.get_membership(db, debt_id, user_id)
 
     if membership:
         share, member = membership
-        sharing.require_admin(member)
 
-        # Apply update to current user's debt
-        for key, value in update_data.items():
-            setattr(db_debt, key, value)
-        await db.flush()
+        if 'category' in update_data:
+            new_cat = update_data.pop('category')
+            member.local_category = new_cat
+            if db_debt.user_id == user_id:
+                db_debt.category = new_cat
 
-        # Sync changes to all sibling debts in the share
-        await sharing.sync_parent_fields(db, share, debt_id, update_data)
+        if 'counterpart' in update_data and db_debt.user_id != user_id:
+            member.counterpart_label = update_data.pop('counterpart')
 
-        # If financial fields changed, recalculate settlement for all members
-        siblings = await sharing.sibling_entity_ids(db, share.id)
-        all_debt_ids = list(set(list(siblings.values()) + [debt_id]))
-        if 'total_amount' in update_data or 'currency' in update_data:
-            await sharing.recompute_settlement(db, "debt", all_debt_ids)
+        changing_fields = {k: v for k, v in update_data.items() if getattr(db_debt, k, None) != v}
+        if changing_fields:
+            sharing.require_admin(member)
+            for key, value in changing_fields.items():
+                setattr(db_debt, key, value)
+            await db.flush()
 
-        # If manually marked settled, notify members
-        if update_data.get('is_settled') is True:
-            user_prof_res = await db.execute(select(models.Profile).where(models.Profile.id == user_id))
-            user_prof = user_prof_res.scalars().first()
-            user_name = user_prof.display_name if user_prof and user_prof.display_name else "Usuario"
-            await sharing.notify_members(
-                db=db,
-                share_id=share.id,
-                exclude_user_id=user_id,
-                title="¡Deuda saldada!",
-                body=f"🎉 {user_name} marcó la deuda '{db_debt.concept}' como saldada",
-                type="shared_debt_settled",
-                url=_debt_url(db_debt.type)
-            )
+            if 'total_amount' in changing_fields or 'currency' in changing_fields:
+                await sharing.recompute_settlement(db, "debt", [debt_id])
+
+            if changing_fields.get('is_settled') is True:
+                user_prof_res = await db.execute(select(models.Profile).where(models.Profile.id == user_id))
+                user_prof = user_prof_res.scalars().first()
+                user_name = user_prof.display_name if user_prof and user_prof.display_name else "Usuario"
+                await sharing.notify_members(
+                    db=db,
+                    share_id=share.id,
+                    exclude_user_id=user_id,
+                    title="¡Deuda saldada!",
+                    body=f"🎉 {user_name} marcó la deuda '{db_debt.concept}' como saldada",
+                    type="shared_debt_settled",
+                    url=_debt_url(db_debt.type)
+                )
     else:
         # Debt was not shared previously
         for key, value in update_data.items():
@@ -188,15 +201,11 @@ async def delete_debt(db: AsyncSession, debt_id: UUID, user_id: UUID):
     if not db_debt:
         return False
 
-    membership = await sharing.get_membership(db, debt_id)
+    membership = await sharing.get_membership(db, debt_id, user_id)
 
     if membership:
         share, member = membership
-        if member.role != "admin":
-            raise HTTPException(
-                status_code=403,
-                detail="Solo un administrador puede eliminar una deuda compartida. Si deseas dejar de verla, usa la opción 'Salir'."
-            )
+        sharing.require_admin(member)
 
         user_prof_res = await db.execute(select(models.Profile).where(models.Profile.id == user_id))
         user_prof = user_prof_res.scalars().first()
@@ -215,28 +224,21 @@ async def delete_debt(db: AsyncSession, debt_id: UUID, user_id: UUID):
             url=_debt_url(debt_type)
         )
 
-        # Batch-load and delete all member copies and share
-        members = await sharing.get_members(db, share.id)
-        entity_ids = [m.entity_id for m in members]
-        if entity_ids:
-            # Purgar autogastos vinculados antes de eliminar las deudas y sus abonos
-            linked_exp_res = await db.execute(
-                select(models.DebtPayment.expense_id).where(
-                    models.DebtPayment.debt_id.in_(entity_ids),
-                    models.DebtPayment.expense_id.isnot(None)
-                )
+        # Purge linked expenses before deleting debt and payments
+        linked_exp_res = await db.execute(
+            select(models.DebtPayment.expense_id).where(
+                models.DebtPayment.debt_id == debt_id,
+                models.DebtPayment.expense_id.isnot(None)
             )
-            linked_exp_ids = [eid for eid in linked_exp_res.scalars().all() if eid is not None]
-            if linked_exp_ids:
-                await db.execute(delete(models.Expense).where(models.Expense.id.in_(linked_exp_ids)))
+        )
+        linked_exp_ids = [eid for eid in linked_exp_res.scalars().all() if eid is not None]
+        if linked_exp_ids:
+            await db.execute(delete(models.Expense).where(models.Expense.id.in_(linked_exp_ids)))
 
-            res = await db.execute(select(models.Debt).where(models.Debt.id.in_(entity_ids)))
-            for d_obj in res.scalars().all():
-                await db.delete(d_obj)
-
+        await db.delete(db_debt)
         await db.delete(share)
     else:
-        # Purgar autogastos vinculados a esta deuda personal
+        # Purge linked expenses for personal debt
         linked_exp_res = await db.execute(
             select(models.DebtPayment.expense_id).where(
                 models.DebtPayment.debt_id == debt_id,
@@ -265,7 +267,8 @@ async def add_debt_payment(db: AsyncSession, debt_id: UUID, user_id: UUID, payme
     create_exp_flag = data.pop('create_expense', None)
     should_create_expense = bool(register_as_expense or create_exp_flag)
 
-    effective_category = data.get("category") or db_debt.category or "Sin Categoría"
+    membership = await sharing.get_membership(db, debt_id, user_id)
+    effective_category = data.get("category") or (membership[1].local_category if membership else None) or db_debt.category or "Deudas"
     data["category"] = effective_category
     data["create_expense"] = should_create_expense
 
@@ -307,26 +310,10 @@ async def add_debt_payment(db: AsyncSession, debt_id: UUID, user_id: UUID, payme
         await db.flush()
         db_payment.expense_id = db_expense.id
 
-    membership = await sharing.get_membership(db, debt_id)
+    await sharing.recompute_settlement(db, "debt", [debt_id])
 
     if membership:
         share, member = membership
-        await sharing.fan_out_child_create(
-            db=db,
-            share=share,
-            source_child=db_payment,
-            child_data=data,
-            child_model=models.DebtPayment,
-            parent_fk_name="debt_id",
-            payer_id=user_id,
-            payer_name=payer_name
-        )
-
-        siblings = await sharing.sibling_entity_ids(db, share.id)
-        all_debt_ids = list(set(list(siblings.values()) + [debt_id]))
-        await sharing.recompute_settlement(db, "debt", all_debt_ids)
-
-        # Check if settled after payment
         await db.refresh(db_debt)
         curr_label = payment.currency.value if hasattr(payment.currency, "value") else str(payment.currency)
         if db_debt.is_settled:
@@ -349,9 +336,6 @@ async def add_debt_payment(db: AsyncSession, debt_id: UUID, user_id: UUID, payme
                 type="shared_debt_payment",
                 url=_debt_url(db_debt.type)
             )
-    else:
-        # Check settlement on personal debt
-        await sharing.recompute_settlement(db, "debt", [debt_id])
 
     await db.commit()
     if should_create_expense:
@@ -370,18 +354,20 @@ async def update_debt_payment(
     result = await db.execute(
         select(models.DebtPayment, models.Debt)
         .join(models.Debt, models.DebtPayment.debt_id == models.Debt.id)
-        .filter(models.DebtPayment.id == payment_id, models.Debt.user_id == user_id)
+        .filter(
+            models.DebtPayment.id == payment_id,
+            or_(
+                models.Debt.user_id == user_id,
+                models.Debt.id.in_(sharing.shared_entity_ids_subquery(user_id, "debt"))
+            )
+        )
     )
     row = result.first()
     if not row:
         return None
     payment, db_debt = row
 
-    membership = await sharing.get_membership(db, payment.debt_id)
-    if membership:
-        share, member = membership
-        if not sharing.can_edit_child(member, payment.paid_by_user_id):
-            raise HTTPException(status_code=403, detail="Solo puedes editar tus propios abonos o debes ser administrador")
+    membership = await sharing.get_membership(db, payment.debt_id, user_id)
 
     update_dict = payment_update.model_dump(exclude_unset=True)
     manual_rate = update_dict.pop('manual_rate', None)
@@ -389,6 +375,28 @@ async def update_debt_payment(
     create_exp_flag = update_dict.pop('create_expense', None)
     if register_as_expense is None and create_exp_flag is not None:
         register_as_expense = create_exp_flag
+
+    if 'category' in update_dict:
+        new_cat = update_dict.pop('category')
+        if membership:
+            member = membership[1]
+            if payment.paid_by_user_id != user_id:
+                member.local_category = new_cat
+            else:
+                payment.category = new_cat
+                member.local_category = new_cat
+        else:
+            payment.category = new_cat
+
+        if not (update_dict or register_as_expense is not None or manual_rate is not None):
+            await db.commit()
+            return await get_debt(db, payment.debt_id, user_id)
+
+    if membership:
+        share, member = membership
+        if update_dict or register_as_expense is not None or manual_rate is not None:
+            if not sharing.can_edit_child(member, payment.paid_by_user_id):
+                raise HTTPException(status_code=403, detail="Solo puedes editar tus propios abonos o debes ser administrador")
 
     if extra_data is None and ('amount' in update_dict or 'currency' in update_dict or manual_rate is not None):
         new_amount = update_dict.get('amount', payment.amount)
@@ -417,7 +425,7 @@ async def update_debt_payment(
     # Synchronize linked expense
     if payment.expense_id:
         exp_res = await db.execute(
-            select(models.Expense).where(models.Expense.id == payment.expense_id, models.Expense.user_id == user_id)
+            select(models.Expense).where(models.Expense.id == payment.expense_id)
         )
         linked_exp = exp_res.scalars().first()
         if linked_exp:
@@ -429,7 +437,7 @@ async def update_debt_payment(
                 raw_curr = payment.currency.value if hasattr(payment.currency, "value") else str(payment.currency)
                 linked_exp.currency = raw_curr
                 linked_exp.date = payment.payment_date or linked_exp.date
-                linked_exp.category = effective_cat
+                linked_exp.category = payment.category or effective_cat
                 linked_exp.description = f"Abono: {db_debt.concept} -> {db_debt.counterpart}"
                 for key in ["amount_usd", "amount_bs", "amount_eur", "amount_usdt", "rate_usd_bs", "rate_eur_bs", "rate_usdt_bs"]:
                     if hasattr(payment, key):
@@ -440,9 +448,9 @@ async def update_debt_payment(
                 "amount": payment.amount,
                 "currency": raw_curr,
                 "description": f"Abono: {db_debt.concept} -> {db_debt.counterpart}",
-                "category": effective_cat,
+                "category": payment.category or effective_cat,
                 "date": payment.payment_date or date.today(),
-                "user_id": user_id
+                "user_id": payment.paid_by_user_id or user_id
             }
             for key in ["amount_usd", "amount_bs", "amount_eur", "amount_usdt", "rate_usd_bs", "rate_eur_bs", "rate_usdt_bs"]:
                 if hasattr(payment, key):
@@ -457,9 +465,9 @@ async def update_debt_payment(
             "amount": payment.amount,
             "currency": raw_curr,
             "description": f"Abono: {db_debt.concept} -> {db_debt.counterpart}",
-            "category": effective_cat,
+            "category": payment.category or effective_cat,
             "date": payment.payment_date or date.today(),
-            "user_id": user_id
+            "user_id": payment.paid_by_user_id or user_id
         }
         for key in ["amount_usd", "amount_bs", "amount_eur", "amount_usdt", "rate_usd_bs", "rate_eur_bs", "rate_usdt_bs"]:
             if hasattr(payment, key):
@@ -470,16 +478,7 @@ async def update_debt_payment(
         payment.expense_id = new_exp.id
 
     await db.flush()
-
-    if membership and payment.sync_id:
-        share, _ = membership
-        fan_out_dict = {k: v for k, v in update_dict.items() if k not in ("expense_id", "create_expense", "register_as_expense")}
-        await sharing.fan_out_child_update(db, models.DebtPayment, payment.sync_id, fan_out_dict)
-        siblings = await sharing.sibling_entity_ids(db, share.id)
-        all_debt_ids = list(set(list(siblings.values()) + [payment.debt_id]))
-        await sharing.recompute_settlement(db, "debt", all_debt_ids)
-    else:
-        await sharing.recompute_settlement(db, "debt", [payment.debt_id])
+    await sharing.recompute_settlement(db, "debt", [payment.debt_id])
 
     await db.commit()
     if target_create_expense:
@@ -492,18 +491,23 @@ async def delete_debt_payment(db: AsyncSession, payment_id: UUID, user_id: UUID)
     result = await db.execute(
         select(models.DebtPayment)
         .join(models.Debt)
-        .filter(models.DebtPayment.id == payment_id, models.Debt.user_id == user_id)
+        .filter(
+            models.DebtPayment.id == payment_id,
+            or_(
+                models.Debt.user_id == user_id,
+                models.Debt.id.in_(sharing.shared_entity_ids_subquery(user_id, "debt"))
+            )
+        )
     )
     payment = result.scalars().first()
     if not payment:
         return None
         
     debt_id = payment.debt_id
-    sync_id = payment.sync_id or payment.id
     amount_label = f"{payment.amount} {payment.currency}"
     linked_expense_id = payment.expense_id
 
-    membership = await sharing.get_membership(db, debt_id)
+    membership = await sharing.get_membership(db, debt_id, user_id)
 
     if membership:
         share, member = membership
@@ -519,16 +523,14 @@ async def delete_debt_payment(db: AsyncSession, payment_id: UUID, user_id: UUID)
         concept = debt_obj.concept if debt_obj else "Deuda"
         debt_type = debt_obj.type if debt_obj else "owed"
 
-        # Delete across all siblings via sync_id and collect linked expense IDs
-        linked_exp_ids = await sharing.fan_out_child_delete(db, models.DebtPayment, sync_id)
-        if linked_exp_ids:
+        if linked_expense_id:
             await db.execute(
-                delete(models.Expense).where(models.Expense.id.in_(linked_exp_ids))
+                delete(models.Expense).where(models.Expense.id == linked_expense_id)
             )
 
-        siblings = await sharing.sibling_entity_ids(db, share.id)
-        all_debt_ids = list(set(list(siblings.values()) + [debt_id]))
-        await sharing.recompute_settlement(db, "debt", all_debt_ids)
+        await db.delete(payment)
+        await db.flush()
+        await sharing.recompute_settlement(db, "debt", [debt_id])
 
         await sharing.notify_members(
             db=db,
@@ -543,7 +545,7 @@ async def delete_debt_payment(db: AsyncSession, payment_id: UUID, user_id: UUID)
         await db.delete(payment)
         if linked_expense_id:
             await db.execute(
-                delete(models.Expense).where(models.Expense.id == linked_expense_id, models.Expense.user_id == user_id)
+                delete(models.Expense).where(models.Expense.id == linked_expense_id)
             )
         await db.flush()
         await sharing.recompute_settlement(db, "debt", [debt_id])

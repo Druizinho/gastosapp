@@ -334,10 +334,13 @@ class ShareMember(Base):
 
     share_id = Column(UUID(as_uuid=True), ForeignKey("shares.id", ondelete="CASCADE"), primary_key=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), primary_key=True, index=True)
-    entity_id = Column(UUID(as_uuid=True), nullable=False, unique=True, index=True)
+    entity_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     role = Column(String(10), nullable=False, default="member") # 'admin', 'member'
     added_by = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="SET NULL"), nullable=True)
     joined_at = Column(DateTime(timezone=True), server_default=func.now())
+    local_category = Column(String(100), nullable=True)
+    perspective_type = Column(String(20), nullable=True)
+    counterpart_label = Column(String(200), nullable=True)
 
     share = relationship("Share", back_populates="members")
     profile = relationship("Profile", foreign_keys=[user_id])

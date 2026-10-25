@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
   Users,
-  X,
   PiggyBank,
   SlidersHorizontal,
   FolderKanban,
@@ -12,6 +11,7 @@ import { CURRENCY_OPTIONS } from '../types';
 import { getConnections, getCategories } from '../api';
 import { ParticipantPicker } from './panas/ParticipantPicker';
 import CategorySelect from './CategorySelect';
+import { SegmentedTabs } from './ui/SegmentedTabs';
 import { resolveCategoryVisuals } from '../utils/categoryVisuals';
 
 interface SavingGoalFormProps {
@@ -147,7 +147,7 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
   const matchedCategory = categories.find(
     (c) => c.name.trim().toLowerCase() === activeCategoryName.trim().toLowerCase()
   );
-  const { IconComponent: HeaderIcon, hexColor: headerColor } = resolveCategoryVisuals(
+  const { hexColor: headerColor } = resolveCategoryVisuals(
     matchedCategory,
     activeCategoryName
   );
@@ -158,136 +158,40 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
         className="expense-form-container" 
         onClick={(e) => e.stopPropagation()}
         style={{ 
-          maxWidth: '460px', 
+          maxWidth: '480px', 
           maxHeight: '92vh', 
-          overflowY: 'auto',
-          padding: '1.25rem 1.4rem'
+          overflowY: 'auto'
         }}
       >
-        {/* Header con botón de cierre */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: '0.85rem',
-          borderBottom: '1px solid var(--accent-light)',
-          paddingBottom: '0.65rem'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <div style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: 'var(--radius-sm)',
-              background: `${headerColor}20`,
-              color: headerColor,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0
-            }}>
-              <HeaderIcon size={18} />
-            </div>
-            <h2 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
-              {isEditing
-                ? (isProject ? 'Editar Proyecto / Cuenta' : 'Editar Fondo de Ahorro')
-                : (isProject ? 'Nuevo Proyecto / Cuenta' : 'Nuevo Fondo de Ahorro')}
-            </h2>
-          </div>
-          <button
-            type="button"
-            onClick={onCancel}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'var(--text-secondary)',
-              cursor: 'pointer',
-              padding: '0.25rem',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: 'var(--radius-full)'
-            }}
-          >
-            <X size={20} />
-          </button>
-        </div>
+        <h2>
+          {isEditing
+            ? (isProject ? 'Editar Proyecto / Cuenta' : 'Editar Fondo de Ahorro')
+            : (isProject ? 'Nuevo Proyecto / Cuenta' : 'Nuevo Fondo de Ahorro')}
+        </h2>
 
         {/* Selector de Tipo: Ahorro vs Proyecto */}
-        <div style={{
-          display: 'flex',
-          background: 'var(--surface-muted)',
-          borderRadius: 'var(--radius-md)',
-          padding: '0.25rem',
-          marginBottom: '0.85rem',
-          border: '1px solid var(--accent-light)'
-        }}>
-          <button
-            type="button"
-            onClick={() => {
-              setGoalType('saving');
-              if (!isEditing) {
+        {!isEditing && (
+          <div style={{ marginBottom: '1.25rem' }}>
+            <SegmentedTabs
+              tabs={[
+                { id: 'saving', label: 'Meta de Ahorro', icon: <PiggyBank size={16} /> },
+                { id: 'project', label: 'Proyecto / Caja', icon: <FolderKanban size={16} /> },
+              ]}
+              activeTab={goalType}
+              onChange={(tabId) => {
+                setGoalType(tabId as 'saving' | 'project');
                 setFormData(prev => ({
                   ...prev,
-                  type: 'saving',
-                  category: (!prev.category || prev.category === 'Proyectos' || prev.category === 'Ahorro') ? 'Ahorro' : prev.category
+                  type: tabId as 'saving' | 'project',
+                  category: (!prev.category || prev.category === 'Proyectos' || prev.category === 'Ahorro')
+                    ? (tabId === 'project' ? 'Proyectos' : 'Ahorro')
+                    : prev.category,
                 }));
-              }
-            }}
-            style={{
-              flex: 1,
-              padding: '0.5rem 0.75rem',
-              borderRadius: 'var(--radius-sm)',
-              border: 'none',
-              background: goalType === 'saving' ? 'var(--surface-color)' : 'transparent',
-              color: goalType === 'saving' ? '#10B981' : 'var(--text-secondary)',
-              fontWeight: goalType === 'saving' ? 700 : 500,
-              fontSize: '0.85rem',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.4rem',
-              cursor: 'pointer',
-              boxShadow: goalType === 'saving' ? 'var(--shadow-sm)' : 'none',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            <PiggyBank size={16} />
-            <span>Fondo de Ahorro</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setGoalType('project');
-              if (!isEditing) {
-                setFormData(prev => ({
-                  ...prev,
-                  type: 'project',
-                  category: (!prev.category || prev.category === 'Proyectos' || prev.category === 'Ahorro') ? 'Proyectos' : prev.category
-                }));
-              }
-            }}
-            style={{
-              flex: 1,
-              padding: '0.5rem 0.75rem',
-              borderRadius: 'var(--radius-sm)',
-              border: 'none',
-              background: goalType === 'project' ? 'var(--surface-color)' : 'transparent',
-              color: goalType === 'project' ? '#3B82F6' : 'var(--text-secondary)',
-              fontWeight: goalType === 'project' ? 700 : 500,
-              fontSize: '0.85rem',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.4rem',
-              cursor: 'pointer',
-              boxShadow: goalType === 'project' ? 'var(--shadow-sm)' : 'none',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            <FolderKanban size={16} />
-            <span>Proyecto / Cuenta</span>
-          </button>
-        </div>
+              }}
+              activeColor={goalType === 'saving' ? '#10B981' : '#3B82F6'}
+            />
+          </div>
+        )}
 
         {/* Nota contextual */}
         {isProject ? (
@@ -353,8 +257,8 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
 
         <form onSubmit={handleSubmit}>
           {/* Nombre */}
-          <div className="form-group" style={{ marginBottom: '0.75rem' }}>
-            <label style={{ fontSize: '0.82rem', marginBottom: '0.25rem', fontWeight: 600 }}>
+          <div className="form-group">
+            <label>
               {isProject ? 'Nombre del Proyecto / Cuenta *' : 'Nombre del Fondo *'}
             </label>
             <input
@@ -364,16 +268,15 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
               placeholder={isProject ? 'Ej: Reparación de Motor, Remodelación Cocina, Boda...' : 'Ej: Fondo de Emergencia, Vacaciones, Laptop...'}
               value={formData.name}
               onChange={handleChange}
-              style={{ padding: '0.65rem 0.75rem' }}
             />
           </div>
 
           {/* Fila: Meta / Presupuesto y Moneda */}
-          <div className="form-group row" style={{ gap: '0.75rem', marginBottom: '0.75rem' }}>
+          <div className="form-group row">
             <div className="form-group half">
-              <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginBottom: '0.25rem', fontWeight: 600 }}>
+              <label style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span>{isProject ? 'Presupuesto Estimado' : 'Monto Objetivo'}</span>
-                <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', fontWeight: 400 }}>(Opcional)</span>
+                <span className="form-hint-inline">(Opcional)</span>
               </label>
               <input
                 type="number"
@@ -384,18 +287,16 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
                 placeholder={isProject ? "Dejar vacío si es abierto" : "Dejar vacío si es ahorro libre / fondo de emergencia"}
                 value={formData.target_amount ?? ''}
                 onChange={handleChange}
-                style={{ padding: '0.65rem 0.75rem' }}
               />
             </div>
             <div className="form-group half">
-              <label style={{ fontSize: '0.82rem', marginBottom: '0.25rem', fontWeight: 600 }}>
+              <label>
                 Moneda *
               </label>
               <select
                 name="currency"
                 value={formData.currency}
                 onChange={handleChange}
-                style={{ padding: '0.65rem 0.75rem' }}
               >
                 {CURRENCY_OPTIONS.map(opt => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -405,7 +306,7 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
           </div>
 
           {/* Fila: Categoría y Fecha Límite */}
-          <div className="form-group row" style={{ gap: '0.75rem', marginBottom: '0.75rem' }}>
+          <div className="form-group row">
             <div className="form-group half">
               <CategorySelect
                 label="Categoría"
@@ -416,25 +317,24 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
               />
             </div>
             <div className="form-group half">
-              <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginBottom: '0.25rem', fontWeight: 600 }}>
+              <label style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span>Fecha Límite</span>
-                <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', fontWeight: 400 }}>(Opcional)</span>
+                <span className="form-hint-inline">(Opcional)</span>
               </label>
               <input
                 type="date"
                 name="target_date"
                 value={formData.target_date || ''}
                 onChange={handleChange}
-                style={{ padding: '0.65rem 0.75rem' }}
               />
             </div>
           </div>
 
           {/* Notas / Propósito */}
-          <div className="form-group" style={{ marginBottom: '0.75rem' }}>
-            <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginBottom: '0.25rem', fontWeight: 600 }}>
+          <div className="form-group">
+            <label style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span>Nota / Propósito</span>
-              <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', fontWeight: 400 }}>(Opcional)</span>
+              <span className="form-hint-inline">(Opcional)</span>
             </label>
             <input
               type="text"
@@ -443,7 +343,6 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
               placeholder="¿Para qué es este fondo? Ej: Viaje a Margarita, inicial de carro..."
               value={formData.notes || ''}
               onChange={handleChange}
-              style={{ padding: '0.65rem 0.75rem' }}
             />
           </div>
 
@@ -585,13 +484,12 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
           )}
 
           {/* Botones de acción */}
-          <div className="form-actions" style={{ marginTop: '1rem', gap: '0.75rem' }}>
+          <div className="form-actions">
             <button
               type="button"
               onClick={onCancel}
               disabled={loading}
               className="btn-cancel"
-              style={{ padding: '0.75rem 1.25rem', fontSize: '0.9rem' }}
             >
               Cancelar
             </button>
@@ -602,9 +500,6 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
               style={{
                 background: headerColor,
                 boxShadow: `0 4px 14px ${headerColor}44`,
-                padding: '0.75rem 1.25rem',
-                fontSize: '0.9rem',
-                fontWeight: 700
               }}
             >
               {loading ? 'Guardando...' : (isEditing ? 'Guardar Cambios' : (isProject ? 'Crear Proyecto' : 'Crear Fondo'))}

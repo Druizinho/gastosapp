@@ -13,14 +13,16 @@ import {
   Star,
   Check,
   Lock,
-  RotateCcw
+  RotateCcw,
+  Users
 } from 'lucide-react';
 import type {
   MonthlyBudgetResponse,
   SingleBudgetOut,
   CurrencyType,
   Category,
-  BudgetCategorySummaryOut
+  BudgetCategorySummaryOut,
+  ShareMemberOut
 } from '../types';
 import {
   getMonthlyBudget,
@@ -29,13 +31,17 @@ import {
   updateMonthlyBudgetById,
   deleteMonthlyBudgetById,
   upsertCategoryLimitByBudgetId,
-  deleteCategoryLimitByBudgetId
+  deleteCategoryLimitByBudgetId,
+  getPanasOverview,
+  removeShareMember
 } from '../api';
+import { supabase } from '../supabaseClient';
 import { resolveCategoryVisuals } from '../utils/categoryVisuals';
 import { useCategories } from '../context/CategoriesContext';
 import { useCurrencyPreference } from '../context/CurrencyPreferenceContext';
 import ListCard from './ListCard';
 import ConfirmModal from './ConfirmModal';
+import { MemberAvatars } from './panas';
 
 interface BudgetsProps {
   onBack?: () => void;
@@ -299,6 +305,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
   const [budgetResponse, setBudgetResponse] = useState<MonthlyBudgetResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isConfirmingBudget, setIsConfirmingBudget] = useState<boolean>(false);
+  const [panas, setPanas] = useState<{ partner_id: string; partner_name: string }[]>([]);
 
   // Currency cycling for hero card (usd, bs, eur, usdt)
   const { mainCurrency } = useCurrencyPreference();
@@ -383,18 +390,56 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
     return budgetResponse?.budgets?.filter((b) => !b.is_primary) || [];
   }, [budgetResponse]);
 
+  // Shared with me sub-budgets
+  const sharedWithMeBudgets: SingleBudgetOut[] = useMemo(() => {
+    return budgetResponse?.shared_with_me_budgets || [];
+  }, [budgetResponse]);
+
   // Currently selected budget object (if in detail view)
   const selectedBudget: SingleBudgetOut | undefined = useMemo(() => {
-    if (!selectedBudgetId || !budgetResponse?.budgets) return undefined;
-    return budgetResponse.budgets.find((b) => b.id === selectedBudgetId);
+    if (!selectedBudgetId) return undefined;
+    const fromOwner = budgetResponse?.budgets?.find((b) => b.id === selectedBudgetId);
+    if (fromOwner) return fromOwner;
+    return budgetResponse?.shared_with_me_budgets?.find((b) => b.id === selectedBudgetId);
   }, [selectedBudgetId, budgetResponse]);
 
   // If selected budget no longer exists (e.g. deleted), revert to master view
   useEffect(() => {
-    if (selectedBudgetId && budgetResponse?.budgets && !selectedBudget) {
+    if (selectedBudgetId && (budgetResponse?.budgets || budgetResponse?.shared_with_me_budgets) && !selectedBudget) {
       setSelectedBudgetId(null);
     }
   }, [selectedBudgetId, budgetResponse, selectedBudget]);
+
+  const [isLeavingShare, setIsLeavingShare] = useState(false);
+
+  const handleLeaveSharedBudget = async () => {
+    if (!selectedBudget?.share_id) return;
+    if (!confirm(`¿Estás seguro de salir de "${selectedBudget.name}"? Dejarás de ver este presupuesto compartido.`)) {
+      return;
+    }
+    setIsLeavingShare(true);
+    try {
+      let myUserId = selectedBudget.shared_members?.find((m) => m.is_me)?.user_id;
+      if (!myUserId) {
+        myUserId = selectedBudget.shared_members?.find((m) => m.role === 'member')?.user_id;
+      }
+      if (!myUserId) {
+        const { data: { user } } = await supabase.auth.getUser();
+        myUserId = user?.id;
+      }
+      if (!myUserId) {
+        throw new Error('No se pudo identificar tu ID de usuario');
+      }
+      await removeShareMember(selectedBudget.share_id, myUserId);
+      setSelectedBudgetId(null);
+      await fetchData();
+    } catch (err: any) {
+      console.error('Error al salir del presupuesto compartido:', err);
+      alert(err?.response?.data?.detail || 'Error al salir del presupuesto compartido');
+    } finally {
+      setIsLeavingShare(false);
+    }
+  };
 
   // Fetch all budget and helper data
   const fetchData = async () => {
@@ -415,6 +460,17 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
   useEffect(() => {
     fetchData();
   }, [currentMonthYear]);
+
+  // Load panas once when Budgets mounts so modals render instantly with no layout shift
+  useEffect(() => {
+    getPanasOverview()
+      .then((res) => {
+        if (res && res.panas) {
+          setPanas(res.panas.map((p) => ({ partner_id: p.partner_id, partner_name: p.partner_name })));
+        }
+      })
+      .catch((err) => console.error('Error fetching panas overview in Budgets:', err));
+  }, []);
 
   const handleBack = () => {
     if (selectedBudgetId) {
@@ -883,50 +939,90 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                 const catNames = b.category_limits.map((c) => c.category_name).slice(0, 3).join(', ');
                 const hasMore = b.category_limits.length > 3 ? ` +${b.category_limits.length - 3}` : '';
 
+                const isShared = Boolean(
+                  b.is_shared ||
+                  (b.shared_members && b.shared_members.length > 0) ||
+                  b.shared_partner_name
+                );
+
+                const ownBudgetMembers: ShareMemberOut[] = isShared
+                  ? b.shared_members && b.shared_members.length > 0
+                    ? b.shared_members
+                    : [
+                        {
+                          user_id: (b as any).shared_partner_id || b.share_id || 'partner',
+                          name: b.shared_partner_name || 'Panas',
+                          role: 'member',
+                          is_owner: false,
+                        },
+                      ]
+                  : [];
+
                 const subtitle = (
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.4rem',
-                      marginTop: '0.2rem',
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: '0.7rem',
-                        fontWeight: 600,
-                        color: 'var(--text-secondary)',
-                        background: 'var(--surface-muted)',
-                        padding: '0.15rem 0.45rem',
-                        borderRadius: 'var(--radius-full)',
-                      }}
-                    >
-                      {b.categories_count} categorías
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 600, color: statusColor, flexShrink: 0 }}>
+                      {b.effective_global_limit && b.effective_global_limit > 0
+                        ? `${Math.round(b.global_spent_percentage)}% consumido`
+                        : 'Sin límites asignados'}
                     </span>
                     {catNames && (
                       <span
                         style={{
-                          fontSize: '0.725rem',
+                          fontSize: '0.75rem',
                           color: 'var(--text-tertiary)',
-                          whiteSpace: 'nowrap',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
                         }}
+                        title={`${catNames}${hasMore}`}
                       >
-                        {catNames}
-                        {hasMore}
+                        · {catNames}{hasMore}
                       </span>
                     )}
-                  </div>
+                  </span>
                 );
 
                 const badges = (
-                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: statusColor }}>
-                    {b.effective_global_limit && b.effective_global_limit > 0
-                      ? `${Math.round(b.global_spent_percentage)}% consumido`
-                      : 'Sin límites asignados'}
-                  </span>
+                  <>
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
+                        fontSize: '0.7rem',
+                        fontWeight: 700,
+                        color: 'var(--primary-color)',
+                        background: 'rgba(16, 185, 129, 0.12)',
+                        padding: '0.12rem 0.5rem',
+                        borderRadius: 'var(--radius-full)',
+                      }}
+                    >
+                      <Layers size={10} />
+                      Grupo
+                    </span>
+
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        color: 'var(--text-secondary)',
+                        background: 'var(--surface-muted)',
+                        padding: '0.12rem 0.5rem',
+                        borderRadius: 'var(--radius-full)',
+                      }}
+                    >
+                      {b.categories_count} {b.categories_count === 1 ? 'categoría' : 'categorías'}
+                    </span>
+
+                    {isShared && ownBudgetMembers.length > 0 && (
+                      <div style={{ display: 'inline-flex', alignItems: 'center' }} title="Miembros compartidos">
+                        <MemberAvatars members={ownBudgetMembers} size={18} interactive={false} />
+                      </div>
+                    )}
+                  </>
                 );
 
                 const primaryAmount = (
@@ -940,7 +1036,10 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                   </span>
                 );
 
-                const secondaryAmount = b.currency !== 'BS' ? `≈ Bs. ${formatAmount(b.total_spent_bs)}` : undefined;
+                const secondaryAmount =
+                  b.currency !== 'BS'
+                    ? `≈ Bs. ${formatAmount(b.total_spent_bs)}`
+                    : `≈ $ ${formatAmount(b.total_spent_usd)}`;
 
                 const quickAction = (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
@@ -1025,6 +1124,155 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
               })}
             </div>
           )}
+
+          {/* Section: Compartidos conmigo */}
+          {sharedWithMeBudgets.length > 0 && (
+            <div style={{ marginTop: '1.5rem' }}>
+              <div style={{ marginBottom: '0.85rem' }}>
+                <h2 style={{ fontSize: '1.05rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <Users size={18} style={{ color: '#3B82F6' }} />
+                  Compartidos conmigo ({sharedWithMeBudgets.length})
+                </h2>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '0.15rem 0 0 0' }}>
+                  Sub-presupuestos compartidos por tus panas (Solo lectura)
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                {sharedWithMeBudgets.map((b) => {
+                  const isRed = b.global_traffic_light === 'red';
+                  const isYellow = b.global_traffic_light === 'yellow';
+                  const statusColor = isRed ? '#EF4444' : isYellow ? '#F59E0B' : '#10B981';
+                  const currSym = currencyLabels[b.currency] || '$';
+                  const catNames = b.category_limits ? b.category_limits.map((c) => c.category_name).slice(0, 3).join(', ') : '';
+                  const hasMore = (b.category_limits?.length || 0) > 3 ? ` +${b.category_limits!.length - 3}` : '';
+
+                  const sharedWithMeMembers: ShareMemberOut[] =
+                    b.shared_members && b.shared_members.length > 0
+                      ? b.shared_members
+                      : [
+                          {
+                            user_id: b.owner_id || (b as any).shared_partner_id || 'owner',
+                            name: b.shared_by || b.shared_partner_name || 'Pana',
+                            role: 'admin',
+                            is_owner: true,
+                          },
+                        ];
+
+                  const subtitle = (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 600, color: statusColor, flexShrink: 0 }}>
+                        {b.effective_global_limit && b.effective_global_limit > 0
+                          ? `${Math.round(b.global_spent_percentage)}% consumido`
+                          : 'Sin límites asignados'}
+                      </span>
+                      {catNames && (
+                        <span
+                          style={{
+                            fontSize: '0.75rem',
+                            color: 'var(--text-tertiary)',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                          title={`${catNames}${hasMore}`}
+                        >
+                          · {catNames}{hasMore}
+                        </span>
+                      )}
+                    </span>
+                  );
+
+                  const badges = (
+                    <>
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.25rem',
+                          fontSize: '0.7rem',
+                          fontWeight: 700,
+                          color: '#3B82F6',
+                          background: 'rgba(59, 130, 246, 0.12)',
+                          padding: '0.12rem 0.5rem',
+                          borderRadius: 'var(--radius-full)',
+                        }}
+                      >
+                        <Layers size={10} />
+                        Compartido
+                      </span>
+
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.25rem',
+                          fontSize: '0.7rem',
+                          fontWeight: 600,
+                          color: 'var(--text-secondary)',
+                          background: 'var(--surface-muted)',
+                          padding: '0.12rem 0.5rem',
+                          borderRadius: 'var(--radius-full)',
+                        }}
+                      >
+                        {b.categories_count} {b.categories_count === 1 ? 'categoría' : 'categorías'}
+                      </span>
+
+                      {sharedWithMeMembers.length > 0 && (
+                        <div
+                          style={{ display: 'inline-flex', alignItems: 'center' }}
+                          title={`Compartido por ${b.shared_by || 'Pana'}`}
+                        >
+                          <MemberAvatars members={sharedWithMeMembers} size={18} interactive={false} />
+                        </div>
+                      )}
+                    </>
+                  );
+
+                  const primaryAmount = (
+                    <span>
+                      {currSym} {formatAmount(b.total_spent_budget_currency)}
+                      {b.effective_global_limit && b.effective_global_limit > 0 ? (
+                        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
+                          {' '}/ {currSym} {formatAmount(b.effective_global_limit)}
+                        </span>
+                      ) : null}
+                    </span>
+                  );
+
+                  const secondaryAmount =
+                    b.currency !== 'BS'
+                      ? `≈ Bs. ${formatAmount(b.total_spent_bs)}`
+                      : `≈ $ ${formatAmount(b.total_spent_usd)}`;
+
+                  return (
+                    <ListCard
+                      key={b.id}
+                      statusColor={statusColor}
+                      icon={<Layers size={20} />}
+                      iconBg="rgba(59, 130, 246, 0.1)"
+                      iconColor="#3B82F6"
+                      title={b.name}
+                      subtitle={subtitle}
+                      badges={badges}
+                      progress={
+                        b.effective_global_limit && b.effective_global_limit > 0
+                          ? {
+                              value: b.total_spent_budget_currency,
+                              max: b.effective_global_limit,
+                              color: statusColor,
+                            }
+                          : undefined
+                      }
+                      primaryAmount={primaryAmount}
+                      secondaryAmount={secondaryAmount}
+                      onClick={() => setSelectedBudgetId(b.id)}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </>
       )}
 
@@ -1080,7 +1328,26 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                   >
                     {selectedBudget.is_primary ? 'Plan Maestro' : selectedBudget.name}
                   </h1>
-                  {selectedBudget.is_primary ? (
+                  {selectedBudget.is_read_only ? (
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
+                        fontSize: '0.65rem',
+                        fontWeight: 700,
+                        color: '#3B82F6',
+                        background: 'rgba(59, 130, 246, 0.12)',
+                        border: '1px solid rgba(59, 130, 246, 0.25)',
+                        padding: '0.1rem 0.45rem',
+                        borderRadius: 'var(--radius-full)',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Users size={11} />
+                      Compartido por {selectedBudget.shared_by || 'Pana'} · Solo lectura
+                    </span>
+                  ) : selectedBudget.is_primary ? (
                     <span
                       style={{
                         display: 'inline-flex',
@@ -1130,7 +1397,9 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                     textOverflow: 'ellipsis',
                   }}
                 >
-                  {selectedBudget.is_primary
+                  {selectedBudget.is_read_only
+                    ? `Presupuesto compartido en modo lectura • ${currencyLabels[selectedBudget.currency] || '$'} • ${selectedBudget.month_year}`
+                    : selectedBudget.is_primary
                     ? `Fuente de verdad de todos los límites • ${currencyLabels[selectedBudget.currency] || '$'} • ${selectedBudget.month_year}`
                     : `Límites heredados del Principal • ${currencyLabels[selectedBudget.currency] || '$'} • ${selectedBudget.month_year}`}
                 </p>
@@ -1139,51 +1408,80 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
 
             {/* Edit / Delete actions for this budget */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0 }}>
-              <button
-                onClick={() => handleOpenBudgetModal(selectedBudget)}
-                title={selectedBudget.is_primary ? 'Editar nombre y moneda' : 'Editar grupo'}
-                style={{
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: 'var(--radius-full)',
-                  background: 'var(--surface-color)',
-                  border: '1px solid var(--border-color)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  color: 'var(--text-secondary)',
-                  boxShadow: 'var(--shadow-sm)',
-                }}
-              >
-                <Edit3 size={15} />
-              </button>
-              {!selectedBudget.is_primary && (
-                <button
-                  onClick={() =>
-                    setConfirmDeleteBudget({
-                      isOpen: true,
-                      budgetId: selectedBudget.id,
-                      budgetName: selectedBudget.name,
-                    })
-                  }
-                  title="Eliminar este grupo"
-                  style={{
-                    width: '36px',
-                    height: '36px',
-                    borderRadius: 'var(--radius-full)',
-                    background: 'var(--surface-color)',
-                    border: '1px solid var(--border-color)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                    color: 'var(--expense-color)',
-                    boxShadow: 'var(--shadow-sm)',
-                  }}
-                >
-                  <Trash2 size={15} />
-                </button>
+              {selectedBudget.is_read_only ? (
+                selectedBudget.share_id ? (
+                  <button
+                    type="button"
+                    onClick={handleLeaveSharedBudget}
+                    disabled={isLeavingShare}
+                    title="Salir del presupuesto compartido"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      padding: '0.45rem 0.85rem',
+                      borderRadius: 'var(--radius-full)',
+                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                      background: 'rgba(239, 68, 68, 0.08)',
+                      color: '#EF4444',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      cursor: isLeavingShare ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    <Trash2 size={13} />
+                    {isLeavingShare ? 'Saliendo...' : 'Salir del compartido'}
+                  </button>
+                ) : null
+              ) : (
+                <>
+                  <button
+                    onClick={() => handleOpenBudgetModal(selectedBudget)}
+                    title={selectedBudget.is_primary ? 'Editar nombre y moneda' : 'Editar grupo'}
+                    style={{
+                      width: '36px',
+                      height: '36px',
+                      borderRadius: 'var(--radius-full)',
+                      background: 'var(--surface-color)',
+                      border: '1px solid var(--border-color)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      color: 'var(--text-secondary)',
+                      boxShadow: 'var(--shadow-sm)',
+                    }}
+                  >
+                    <Edit3 size={15} />
+                  </button>
+                  {!selectedBudget.is_primary && (
+                    <button
+                      onClick={() =>
+                        setConfirmDeleteBudget({
+                          isOpen: true,
+                          budgetId: selectedBudget.id,
+                          budgetName: selectedBudget.name,
+                        })
+                      }
+                      title="Eliminar este grupo"
+                      style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: 'var(--radius-full)',
+                        background: 'var(--surface-color)',
+                        border: '1px solid var(--border-color)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        color: 'var(--expense-color)',
+                        boxShadow: 'var(--shadow-sm)',
+                      }}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  )}
+                </>
               )}
             </div>
           </header>
@@ -1301,7 +1599,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                   : 'Solo los gastos de estas categorías se suman a este grupo.'}
               </p>
             </div>
-            {!selectedBudget.is_primary && (
+            {!selectedBudget.is_primary && !selectedBudget.is_read_only && (
               <button
                 onClick={() => handleOpenBudgetModal(selectedBudget)}
                 className="btn btn-secondary"
@@ -1334,23 +1632,27 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
               >
                 <Layers size={36} color="var(--text-tertiary)" style={{ margin: '0 auto 0.75rem' }} />
                 <p style={{ margin: '0 0 1rem', fontSize: '0.9rem', fontWeight: 500 }}>
-                  No has seleccionado categorías para este grupo.
+                  {selectedBudget.is_read_only
+                    ? 'Este grupo compartido no tiene categorías asignadas aún.'
+                    : 'No has seleccionado categorías para este grupo.'}
                 </p>
-                <button
-                  onClick={() => handleOpenBudgetModal(selectedBudget)}
-                  className="btn btn-primary"
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '0.4rem',
-                    fontSize: '0.8rem',
-                    padding: '0.5rem 1rem',
-                    borderRadius: '8px',
-                  }}
-                >
-                  <Plus size={14} />
-                  Elegir categorías
-                </button>
+                {!selectedBudget.is_read_only && (
+                  <button
+                    onClick={() => handleOpenBudgetModal(selectedBudget)}
+                    className="btn btn-primary"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      fontSize: '0.8rem',
+                      padding: '0.5rem 1rem',
+                      borderRadius: '8px',
+                    }}
+                  >
+                    <Plus size={14} />
+                    Elegir categorías
+                  </button>
+                )}
               </div>
             ) : (
               selectedBudget.category_limits.map((cl) => {
@@ -1425,10 +1727,10 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
 
                   const secondaryAmount =
                     cl.currency !== 'BS'
-                      ? `≈ Bs. ${formatAmount(cl.spent_bs)} / ${formatAmount(cl.limit_bs)}`
-                      : `≈ $ ${formatAmount(cl.spent_usd)} / ${formatAmount(cl.limit_usd)}`;
+                      ? `≈ Bs. ${formatAmount(cl.spent_bs)}`
+                      : `≈ $ ${formatAmount(cl.spent_usd)}`;
 
-                  const quickAction = (
+                  const quickAction = selectedBudget.is_read_only ? undefined : (
                     <div style={{ display: 'flex', gap: '0.35rem' }}>
                       {selectedBudget.is_primary ? (
                         <>
@@ -1491,23 +1793,22 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                               e.stopPropagation();
                               handleOpenCategoryLimitModal(catName);
                             }}
-                            title="Ajustar límite en el Presupuesto Principal"
+                            title="Ajustar en Presupuesto Principal"
                             style={{
-                              padding: '0.2rem 0.5rem',
-                              borderRadius: '6px',
+                              width: '30px',
+                              height: '30px',
+                              borderRadius: 'var(--radius-full)',
                               background: 'var(--surface-muted)',
-                              border: '1px solid var(--border-color)',
+                              border: 'none',
                               display: 'flex',
                               alignItems: 'center',
-                              gap: '0.25rem',
+                              justifyContent: 'center',
                               cursor: 'pointer',
                               color: 'var(--text-secondary)',
-                              fontSize: '0.7rem',
-                              fontWeight: 600,
+                              transition: 'all 0.15s ease',
                             }}
                           >
-                            <Edit3 size={11} />
-                            Ajustar en Principal
+                            <Edit3 size={13} />
                           </button>
                           <button
                             type="button"
@@ -1586,7 +1887,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                     </div>
                   );
 
-                  const quickAction = (
+                  const quickAction = selectedBudget.is_read_only ? undefined : (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                       <button
                         type="button"
@@ -1673,6 +1974,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
           hasExistingBudgets={(budgetResponse?.budgets?.length || 0) > 0}
           availableCategories={budgetResponse?.available_categories || []}
           renderCategoryIcon={renderCategoryIcon}
+          panas={panas}
           onClose={() => setBudgetModal({ isOpen: false, budgetToEdit: null })}
           onSaved={(updated) => {
             setBudgetResponse(updated);
@@ -1859,6 +2161,7 @@ interface BudgetFormModalProps {
   hasExistingBudgets?: boolean;
   availableCategories?: string[];
   renderCategoryIcon?: (name: string) => React.ReactNode;
+  panas?: Array<{ partner_id: string; partner_name: string }>;
   onClose: () => void;
   onSaved: (response: MonthlyBudgetResponse) => void;
 }
@@ -1869,6 +2172,7 @@ const BudgetFormModal: React.FC<BudgetFormModalProps> = ({
   budgetToEdit,
   availableCategories = [],
   renderCategoryIcon,
+  panas = [],
   onClose,
   onSaved,
 }) => {
@@ -1883,6 +2187,58 @@ const BudgetFormModal: React.FC<BudgetFormModalProps> = ({
     return availableCategories || [];
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Panas sharing state for sub-budgets (instantly available from panas prop, fallback fetch if prop not provided)
+  const [fallbackPanas, setFallbackPanas] = useState<Array<{ id: string; name: string }>>([]);
+
+  const availablePanas = useMemo(() => {
+    if (panas && panas.length > 0) {
+      return panas.map((p) => ({ id: p.partner_id, name: p.partner_name }));
+    }
+    return fallbackPanas;
+  }, [panas, fallbackPanas]);
+
+  const [sharedWithIds, setSharedWithIds] = useState<string[]>(() => {
+    if (budgetToEdit?.shared_members) {
+      return budgetToEdit.shared_members
+        .filter((m) => m.user_id !== budgetToEdit.owner_id && !m.is_owner)
+        .map((m) => m.user_id);
+    }
+    return [];
+  });
+
+  useEffect(() => {
+    if (budgetToEdit?.shared_members) {
+      setSharedWithIds(
+        budgetToEdit.shared_members
+          .filter((m) => m.user_id !== budgetToEdit.owner_id && !m.is_owner)
+          .map((m) => m.user_id)
+      );
+    } else {
+      setSharedWithIds([]);
+    }
+  }, [budgetToEdit]);
+
+  // Fallback fetch only if panas prop wasn't provided or empty
+  useEffect(() => {
+    if (isOpen && !isPrimary && (!panas || panas.length === 0)) {
+      getPanasOverview()
+        .then((res) => {
+          if (res && res.panas) {
+            setFallbackPanas(res.panas.map((p) => ({ id: p.partner_id, name: p.partner_name })));
+          }
+        })
+        .catch((err) => console.error('Error fetching panas overview in BudgetFormModal:', err));
+    }
+  }, [isOpen, isPrimary, panas]);
+
+  const togglePana = (partnerId: string) => {
+    setSharedWithIds((prev) =>
+      prev.includes(partnerId)
+        ? prev.filter((id) => id !== partnerId)
+        : [...prev, partnerId]
+    );
+  };
 
   if (!isOpen) return null;
 
@@ -1927,6 +2283,7 @@ const BudgetFormModal: React.FC<BudgetFormModalProps> = ({
           currency,
           is_primary: isPrimary,
           categories: isPrimary ? undefined : selectedCategories,
+          shared_with_ids: isPrimary ? undefined : sharedWithIds,
         });
         onSaved(res);
       } else {
@@ -1935,6 +2292,7 @@ const BudgetFormModal: React.FC<BudgetFormModalProps> = ({
           currency,
           is_primary: false,
           categories: selectedCategories,
+          shared_with_ids: sharedWithIds,
         });
         onSaved(res);
       }
@@ -2160,6 +2518,60 @@ const BudgetFormModal: React.FC<BudgetFormModalProps> = ({
                     );
                   })
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* Compartir con Panas (Solo lectura) */}
+          {!isPrimary && availablePanas.length > 0 && (
+            <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+              <div style={{ marginBottom: '0.4rem' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <Users size={14} style={{ color: 'var(--primary-color)' }} />
+                  Compartir con Panas (Solo lectura) {sharedWithIds.length > 0 && `(${sharedWithIds.length})`}
+                </label>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
+                  Tus panas podrán ver el progreso de las categorías de este grupo en modo solo lectura.
+                </div>
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: '0.4rem',
+                  padding: '0.5rem',
+                  borderRadius: '10px',
+                  background: 'var(--surface-muted)',
+                  border: '1px solid var(--border-color)',
+                }}
+              >
+                {availablePanas.map((pana) => {
+                  const isChecked = sharedWithIds.includes(pana.id);
+                  return (
+                    <button
+                      key={pana.id}
+                      type="button"
+                      onClick={() => togglePana(pana.id)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        padding: '0.35rem 0.65rem',
+                        borderRadius: 'var(--radius-full)',
+                        border: `1.5px solid ${isChecked ? 'var(--primary-color)' : 'var(--border-color)'}`,
+                        background: isChecked ? 'rgba(16, 185, 129, 0.12)' : 'var(--surface-color)',
+                        color: isChecked ? 'var(--primary-color)' : 'var(--text-secondary)',
+                        fontSize: '0.75rem',
+                        fontWeight: isChecked ? 600 : 500,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <span>{pana.name}</span>
+                      {isChecked && <Check size={12} strokeWidth={2.5} />}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}

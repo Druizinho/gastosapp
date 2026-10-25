@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { RefreshCw, Calculator, ChevronDown } from 'lucide-react';
 import { getRates } from '../api';
 import type { ExchangeRates } from '../types';
+import { PageHeader } from './ui/PageHeader';
 
 const formatRate = (val: number | null | undefined) => {
   if (val === null || val === undefined) return '—';
@@ -93,39 +94,43 @@ export const RatesPage: React.FC = () => {
 
   return (
     <div style={{ padding: '1rem', paddingBottom: '6rem', maxWidth: '600px', margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', padding: '0 0.5rem', paddingTop: '1rem' }}>
-        <h1 style={{
-          fontSize: '1.75rem',
-          fontWeight: 800,
-          color: 'var(--text-primary)',
-          margin: 0,
-          letterSpacing: '-0.02em'
-        }}>Tasas de Cambio</h1>
-        <button
-          onClick={fetchRates}
-          disabled={loading}
-          style={{
-            background: 'var(--surface-color)',
-            border: 'none',
-            color: 'var(--text-secondary)',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: '40px',
-            height: '40px',
-            borderRadius: '50%',
-            boxShadow: 'var(--shadow-sm)',
-            transition: 'all 0.2s'
-          }}
-        >
-          <RefreshCw size={18} className={loading ? 'spin' : ''} />
-        </button>
-      </div>
-
-      <div style={{ padding: '0 0.5rem', marginBottom: '2rem', fontSize: '0.85rem', color: 'var(--text-tertiary)' }}>
-        Actualizado: {rates?.last_updated ? new Date(rates.last_updated).toLocaleString() : '—'}
-      </div>
+      <PageHeader
+        title="Tasas de Cambio"
+        subtitle={rates?.last_updated ? `Actualizado: ${new Date(rates.last_updated).toLocaleString('es-VE')}` : undefined}
+        rightAction={
+          <button
+            type="button"
+            onClick={fetchRates}
+            disabled={loading}
+            aria-label="Actualizar tasas"
+            style={{
+              background: 'var(--surface-color)',
+              border: 'none',
+              color: 'var(--text-secondary)',
+              cursor: loading ? 'default' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '40px',
+              height: '40px',
+              borderRadius: 'var(--radius-full, 9999px)',
+              boxShadow: 'var(--shadow-sm)',
+              transition: 'transform 150ms ease-out, box-shadow 150ms ease-out',
+            }}
+            onMouseDown={(e) => {
+              if (!loading) e.currentTarget.style.transform = 'scale(0.96)';
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+          >
+            <RefreshCw size={18} className={loading ? 'spin' : ''} />
+          </button>
+        }
+      />
 
       {loading && !rates ? (
         <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-tertiary)' }}>

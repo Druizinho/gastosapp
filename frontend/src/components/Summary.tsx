@@ -2,6 +2,16 @@ import React, { useState, useEffect } from 'react';
 import type { RangeSummaryResponse, DateFilter, Category, MonthlyBudgetResponse } from '../types';
 import { Eye, EyeOff, Coins, PieChart } from 'lucide-react';
 import { resolveCategoryVisuals } from '../utils/categoryVisuals';
+import { useCurrencyPreference } from '../context/CurrencyPreferenceContext';
+import {
+  CURRENCY_CONFIGS,
+  getFilteredSubCurrencies,
+  formatCurrency,
+  resolveCurrencyTotal,
+  resolveCategoryTotal,
+  resolveDailyAvg,
+  resolveBudgetCategoryLimit
+} from '../utils/currencySummary';
 
 interface SummaryProps {
   summary: RangeSummaryResponse | null;
@@ -13,6 +23,7 @@ interface SummaryProps {
 const BALANCE_VISIBLE_KEY = 'gastosapp_balance_visible';
 
 const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [], monthlyBudget }) => {
+  const { mainCurrency } = useCurrencyPreference();
   const [balanceVisible, setBalanceVisible] = useState<boolean>(() => {
     const stored = localStorage.getItem(BALANCE_VISIBLE_KEY);
     return stored !== null ? stored === 'true' : true;
@@ -27,11 +38,11 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [],
 
   if (!summary) return <div style={{ height: '200px', animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite' }} />;
 
-  const totalUsd = Number(summary.total_usd) || 0;
-  const totalBs = Number(summary.total_bs) || 0;
-  const totalEur = Number(summary.total_eur) || 0;
-  const totalUsdt = Number(summary.total_usdt) || 0;
-  const dailyAvg = Number(summary.daily_avg_usd) || 0;
+  const currentConfig = CURRENCY_CONFIGS[mainCurrency] || CURRENCY_CONFIGS.USD;
+
+  const mainTotal = resolveCurrencyTotal(summary, mainCurrency);
+  const mainDailyAvg = resolveDailyAvg(summary, mainCurrency);
+  const subCurrencies = getFilteredSubCurrencies(mainCurrency);
 
   // Resolve primary budget and active category limits
   const primaryBudget = monthlyBudget?.budgets?.find(b => b.is_primary)
@@ -64,7 +75,7 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [],
       total_eur: Number(c.total_eur) || 0,
       total_usdt: Number(c.total_usdt) || 0,
     }))
-    .sort((a, b) => b.total_usd - a.total_usd);
+    .sort((a, b) => resolveCategoryTotal(b, mainCurrency) - resolveCategoryTotal(a, mainCurrency));
 
   // 2. Expanded categories: merges zero-spent activeCategoryLimits
   const expandedCategoriesMap = new Map<string, { category: string; total_usd: number; total_bs: number; total_eur: number; total_usdt: number }>();
@@ -87,7 +98,7 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [],
     }
   }
 
-  const expandedSortedCategories = Array.from(expandedCategoriesMap.values()).sort((a, b) => b.total_usd - a.total_usd);
+  const expandedSortedCategories = Array.from(expandedCategoriesMap.values()).sort((a, b) => resolveCategoryTotal(b, mainCurrency) - resolveCategoryTotal(a, mainCurrency));
   const displayedCategories = showAllCategories ? expandedSortedCategories : spentSortedCategories.slice(0, 3);
 
   // Conditions
@@ -111,13 +122,13 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [],
       {/* Total Balance (Floating, no card) */}
       <div style={{ marginBottom: '2rem', marginTop: '1rem', padding: '0 0.5rem' }}>
         <h2 style={{ fontSize: '1rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>
-          Gastos totales (dolares tasa BCV)
+          {currentConfig.heroTitle}
         </h2>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <div style={{ fontSize: '3rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', lineHeight: 1 }}>
             {balanceVisible
-              ? `$${totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-              : `$${hiddenAmount}`
+              ? formatCurrency(mainTotal, mainCurrency)
+              : `${currentConfig.symbol} ${hiddenAmount}`
             }
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -143,32 +154,90 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [],
           </div>
 
           <div style={{ display: 'flex', gap: '1rem', overflowX: 'auto', paddingBottom: '1rem', paddingLeft: '0.5rem', paddingRight: '0.5rem', scrollSnapType: 'x mandatory' }} className="hide-scrollbar">
-            <div className="soft-card" style={{ flex: '0 0 140px', scrollSnapAlign: 'start', padding: '1.25rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-                <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#FCD34D', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 'bold' }}>Bs</div>
-                <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>VES</span>
-              </div>
-              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>Bs {totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Bolívares</div>
-            </div>
+            {subCurrencies.map(currencyKey => {
+              const config = CURRENCY_CONFIGS[currencyKey];
+              const totalVal = resolveCurrencyTotal(summary, currencyKey);
+              const formattedValue = formatCurrency(totalVal, currencyKey);
+              const strLen = formattedValue.length;
+              const fontSize = strLen > 11 ? '0.98rem' : strLen >= 9 ? '1.08rem' : '1.22rem';
 
-            <div className="soft-card" style={{ flex: '0 0 140px', scrollSnapAlign: 'start', padding: '1.25rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-                <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#3B82F6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 'bold', color: 'white' }}>€</div>
-                <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>EUR</span>
-              </div>
-              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>€ {totalEur.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Euros</div>
-            </div>
+              return (
+                <div
+                  key={currencyKey}
+                  className="soft-card"
+                  style={{
+                    flex: '0 0 142px',
+                    minWidth: '142px',
+                    maxWidth: '142px',
+                    minHeight: '128px',
+                    padding: '1.15rem 1rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    scrollSnapAlign: 'start',
+                    boxSizing: 'border-box'
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      marginBottom: '0.65rem'
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: '24px',
+                        height: '24px',
+                        borderRadius: '50%',
+                        background: config.badgeBg,
+                        color: config.badgeColor,
+                        fontWeight: 'bold',
+                        fontSize: config.badgeText.length > 1 ? '0.7rem' : '0.75rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                    >
+                      {config.badgeText}
+                    </div>
+                    <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                      {config.label}
+                    </span>
+                  </div>
 
-            <div className="soft-card" style={{ flex: '0 0 140px', scrollSnapAlign: 'start', padding: '1.25rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-                <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', fontWeight: 'bold', color: 'white' }}>₮</div>
-                <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>USDT</span>
-              </div>
-              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.25rem' }}> $ {totalUsdt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Tether (Crypto)</div>
-            </div>
+                  <div>
+                    <div
+                      title={formattedValue}
+                      style={{
+                        fontSize,
+                        fontWeight: 700,
+                        color: 'var(--text-primary)',
+                        marginBottom: '0.25rem',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        letterSpacing: '-0.02em'
+                      }}
+                    >
+                      {formattedValue}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: '0.75rem',
+                        color: 'var(--text-tertiary)',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis'
+                      }}
+                    >
+                      {config.name}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </>
       )}
@@ -182,7 +251,9 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [],
             </div>
             <div>
               <div style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-tertiary)' }}>{dailyAvgText}</div>
-              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>${dailyAvg.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                {formatCurrency(mainDailyAvg, mainCurrency)}
+              </div>
             </div>
           </div>
         </div>
@@ -259,12 +330,13 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [],
           {/* Category List */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
             {displayedCategories.map(c => {
-              const val = Number(c.total_usd);
-              const percentage = totalUsd > 0 ? ((val / totalUsd) * 100).toFixed(1) : '0.0';
+              const val = resolveCategoryTotal(c, mainCurrency);
+              const percentage = mainTotal > 0 ? ((val / mainTotal) * 100).toFixed(1) : '0.0';
               
               const categoryData = categories.find(cat => cat.name === c.category);
               const { IconComponent, hexColor } = resolveCategoryVisuals(categoryData, c.category);
               const cl = budgetLimitsMap.get(c.category.trim().toLowerCase());
+              const limitVal = resolveBudgetCategoryLimit(cl, mainCurrency);
 
               return (
                 <div key={c.category} style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
@@ -316,7 +388,7 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [],
                       {showAllCategories && cl ? (
                         <div style={{ textAlign: 'right' }}>
                           <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                            {balanceVisible ? `$${val.toFixed(2)} / $${Number(cl.limit_usd).toFixed(2)}` : `$${hiddenAmount}`}
+                            {balanceVisible ? `${formatCurrency(val, mainCurrency)} / ${formatCurrency(limitVal, mainCurrency)}` : `${currentConfig.symbol} ${hiddenAmount}`}
                           </div>
                           <div style={{ fontSize: '0.75rem', fontWeight: 700, color: cl.traffic_light === 'red' ? '#EF4444' : cl.traffic_light === 'yellow' ? '#F59E0B' : '#10B981' }}>
                             {cl.spent_percentage.toFixed(0)}%
@@ -326,7 +398,7 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [],
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                           <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>{percentage}%</span>
                           <span style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                            {balanceVisible ? `$${val.toFixed(2)}` : `$${hiddenAmount}`}
+                            {balanceVisible ? formatCurrency(val, mainCurrency) : `${currentConfig.symbol} ${hiddenAmount}`}
                           </span>
                         </div>
                       )}

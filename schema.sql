@@ -313,10 +313,13 @@ CREATE INDEX IF NOT EXISTS idx_shares_owner_id ON public.shares(owner_id);
 CREATE TABLE IF NOT EXISTS public.share_members (
     share_id UUID NOT NULL REFERENCES public.shares(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    entity_id UUID NOT NULL UNIQUE,
+    entity_id UUID NOT NULL,
     role VARCHAR(10) NOT NULL DEFAULT 'member', -- 'admin', 'member'
     added_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
     joined_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now()),
+    local_category VARCHAR(100),
+    perspective_type VARCHAR(20),
+    counterpart_label VARCHAR(200),
     PRIMARY KEY (share_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS idx_share_members_user_id ON public.share_members(user_id);

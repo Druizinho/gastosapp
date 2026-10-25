@@ -98,6 +98,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
   const [editingDebt, setEditingDebt] = useState<Debt | undefined>(undefined);
 
   const [selectedDebt, setSelectedDebt] = useState<Debt | null>(null);
+  const [selectedDebtForSheet, setSelectedDebtForSheet] = useState<Debt | null>(null);
   const [payingDebt, setPayingDebt] = useState<Debt | null>(null);
   const [editingPayment, setEditingPayment] = useState<DebtPayment | undefined>(undefined);
   const [selectedPaymentForSheet, setSelectedPaymentForSheet] = useState<DebtPayment | null>(null);
@@ -132,6 +133,10 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
       setDebts(debtsData);
       setRates(ratesData);
       setSelectedDebt(prev => {
+        if (!prev) return null;
+        return debtsData.find(d => d.id === prev.id) || null;
+      });
+      setSelectedDebtForSheet(prev => {
         if (!prev) return null;
         return debtsData.find(d => d.id === prev.id) || null;
       });
@@ -212,6 +217,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
       setSubmitting(true);
       await deleteDebt(id);
       if (selectedDebt?.id === id) setSelectedDebt(null);
+      if (selectedDebtForSheet?.id === id) setSelectedDebtForSheet(null);
       await fetchDebts();
       showToast('Deuda eliminada');
     } catch (error: any) {
@@ -322,10 +328,27 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
   if (selectedDebt) {
     const isOwed = selectedDebt.type === 'owed';
     const themeColor = isOwed ? 'var(--expense-color)' : 'var(--income-color)';
+    const accentHex = isOwed ? '#EF4444' : '#10B981';
     const paid = calculatePaid(selectedDebt);
     const remaining = Math.max(Number(selectedDebt.total_amount) - paid, 0);
     const progress = Math.min((paid / Number(selectedDebt.total_amount)) * 100, 100);
     const isMember = selectedDebt.is_shared && selectedDebt.my_role === 'member';
+
+    const remainingInMain = convertItemAmountToMainCurrency(
+      { amount: remaining, currency: selectedDebt.currency },
+      mainCurrency,
+      rates
+    );
+    const paidInMain = convertItemAmountToMainCurrency(
+      { amount: paid, currency: selectedDebt.currency },
+      mainCurrency,
+      rates
+    );
+    const totalInMain = convertItemAmountToMainCurrency(
+      { amount: Number(selectedDebt.total_amount), currency: selectedDebt.currency },
+      mainCurrency,
+      rates
+    );
 
     const detailRightAction = (
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
@@ -385,142 +408,121 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
           rightAction={detailRightAction}
         />
 
-        <div className="soft-card" style={{ padding: '1.25rem' }}>
-          {/* Header Metadata */}
-          <div style={{ marginBottom: '1.25rem' }}>
-            {selectedDebt.is_shared && (
-              <div 
-                onClick={() => setActiveShareModalItem({ id: selectedDebt.id, name: selectedDebt.concept })}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: '0.5rem',
-                  background: 'rgba(59, 130, 246, 0.1)', color: '#3B82F6',
-                  padding: '0.3rem 0.75rem', borderRadius: 'var(--radius-full)',
-                  fontSize: '0.78rem', fontWeight: 600, marginBottom: '0.75rem',
-                  border: '1px solid rgba(59, 130, 246, 0.25)', cursor: 'pointer',
-                  transition: 'all 0.15s ease'
-                }}
-                title="Gestionar miembros de la deuda"
-              >
-                <MemberAvatars members={selectedDebt.shared_members} size={20} />
-                <span>Gestionar panas ({selectedDebt.shared_members?.length || 2})</span>
-              </div>
-            )}
+        <SummaryHeroCard
+          eyebrow={isOwed ? 'Saldo por Pagar' : 'Saldo por Cobrar'}
+          badgeText={selectedDebt.is_settled || remaining <= 0 ? 'Liquidada' : (isOwed ? 'Debes' : 'Te deben')}
+          badgeIcon={selectedDebt.is_settled || remaining <= 0 ? <CheckCircle size={12} /> : (isOwed ? <TrendingDown size={12} /> : <TrendingUp size={12} />)}
+          mainAmount={formatCurrencyAmount(remainingInMain, mainCurrency)}
+          mainAmountColor={remaining <= 0 || selectedDebt.is_settled ? 'var(--income-color)' : themeColor}
+          statusSubtext={selectedDebt.is_settled || remaining <= 0 ? 'Deuda completamente liquidada' : (isOwed ? `Acreedor: ${selectedDebt.counterpart}` : `Deudor: ${selectedDebt.counterpart}`)}
+          currencyHintText={!isSameCurrency(selectedDebt.currency, mainCurrency) ? `Orig: ${formatCurrency(remaining, selectedDebt.currency)} · Alternar (${mainCurrency})` : `Toca para alternar (${mainCurrency})`}
+          onCycleCurrency={cycleDisplayCurrency}
+          accentColor={accentHex}
+          metrics={[
+            {
+              label: 'TOTAL',
+              value: formatCurrencyAmount(totalInMain, mainCurrency),
+              subtext: !isSameCurrency(selectedDebt.currency, mainCurrency) ? formatCurrency(Number(selectedDebt.total_amount), selectedDebt.currency) : undefined,
+              valueColor: 'var(--text-primary)',
+            },
+            {
+              label: 'ABONADO',
+              value: formatCurrencyAmount(paidInMain, mainCurrency),
+              subtext: !isSameCurrency(selectedDebt.currency, mainCurrency) ? formatCurrency(paid, selectedDebt.currency) : undefined,
+              valueColor: 'var(--income-color)',
+            },
+            {
+              label: 'RESTANTE',
+              value: formatCurrencyAmount(remainingInMain, mainCurrency),
+              subtext: !isSameCurrency(selectedDebt.currency, mainCurrency) ? formatCurrency(remaining, selectedDebt.currency) : undefined,
+              valueColor: remaining > 0 ? themeColor : 'var(--income-color)',
+            },
+          ]}
+          progress={{
+            percent: progress,
+            leftLabel: 'Progreso del pago',
+            rightLabel: `${Math.round(progress)}%`,
+            color: (remaining <= 0 || selectedDebt.is_settled) ? 'var(--income-color)' : accentHex,
+          }}
+        >
+          {selectedDebt.is_shared && (
+            <div 
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveShareModalItem({ id: selectedDebt.id, name: selectedDebt.concept });
+              }}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '0.5rem',
+                background: 'rgba(59, 130, 246, 0.1)', color: '#3B82F6',
+                padding: '0.35rem 0.75rem', borderRadius: 'var(--radius-full)',
+                fontSize: '0.78rem', fontWeight: 600, marginTop: '1rem',
+                border: '1px solid rgba(59, 130, 246, 0.25)', cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+              title="Gestionar miembros de la deuda"
+            >
+              <MemberAvatars members={selectedDebt.shared_members} size={20} />
+              <span>Gestionar panas ({selectedDebt.shared_members?.length || 2})</span>
+            </div>
+          )}
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
-              <span
-                style={{
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.85rem' }}
+          >
+            {selectedDebt.category && (() => {
+              const catObj = categories.find(c => c.name.toLowerCase() === selectedDebt.category?.toLowerCase());
+              const { IconComponent, hexColor } = resolveCategoryVisuals(catObj, selectedDebt.category);
+              return (
+                <div style={{
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '0.25rem',
-                  fontSize: '0.75rem',
-                  fontWeight: 700,
-                  color: isOwed ? 'var(--expense-color)' : 'var(--income-color)',
-                  background: isOwed ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+                  gap: '0.35rem',
                   padding: '0.2rem 0.6rem',
                   borderRadius: 'var(--radius-full)',
-                }}
-              >
-                {isOwed ? <TrendingDown size={12} /> : <TrendingUp size={12} />}
-                {isOwed ? 'Por Pagar' : 'Por Cobrar'}
+                  background: `${hexColor}18`,
+                  border: `1px solid ${hexColor}35`,
+                  color: hexColor,
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                }}>
+                  <IconComponent size={12} />
+                  <span>{selectedDebt.category}</span>
+                </div>
+              );
+            })()}
+
+            {selectedDebt.start_date && (
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                <Calendar size={12} /> Desde {formatDate(selectedDebt.start_date)}
               </span>
+            )}
 
-              {selectedDebt.category && (() => {
-                const catObj = categories.find(c => c.name.toLowerCase() === selectedDebt.category?.toLowerCase());
-                const { IconComponent, hexColor } = resolveCategoryVisuals(catObj, selectedDebt.category);
-                return (
-                  <div style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '0.35rem',
-                    padding: '0.2rem 0.6rem',
-                    borderRadius: 'var(--radius-full)',
-                    background: `${hexColor}18`,
-                    border: `1px solid ${hexColor}35`,
-                    color: hexColor,
-                    fontSize: '0.75rem',
-                    fontWeight: 600,
-                  }}>
-                    <IconComponent size={12} />
-                    <span>{selectedDebt.category}</span>
-                  </div>
-                );
-              })()}
-
-              {selectedDebt.start_date && (
-                <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <Calendar size={12} /> Desde {formatDate(selectedDebt.start_date)}
-                </span>
-              )}
-            </div>
-
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0 }}>
-              {isOwed ? 'Acreedor:' : 'Deudor:'} <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{selectedDebt.counterpart}</span>
-              {selectedDebt.due_date && (
-                <span style={{ marginLeft: '0.75rem', color: 'var(--text-tertiary)' }}>
-                  · Vence {formatDate(selectedDebt.due_date)}
-                </span>
-              )}
-            </p>
+            {selectedDebt.due_date && (
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                · Vence {formatDate(selectedDebt.due_date)}
+              </span>
+            )}
           </div>
 
-          {/* Resumen numérico: 3 métricas */}
-          <div style={{ 
-            display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', 
-            marginBottom: '1rem' 
-          }}>
-            <div style={{ textAlign: 'center', padding: '0.75rem', background: 'var(--surface-muted)', borderRadius: 'var(--radius-md)' }}>
-              <p style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Total</p>
-              <p style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                {formatCurrency(Number(selectedDebt.total_amount), selectedDebt.currency)}
-              </p>
-            </div>
-            <div style={{ textAlign: 'center', padding: '0.75rem', background: 'var(--income-bg)', borderRadius: 'var(--radius-md)' }}>
-              <p style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Abonado</p>
-              <p style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--income-color)' }}>
-                {formatCurrency(paid, selectedDebt.currency)}
-              </p>
-            </div>
-            <div style={{ textAlign: 'center', padding: '0.75rem', background: remaining > 0 ? 'var(--expense-bg)' : 'var(--income-bg)', borderRadius: 'var(--radius-md)' }}>
-              <p style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Restante</p>
-              <p style={{ fontSize: '0.9rem', fontWeight: 700, color: remaining > 0 ? themeColor : 'var(--income-color)' }}>
-                {formatCurrency(remaining, selectedDebt.currency)}
-              </p>
-            </div>
-          </div>
-
-          {/* Barra de progreso */}
-          <div style={{ marginBottom: '1.25rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Progreso</span>
-              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{Math.round(progress)}%</span>
-            </div>
-            <div style={{ width: '100%', background: 'var(--surface-muted)', borderRadius: 'var(--radius-full)', height: '6px', overflow: 'hidden' }}>
-              <div style={{ 
-                height: '100%', 
-                background: (remaining <= 0 || selectedDebt.is_settled) ? 'var(--income-color)' : themeColor, 
-                width: `${progress}%`,
-                borderRadius: 'var(--radius-full)',
-                transition: 'width 0.5s ease'
-              }} />
-            </div>
-          </div>
-          
           {(remaining <= 0 || selectedDebt.is_settled) && (
-            <div style={{
-              background: 'rgba(16, 185, 129, 0.1)', color: '#10B981',
-              padding: '0.75rem 1rem', borderRadius: 'var(--radius-md)',
-              fontSize: '0.88rem', fontWeight: 600, textAlign: 'center',
-              marginBottom: '1rem', display: 'flex', alignItems: 'center',
-              justifyContent: 'center', gap: '0.5rem'
-            }}>
+            <div 
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: 'rgba(16, 185, 129, 0.1)', color: '#10B981',
+                padding: '0.75rem 1rem', borderRadius: 'var(--radius-md)',
+                fontSize: '0.88rem', fontWeight: 600, textAlign: 'center',
+                marginTop: '1rem', display: 'flex', alignItems: 'center',
+                justifyContent: 'center', gap: '0.5rem'
+              }}
+            >
               <CheckCircle size={16} />
               <span>¡Deuda completamente liquidada!</span>
             </div>
           )}
 
-          {/* Shared members breakdown if applicable */}
           {selectedDebt.is_shared && paid > 0 && (() => {
-            const palette = [themeColor, '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4'];
+            const palette = [accentHex, '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4'];
             const byContributor: Record<string, { amount: number; isMe: boolean }> = {};
             const myUserId = selectedDebt.shared_members?.find(m => m.is_me)?.user_id;
 
@@ -544,17 +546,19 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
             }));
 
             return (
-              <div style={{
-                marginTop: '1rem',
-                marginBottom: '1rem',
-                padding: '0.85rem 1rem',
-                background: 'var(--surface-muted)',
-                borderRadius: 'var(--radius-md)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.6rem',
-                border: '1px solid var(--accent-light)'
-              }}>
+              <div 
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  marginTop: '1rem',
+                  padding: '0.85rem 1rem',
+                  background: 'var(--surface-muted, rgba(0,0,0,0.03))',
+                  borderRadius: 'var(--radius-md)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.6rem',
+                  border: '1px solid var(--border-color, rgba(0, 0, 0, 0.07))'
+                }}
+              >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                     <Users size={14} style={{ color: '#3B82F6' }} />
@@ -596,8 +600,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
             );
           })()}
 
-          {/* Primary CTA button */}
-          <div style={{ marginTop: '0.75rem' }}>
+          <div style={{ marginTop: '1rem' }} onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
               onClick={() => setPayingDebt(selectedDebt)}
@@ -616,7 +619,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '0.5rem',
-                boxShadow: (remaining <= 0 || selectedDebt.is_settled) ? 'none' : `0 4px 14px ${themeColor}44`,
+                boxShadow: (remaining <= 0 || selectedDebt.is_settled) ? 'none' : `0 4px 14px ${accentHex}44`,
                 transition: 'transform 150ms ease-out',
               }}
               onMouseDown={(e) => {
@@ -631,7 +634,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
               <span>Registrar Abono</span>
             </button>
           </div>
-        </div>
+        </SummaryHeroCard>
 
         {/* Historial de Pagos Header */}
         <div style={{ marginTop: '1.75rem', marginBottom: '0.85rem' }}>
@@ -648,7 +651,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
             actionLabel={remaining > 0 && !selectedDebt.is_settled ? 'Registrar Abono' : undefined}
             actionIcon={<Plus size={16} />}
             onAction={remaining > 0 && !selectedDebt.is_settled ? () => setPayingDebt(selectedDebt) : undefined}
-            actionColor={themeColor}
+            actionColor={accentHex}
           />
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
@@ -667,11 +670,6 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
 
                 const badgesNode = (
                   <>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
-                      <Calendar size={11} />
-                      {formatDate(payment.payment_date)}
-                    </span>
-
                     <span style={{
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -731,8 +729,8 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
                     icon={<IconComponent size={18} />}
                     iconBg={`${hexColor}18`}
                     iconColor={hexColor}
-                    title={payment.note || `Abono de ${formatDate(payment.payment_date)}`}
-                    subtitle={payment.note ? formatDate(payment.payment_date) : undefined}
+                    title={payment.note?.trim() ? payment.note : (isOwed ? 'Abono realizado' : 'Abono recibido')}
+                    subtitle={formatDate(payment.payment_date)}
                     badges={badgesNode}
                     primaryAmount={amounts.primaryAmount}
                     secondaryAmount={amounts.secondaryAmount}
@@ -1191,13 +1189,163 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
                 quickAction={quickActionNode}
                 onClick={() => {
                   const freshDebt = debts.find(d => d.id === debt.id) || debt;
-                  setSelectedDebt(freshDebt);
+                  setSelectedDebtForSheet(freshDebt);
                 }}
               />
             );
           })}
         </div>
       )}
+
+      {/* Bottom Sheet para inspección y acciones rápidas de Deuda */}
+      <ListCardBottomSheet
+        isOpen={!!selectedDebtForSheet}
+        onClose={() => setSelectedDebtForSheet(null)}
+        title={selectedDebtForSheet?.concept || 'Detalle de Deuda'}
+        subtitle={
+          selectedDebtForSheet
+            ? (selectedDebtForSheet.type === 'owed'
+                ? `A: ${selectedDebtForSheet.counterpart}`
+                : `De: ${selectedDebtForSheet.counterpart}`)
+            : undefined
+        }
+        primaryAction={
+          selectedDebtForSheet &&
+          !selectedDebtForSheet.is_settled &&
+          Math.max(Number(selectedDebtForSheet.total_amount) - calculatePaid(selectedDebtForSheet), 0) > 0
+            ? {
+                label: 'Registrar Abono',
+                icon: <Plus size={18} />,
+                onClick: () => {
+                  const d = selectedDebtForSheet;
+                  setSelectedDebtForSheet(null);
+                  setEditingPayment(undefined);
+                  setPayingDebt(d);
+                },
+              }
+            : undefined
+        }
+        secondaryActions={
+          selectedDebtForSheet
+            ? [
+                {
+                  label: 'Ver Historial',
+                  icon: <Receipt size={16} />,
+                  onClick: () => {
+                    const d = selectedDebtForSheet;
+                    setSelectedDebtForSheet(null);
+                    setSelectedDebt(d);
+                  },
+                },
+                {
+                  label: 'Editar',
+                  icon: <Edit3 size={16} />,
+                  disabled: selectedDebtForSheet.is_shared && selectedDebtForSheet.my_role === 'member',
+                  onClick: () => {
+                    const d = selectedDebtForSheet;
+                    setSelectedDebtForSheet(null);
+                    setEditingDebt(d);
+                    setShowForm(true);
+                  },
+                },
+                ...(selectedDebtForSheet.is_shared
+                  ? [
+                      {
+                        label: 'Gestionar Panas',
+                        icon: <Users size={16} />,
+                        onClick: () => {
+                          const d = selectedDebtForSheet;
+                          setSelectedDebtForSheet(null);
+                          setActiveShareModalItem({ id: d.id, name: d.concept });
+                        },
+                      },
+                    ]
+                  : []),
+                {
+                  label: 'Eliminar',
+                  icon: <Trash2 size={16} />,
+                  danger: true,
+                  disabled: selectedDebtForSheet.is_shared && selectedDebtForSheet.my_role === 'member',
+                  onClick: () => {
+                    const d = selectedDebtForSheet;
+                    setSelectedDebtForSheet(null);
+                    setConfirmDelete({ isOpen: true, debtId: d.id });
+                  },
+                },
+              ]
+            : undefined
+        }
+      >
+        {selectedDebtForSheet && (() => {
+          const paid = calculatePaid(selectedDebtForSheet);
+          const remaining = Math.max(Number(selectedDebtForSheet.total_amount) - paid, 0);
+          const isOwed = selectedDebtForSheet.type === 'owed';
+          const statusColor = isOwed ? 'var(--expense-color)' : 'var(--income-color)';
+
+          return (
+            <div>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr 1fr',
+                gap: '0.5rem',
+                marginBottom: '1rem'
+              }}>
+                <div style={{ textAlign: 'center', padding: '0.65rem 0.4rem', background: 'var(--surface-muted)', borderRadius: 'var(--radius-md)' }}>
+                  <p style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', margin: '0 0 0.25rem' }}>Total</p>
+                  <p style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+                    {formatCurrency(Number(selectedDebtForSheet.total_amount), selectedDebtForSheet.currency)}
+                  </p>
+                </div>
+                <div style={{ textAlign: 'center', padding: '0.65rem 0.4rem', background: 'var(--income-bg)', borderRadius: 'var(--radius-md)' }}>
+                  <p style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', margin: '0 0 0.25rem' }}>Abonado</p>
+                  <p style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--income-color)', margin: 0 }}>
+                    {formatCurrency(paid, selectedDebtForSheet.currency)}
+                  </p>
+                </div>
+                <div style={{ textAlign: 'center', padding: '0.65rem 0.4rem', background: remaining > 0 ? 'var(--expense-bg)' : 'var(--income-bg)', borderRadius: 'var(--radius-md)' }}>
+                  <p style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', margin: '0 0 0.25rem' }}>Restante</p>
+                  <p style={{ fontSize: '0.88rem', fontWeight: 700, color: remaining > 0 ? statusColor : 'var(--income-color)', margin: 0 }}>
+                    {formatCurrency(remaining, selectedDebtForSheet.currency)}
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                {selectedDebtForSheet.category && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Categoría:</span>
+                    <strong style={{ color: 'var(--text-primary)' }}>{selectedDebtForSheet.category}</strong>
+                  </div>
+                )}
+                {selectedDebtForSheet.start_date && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Fecha de inicio:</span>
+                    <strong style={{ color: 'var(--text-primary)' }}>{formatDate(selectedDebtForSheet.start_date)}</strong>
+                  </div>
+                )}
+                {selectedDebtForSheet.due_date && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Fecha límite:</span>
+                    <strong style={{ color: 'var(--text-primary)' }}>{formatDate(selectedDebtForSheet.due_date)}</strong>
+                  </div>
+                )}
+                {selectedDebtForSheet.notes && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem' }}>
+                    <span>Notas:</span>
+                    <span style={{ textAlign: 'right', color: 'var(--text-primary)', fontStyle: 'italic' }}>{selectedDebtForSheet.notes}</span>
+                  </div>
+                )}
+                {selectedDebtForSheet.is_shared && selectedDebtForSheet.shared_members && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>Panas compartidos:</span>
+                    <MemberAvatars members={selectedDebtForSheet.shared_members} size={20} />
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+      </ListCardBottomSheet>
 
       {/* Modal: Crear / Editar Deuda */}
       {showForm && (

@@ -2094,6 +2094,8 @@ body {
   gap: 0.25rem;
   flex-shrink: 0;
   text-align: right;
+  max-width: 50%;
+  min-width: 0;
 }
 
 .list-card-amount-primary {
@@ -2108,6 +2110,7 @@ body {
   font-weight: 500;
   color: var(--text-tertiary);
   line-height: 1.2;
+  word-break: break-word;
 }
 
 /* Quick Action Wrapper */

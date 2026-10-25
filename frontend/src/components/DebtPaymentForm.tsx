@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, X, Receipt } from 'lucide-react';
+import { Users } from 'lucide-react';
 import type { DebtPayment, DebtPaymentCreate, DebtPaymentUpdate } from '../types';
 import { CURRENCY_OPTIONS } from '../types';
 import ConfirmModal from './ConfirmModal';
@@ -110,26 +110,6 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
     onSubmit(submitData);
   };
 
-  const inputStyle: React.CSSProperties = {
-    width: '100%',
-    padding: '0.75rem',
-    background: 'var(--surface-color)',
-    border: '1px solid var(--accent-light)',
-    borderRadius: 'var(--radius-sm)',
-    color: 'var(--text-primary)',
-    fontSize: '0.95rem',
-    fontFamily: 'inherit',
-    marginTop: '0.25rem',
-    boxSizing: 'border-box'
-  };
-
-  const labelStyle: React.CSSProperties = {
-    display: 'block',
-    fontSize: '0.85rem',
-    fontWeight: 600,
-    color: 'var(--text-secondary)'
-  };
-
   const themeColor = type === 'owed' ? 'var(--expense-color)' : 'var(--income-color)';
 
   return (
@@ -137,68 +117,20 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
       <div
         className="expense-form-container"
         onClick={(e) => e.stopPropagation()}
-        style={{
-          maxWidth: '460px',
-          maxHeight: '92vh',
-          overflowY: 'auto',
-          padding: '1.35rem 1.4rem'
-        }}
       >
-        {/* Header con botón de cierre */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: '1rem',
-          borderBottom: '1px solid var(--accent-light)',
-          paddingBottom: '0.75rem'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-            <div style={{
-              width: '34px',
-              height: '34px',
-              borderRadius: 'var(--radius-sm)',
-              background: 'rgba(59, 130, 246, 0.12)',
-              color: '#3B82F6',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0
-            }}>
-              <Receipt size={18} />
-            </div>
-            <div>
-              <h2 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
-                {isEditing ? 'Editar Abono' : 'Registrar Abono'}
-              </h2>
-              {debtConcept && (
-                <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: 0 }}>
-                  {debtConcept}
-                </p>
-              )}
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onCancel}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'var(--text-secondary)',
-              cursor: 'pointer',
-              padding: '0.25rem',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: 'var(--radius-full)'
-            }}
-            aria-label="Cerrar"
-          >
-            <X size={20} />
-          </button>
-        </div>
+        <h2>{isEditing ? 'Editar Abono' : 'Registrar Abono'}</h2>
+        {debtConcept && (
+          <p style={{
+            fontSize: '0.85rem',
+            color: 'var(--text-secondary)',
+            marginTop: '-0.5rem',
+            marginBottom: '1.25rem'
+          }}>
+            {debtConcept}
+          </p>
+        )}
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <form onSubmit={handleSubmit}>
           {isShared && (
             <div style={{
               background: 'rgba(59, 130, 246, 0.1)',
@@ -209,7 +141,8 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
               display: 'flex',
               alignItems: 'center',
               gap: '0.6rem',
-              border: '1px solid rgba(59, 130, 246, 0.2)'
+              border: '1px solid rgba(59, 130, 246, 0.2)',
+              marginBottom: '1rem'
             }}>
               <Users size={16} style={{ flexShrink: 0 }} />
               <span>
@@ -219,13 +152,14 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
           )}
 
           <div style={{
-            background: 'var(--surface-muted)',
+            background: 'var(--surface-muted, rgba(0,0,0,0.03))',
             padding: '0.75rem 1rem',
             borderRadius: 'var(--radius-md)',
             fontSize: '0.9rem',
             display: 'flex',
             justifyContent: 'space-between',
-            alignItems: 'center'
+            alignItems: 'center',
+            marginBottom: '1rem'
           }}>
             <span style={{ color: 'var(--text-secondary)' }}>Monto pendiente:</span>
             <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
@@ -235,33 +169,35 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
 
           <div style={{
             background: 'rgba(59, 130, 246, 0.08)',
-            color: 'var(--accent-color)',
+            color: 'var(--accent-color, #3B82F6)',
             padding: '0.75rem 0.85rem',
             borderRadius: 'var(--radius-md)',
             fontSize: '0.8rem',
             lineHeight: 1.4,
-            border: '1px solid rgba(59, 130, 246, 0.15)'
+            border: '1px solid rgba(59, 130, 246, 0.15)',
+            marginBottom: '1rem'
           }}>
             💡 Puedes abonar en una moneda diferente a la original. El sistema guardará la tasa de cambio oficial automáticamente.
           </div>
 
           {isOverpaying && (
             <div style={{
-              background: 'var(--warning-bg)',
-              color: 'var(--warning-color)',
+              background: 'var(--warning-bg, rgba(245, 158, 11, 0.1))',
+              color: 'var(--warning-color, #D97706)',
               padding: '0.75rem 1rem',
               borderRadius: 'var(--radius-md)',
               fontSize: '0.82rem',
               lineHeight: 1.4,
-              fontWeight: 500
+              fontWeight: 500,
+              marginBottom: '1rem'
             }}>
               ⚠️ El monto ingresado supera el saldo pendiente. Se te pedirá confirmación al enviar.
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: '0.75rem' }}>
-            <div style={{ flex: 1 }}>
-              <label style={labelStyle}>Monto a Abonar *</label>
+          <div className="form-group row">
+            <div className="form-group half">
+              <label>Monto a Abonar *</label>
               <input
                 type="number"
                 name="amount"
@@ -271,20 +207,15 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
                 placeholder="0.00"
                 value={formData.amount || ''}
                 onChange={handleChange}
-                style={{
-                  ...inputStyle,
-                  ...(isOverpaying ? { borderColor: 'var(--warning-color)', boxShadow: '0 0 0 2px var(--warning-bg)' } : {})
-                }}
               />
             </div>
 
-            <div style={{ flex: 1 }}>
-              <label style={labelStyle}>Moneda del Pago *</label>
+            <div className="form-group half">
+              <label>Moneda del Pago *</label>
               <select
                 name="currency"
                 value={formData.currency}
                 onChange={handleChange}
-                style={inputStyle}
               >
                 {CURRENCY_OPTIONS.map(opt => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -293,36 +224,31 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
             </div>
           </div>
 
-          <div>
-            <label style={labelStyle}>Fecha del Pago *</label>
+          <div className="form-group">
+            <label>Fecha del Pago *</label>
             <input
               type="date"
               name="payment_date"
               required
               value={formData.payment_date || ''}
               onChange={handleChange}
-              style={inputStyle}
             />
           </div>
 
-          <div>
-            <label style={labelStyle}>Nota Adicional (Opcional)</label>
+          <div className="form-group">
+            <label>Nota Adicional (Opcional)</label>
             <input
               type="text"
               name="note"
               value={formData.note || ''}
               onChange={handleChange}
-              style={inputStyle}
               placeholder="Ej: Transferencia Mercantil, Zelle de Pedro..."
             />
           </div>
 
           {type === 'owed' && (
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.75rem',
-              background: 'var(--surface-muted)',
+            <div className="form-group" style={{
+              background: 'var(--surface-muted, rgba(0,0,0,0.03))',
               padding: '0.85rem 1rem',
               borderRadius: 'var(--radius-md)'
             }}>
@@ -335,13 +261,13 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
                   onChange={handleChange}
                   style={{ width: '18px', height: '18px', accentColor: themeColor, cursor: 'pointer' }}
                 />
-                <label htmlFor="register_as_expense" style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', cursor: 'pointer', userSelect: 'none' }}>
+                <label htmlFor="register_as_expense" style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', cursor: 'pointer', userSelect: 'none', margin: 0 }}>
                   Registrar como gasto del mes
                 </label>
               </div>
 
               {Boolean(formData.register_as_expense) && (
-                <div style={{ paddingTop: '0.25rem' }}>
+                <div style={{ paddingTop: '0.75rem' }}>
                   <CategorySelect
                     label="Categoría del gasto"
                     value={formData.category || debtCategory || ''}
@@ -354,7 +280,7 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+          <div className="form-actions">
             <button
               type="button"
               onClick={onCancel}

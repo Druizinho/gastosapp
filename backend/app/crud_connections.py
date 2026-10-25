@@ -9,7 +9,7 @@ from decimal import Decimal
 import time
 from collections import defaultdict
 
-from . import models, schemas, sharing
+from . import models, schemas, sharing, crud_budgets
 from .push_service import send_push_notification, send_notification_to_user
 
 _connection_request_history = defaultdict(list)
@@ -406,6 +406,7 @@ async def get_panas_overview(db: AsyncSession, user_id: UUID) -> schemas.PanasGl
         pending_fe_count = 0
         shared_debts_count = 0
         shared_goals_count = 0
+        shared_sub_budgets_count = 0
         pana_debts_currency_summary = {}
 
         for sid, share_obj in share_by_id.items():
@@ -442,6 +443,9 @@ async def get_panas_overview(db: AsyncSession, user_id: UUID) -> schemas.PanasGl
                 shared_goals_count += 1
                 seen_goal_ids.add(my_entity_id)
 
+            elif share_obj.entity_type == "sub_budget":
+                shared_sub_budgets_count += 1
+
         total_remaining = sum(pana_debts_currency_summary.values()) if pana_debts_currency_summary else Decimal("0")
 
         panas_summaries.append(
@@ -457,7 +461,8 @@ async def get_panas_overview(db: AsyncSession, user_id: UUID) -> schemas.PanasGl
                 shared_debts_count=shared_debts_count,
                 total_debts_remaining=total_remaining,
                 debts_currency_summary=pana_debts_currency_summary,
-                shared_saving_goals_count=shared_goals_count
+                shared_saving_goals_count=shared_goals_count,
+                shared_sub_budgets_count=shared_sub_budgets_count
             )
         )
 
@@ -562,9 +567,17 @@ async def get_pana_details(db: AsyncSession, user_id: UUID, partner_id: UUID) ->
         )
         goal_by_id = {g.id: g for g in goal_res.scalars().unique().all()}
 
+    if fe_by_id:
+        await sharing.populate_share_meta(db, list(fe_by_id.values()), user_id, "fixed_expense")
+    if debt_by_id:
+        await sharing.populate_share_meta(db, list(debt_by_id.values()), user_id, "debt")
+    if goal_by_id:
+        await sharing.populate_share_meta(db, list(goal_by_id.values()), user_id, "saving_goal")
+
     fe_briefs: List[schemas.SharedFixedExpenseBrief] = []
     debt_briefs: List[schemas.SharedDebtBrief] = []
     goal_briefs: List[schemas.SharedSavingGoalBrief] = []
+    sub_budget_briefs: List[schemas.SharedSubBudgetBrief] = []
 
     for share_obj, my_entity_id in shared_rows:
         s_members = members_by_share.get(share_obj.id, [])
@@ -667,6 +680,50 @@ async def get_pana_details(db: AsyncSession, user_id: UUID, partner_id: UUID) ->
                 )
             )
 
+        elif share_obj.entity_type == "sub_budget":
+            anchor_budget = await db.get(models.MonthlyBudget, my_entity_id)
+            if not anchor_budget and s_members:
+                for sm in s_members:
+                    anchor_budget = await db.get(models.MonthlyBudget, sm.entity_id)
+                    if anchor_budget:
+                        break
+            if not anchor_budget:
+                continue
+
+            owner_view = await crud_budgets.get_monthly_budget_view(
+                db, share_obj.owner_id, current_month_str, allow_auto_clone=True, include_shared_with_me=False
+            )
+            target_sb = None
+            for sb in owner_view.budgets:
+                if not sb.is_primary and (sb.id == anchor_budget.id or sb.name.strip().lower() == anchor_budget.name.strip().lower()):
+                    target_sb = sb
+                    break
+
+            if target_sb:
+                curr_val = target_sb.currency.value if hasattr(target_sb.currency, "value") else str(target_sb.currency)
+                tl_val = target_sb.global_traffic_light.value if hasattr(target_sb.global_traffic_light, "value") else str(target_sb.global_traffic_light)
+                is_mine = (share_obj.owner_id == user_id)
+                owner_p = member_profiles.get(share_obj.owner_id)
+                owner_disp = "Tú" if is_mine else (owner_p.display_name if owner_p and owner_p.display_name else "Pana")
+
+                sub_budget_briefs.append(
+                    schemas.SharedSubBudgetBrief(
+                        id=target_sb.id,
+                        name=target_sb.name,
+                        month_year=current_month_str,
+                        currency=curr_val,
+                        effective_global_limit=float(target_sb.effective_global_limit or 0.0),
+                        total_spent_budget_currency=float(target_sb.total_spent_budget_currency or 0.0),
+                        global_spent_percentage=float(target_sb.global_spent_percentage or 0.0),
+                        global_traffic_light=tl_val,
+                        categories_count=len(target_sb.category_limits),
+                        is_mine=is_mine,
+                        owner_name=owner_disp,
+                        members_count=m_count,
+                        member_names=m_names
+                    )
+                )
+
     return schemas.PanaDetail(
         connection_id=conn.id,
         partner_id=partner_id,
@@ -674,6 +731,7 @@ async def get_pana_details(db: AsyncSession, user_id: UUID, partner_id: UUID) ->
         partner_email=partner_email,
         shared_fixed_expenses=fe_briefs,
         shared_debts=debt_briefs,
-        shared_saving_goals=goal_briefs
+        shared_saving_goals=goal_briefs,
+        shared_sub_budgets=sub_budget_briefs
     )
 

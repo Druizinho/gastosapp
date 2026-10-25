@@ -27,6 +27,8 @@ export interface ShareMemberOut {
   pana_request_pending?: boolean;
 }
 
+export type ShareMember = ShareMemberOut;
+
 export interface ShareInfoOut {
   share_id: string;
   entity_type: string;
@@ -520,6 +522,7 @@ export interface PanaSummary {
   total_debts_remaining: number;
   debts_currency_summary: Record<string, number>;
   shared_saving_goals_count: number;
+  shared_sub_budgets_count?: number;
 }
 
 export interface PanasGlobalOverview {
@@ -532,6 +535,22 @@ export interface PanasGlobalOverview {
   total_shared_saving_goals: number;
 }
 
+export interface SharedSubBudgetBrief {
+  id: string;
+  name: string;
+  month_year: string;
+  currency: string;
+  effective_global_limit: number;
+  total_spent_budget_currency: number;
+  global_spent_percentage: number;
+  global_traffic_light: 'green' | 'yellow' | 'red';
+  categories_count: number;
+  is_mine: boolean;
+  owner_name?: string | null;
+  members_count: number;
+  member_names: string[];
+}
+
 export interface PanaDetail {
   connection_id: string;
   partner_id: string;
@@ -540,6 +559,7 @@ export interface PanaDetail {
   shared_fixed_expenses: SharedFixedExpenseBrief[];
   shared_debts: SharedDebtBrief[];
   shared_saving_goals: SharedSavingGoalBrief[];
+  shared_sub_budgets?: SharedSubBudgetBrief[];
 }
 
 
@@ -733,7 +753,17 @@ export interface SingleBudgetOut {
   allocated_usdt: number;
   category_limits: BudgetCategorySummaryOut[];
   categories_count: number;
+  is_shared?: boolean;
+  share_id?: string | null;
+  my_role?: 'admin' | 'member' | null;
+  shared_members?: ShareMember[];
+  shared_partner_name?: string | null;
+  shared_by?: string | null;
+  owner_id?: string | null;
+  is_read_only?: boolean;
 }
+
+export type SingleBudget = SingleBudgetOut;
 
 export interface MonthlyBudgetCreate {
   name: string;
@@ -743,6 +773,7 @@ export interface MonthlyBudgetCreate {
   manual_global_limit?: number | null;
   is_primary?: boolean;
   categories?: string[];
+  shared_with_ids?: string[] | null;
 }
 
 export interface MonthlyBudgetUpdate {
@@ -753,6 +784,7 @@ export interface MonthlyBudgetUpdate {
   manual_global_limit?: number | null;
   is_primary?: boolean;
   categories?: string[];
+  shared_with_ids?: string[] | null;
 }
 
 export interface MonthlyBudgetUpsert {
@@ -798,6 +830,7 @@ export interface MonthlyBudgetResponse {
   unbudgeted_categories: string[];
   exists: boolean;
   budgets?: SingleBudgetOut[];
+  shared_with_me_budgets?: SingleBudgetOut[];
   available_categories?: string[];
   category_spending?: CategoryMonthSpendOut[];
 }
