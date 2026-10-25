@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Receipt, Pause, Play, Trash2, Edit3, Calendar, CheckCircle2, Circle, Undo2, Share2 } from 'lucide-react';
+import { Plus, Receipt, Pause, Play, Trash2, Edit3, Calendar, CheckCircle2, Circle, Undo2, Share2, Tag } from 'lucide-react';
 import {
   getFixedExpenses,
   createFixedExpense,
@@ -22,6 +22,7 @@ import FixedExpenseForm from './FixedExpenseForm';
 import FixedExpensePayForm from './FixedExpensePayForm';
 import ConfirmModal from './ConfirmModal';
 import { MemberAvatars, ShareMembersModal } from './panas';
+import { LocalCategoryModal } from './panas/LocalCategoryModal';
 import { resolveCategoryVisuals } from '../utils/categoryVisuals';
 import { useCurrencyPreference } from '../context/CurrencyPreferenceContext';
 import {
@@ -54,6 +55,19 @@ const FixedExpenses: React.FC = () => {
   const [activeShareModalItem, setActiveShareModalItem] = useState<{ id: string; name: string } | null>(null);
   const [activeTab, setActiveTab] = useState<'pending' | 'paid'>('pending');
   const [selectedExpenseForSheet, setSelectedExpenseForSheet] = useState<FixedExpense | null>(null);
+  const [localCategoryModal, setLocalCategoryModal] = useState<{
+    isOpen: boolean;
+    expense: FixedExpense | null;
+  }>({ isOpen: false, expense: null });
+
+  const handleCategoryUpdated = async (newCategory: string) => {
+    if (!localCategoryModal.expense) return;
+    const expenseId = localCategoryModal.expense.id;
+    setExpenses((prev) =>
+      prev.map((e) => (e.id === expenseId ? { ...e, category: newCategory } : e))
+    );
+    await fetchData();
+  };
 
   // Sync preference with local display currency
   useEffect(() => {
@@ -302,8 +316,15 @@ const FixedExpenses: React.FC = () => {
 
     const badges = (
       <>
-        {expense.category && (
+        {expense.category ? (
           <span
+            onClick={(e) => {
+              e.stopPropagation();
+              setLocalCategoryModal({ isOpen: true, expense });
+            }}
+            role="button"
+            tabIndex={0}
+            title="Personalizar mi categoría"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -315,10 +336,45 @@ const FixedExpenses: React.FC = () => {
               border: `1px solid ${hexColor}35`,
               padding: '0.12rem 0.5rem',
               borderRadius: 'var(--radius-full)',
+              cursor: 'pointer',
+              transition: 'transform 150ms ease-out',
             }}
+            onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+            onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
           >
             <IconComponent size={10} />
-            {expense.category}
+            <span>{expense.category}</span>
+          </span>
+        ) : (
+          <span
+            onClick={(e) => {
+              e.stopPropagation();
+              setLocalCategoryModal({ isOpen: true, expense });
+            }}
+            role="button"
+            tabIndex={0}
+            title="Personalizar mi categoría"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.25rem',
+              fontSize: '0.7rem',
+              fontWeight: 600,
+              color: 'var(--text-secondary)',
+              background: 'var(--surface-muted)',
+              border: '1px dashed var(--border-color)',
+              padding: '0.12rem 0.5rem',
+              borderRadius: 'var(--radius-full)',
+              cursor: 'pointer',
+              transition: 'transform 150ms ease-out',
+            }}
+            onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+            onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+          >
+            <Tag size={10} />
+            <span>Categoría</span>
           </span>
         )}
         {expense.is_shared && (
@@ -694,6 +750,18 @@ const FixedExpenses: React.FC = () => {
         />
       )}
 
+      {/* Modal: Personalizar Categoría Local */}
+      {localCategoryModal.isOpen && localCategoryModal.expense && (
+        <LocalCategoryModal
+          isOpen={localCategoryModal.isOpen}
+          onClose={() => setLocalCategoryModal({ isOpen: false, expense: null })}
+          entityId={localCategoryModal.expense.id}
+          entityTitle={localCategoryModal.expense.name}
+          currentCategory={localCategoryModal.expense.category}
+          onCategoryUpdated={handleCategoryUpdated}
+        />
+      )}
+
       {/* Mobile Bottom Sheet for Details & Actions */}
       {selectedExpenseForSheet && (() => {
         const isPaid = selectedExpenseForSheet.checks?.some((c) => c.month_year === currentMonth);
@@ -735,6 +803,15 @@ const FixedExpenses: React.FC = () => {
                 : undefined
             }
             secondaryActions={[
+              {
+                label: 'Personalizar mi categoría',
+                icon: <Tag size={16} />,
+                onClick: () => {
+                  const target = selectedExpenseForSheet;
+                  setSelectedExpenseForSheet(null);
+                  setLocalCategoryModal({ isOpen: true, expense: target });
+                },
+              },
               {
                 label: selectedExpenseForSheet.is_active ? 'Pausar Gasto' : 'Reactivar Gasto',
                 icon: selectedExpenseForSheet.is_active ? <Pause size={16} /> : <Play size={16} />,

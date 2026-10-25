@@ -324,7 +324,15 @@ async def add_saving_deposit(
     register_as_expense = data.pop('register_as_expense', False)
 
     deposit_cat = data.get("category")
-    effective_cat = deposit_cat or (membership[1].local_category if membership else None) or db_goal.category or ("Proyectos" if db_goal.type == "project" else "Ahorro")
+    if deposit_cat and str(deposit_cat).strip():
+        chosen_cat = str(deposit_cat).strip()
+        if membership:
+            membership[1].local_category = chosen_cat
+        elif db_goal.user_id == user_id:
+            db_goal.category = chosen_cat
+        effective_cat = chosen_cat
+    else:
+        effective_cat = (membership[1].local_category if (membership and membership[1].local_category) else None) or db_goal.category or ("Proyectos" if db_goal.type == "project" else "Ahorro")
     data["category"] = effective_cat
 
     if extra_data:
@@ -453,16 +461,24 @@ async def update_saving_deposit(
     register_as_expense = update_dict.pop('register_as_expense', None)
 
     if 'category' in update_dict:
-        new_cat = update_dict.pop('category')
-        if membership:
-            member = membership[1]
-            if deposit.paid_by_user_id != user_id:
+        raw_cat = update_dict.pop('category')
+        if raw_cat and str(raw_cat).strip():
+            new_cat = str(raw_cat).strip()
+            if membership:
+                member = membership[1]
                 member.local_category = new_cat
+                if deposit.paid_by_user_id == user_id:
+                    deposit.category = new_cat
             else:
                 deposit.category = new_cat
-                member.local_category = new_cat
-        else:
-            deposit.category = new_cat
+
+            if deposit.expense_id and deposit.paid_by_user_id == user_id:
+                exp_res = await db.execute(
+                    select(models.Expense).filter(models.Expense.id == deposit.expense_id)
+                )
+                exp = exp_res.scalars().first()
+                if exp:
+                    exp.category = new_cat
 
         if not (update_dict or register_as_expense is not None or manual_rate is not None):
             await db.commit()

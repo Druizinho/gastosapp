@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Expense, ExpenseCreate, ExpenseUpdate, SummaryResponse, ExchangeRates, RangeSummaryResponse, FixedExpense, FixedExpenseCreate, FixedExpenseUpdate, FixedExpenseSummary, FixedExpenseCheck, FixedExpenseCheckCreate, FixedExpenseCheckUpdate, Debt, DebtCreate, DebtUpdate, DebtPaymentCreate, DebtPaymentUpdate, EstimatedIncome, EstimatedIncomeCreate, EstimatedIncomeUpdate, IncomeCheckCreate, IncomeCheck, Connection, SavingGoal, SavingGoalCreate, SavingGoalUpdate, SavingDepositCreate, SavingDepositUpdate, SavingSummaryResponse, PanasGlobalOverview, PanaDetail, ShareRole, ShareInfoOut, MonthlyBudgetResponse, MonthlyBudgetUpsert, BudgetCategoryLimitInput, MonthlyBudgetCreate, MonthlyBudgetUpdate, Category, CategoryCreate } from './types';
+import type { Expense, ExpenseCreate, ExpenseUpdate, SummaryResponse, ExchangeRates, RangeSummaryResponse, FixedExpense, FixedExpenseCreate, FixedExpenseUpdate, FixedExpenseSummary, FixedExpenseCheck, FixedExpenseCheckCreate, FixedExpenseCheckUpdate, Debt, DebtCreate, DebtUpdate, DebtPaymentCreate, DebtPaymentUpdate, EstimatedIncome, EstimatedIncomeCreate, EstimatedIncomeUpdate, IncomeCheckCreate, IncomeCheck, Connection, SavingGoal, SavingGoalCreate, SavingGoalUpdate, SavingDepositCreate, SavingDepositUpdate, SavingSummaryResponse, PanasGlobalOverview, PanaDetail, ShareRole, ShareInfoOut, UpdateLocalCategoryResponse, MonthlyBudgetResponse, MonthlyBudgetUpsert, BudgetCategoryLimitInput, MonthlyBudgetCreate, MonthlyBudgetUpdate, Category, CategoryCreate } from './types';
 import { supabase } from './supabaseClient';
 
 const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
@@ -384,6 +384,17 @@ export const updateShareMemberRole = async (shareId: string, targetUserId: strin
 
 export const removeShareMember = async (shareId: string, targetUserId: string): Promise<{ message: string; voluntary: boolean }> => {
   const response = await api.delete(`/shares/${shareId}/members/${targetUserId}`);
+  return response.data;
+};
+
+export const updateEntityLocalCategory = async (
+  entityId: string,
+  category: string
+): Promise<UpdateLocalCategoryResponse> => {
+  const response = await api.patch<UpdateLocalCategoryResponse>(
+    `/shares/by-entity/${entityId}/category`,
+    { category }
+  );
   return response.data;
 };
 

@@ -25,6 +25,7 @@ export interface ShareMemberOut {
   is_owner?: boolean;
   is_my_pana?: boolean;
   pana_request_pending?: boolean;
+  local_category?: string | null;
 }
 
 export type ShareMember = ShareMemberOut;
@@ -35,6 +36,11 @@ export interface ShareInfoOut {
   my_role: ShareRole;
   owner_id: string;
   members: ShareMemberOut[];
+}
+
+export interface UpdateLocalCategoryResponse {
+  entity_id: string;
+  local_category: string;
 }
 
 export interface Expense {
@@ -178,6 +184,7 @@ export interface FixedExpenseCheckCreate {
   create_expense?: boolean;
   notes?: string;
   manual_rate?: number;
+  category?: string;
 }
 
 export interface FixedExpenseCheckUpdate {

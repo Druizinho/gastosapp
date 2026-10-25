@@ -11,7 +11,8 @@ import {
   Receipt,
   TrendingDown,
   TrendingUp,
-  Users
+  Users,
+  Tag
 } from 'lucide-react';
 import type {
   Debt,
@@ -37,6 +38,7 @@ import DebtForm from './DebtForm';
 import DebtPaymentForm from './DebtPaymentForm';
 import ConfirmModal from './ConfirmModal';
 import { MemberAvatars, ShareMembersModal } from './panas';
+import { LocalCategoryModal } from './panas/LocalCategoryModal';
 import { useCategories } from '../context/CategoriesContext';
 import { resolveCategoryVisuals } from '../utils/categoryVisuals';
 import ListCard from './ListCard';
@@ -105,6 +107,23 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
 
   const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; debtId?: string; paymentId?: string }>({ isOpen: false });
   const [activeShareModalItem, setActiveShareModalItem] = useState<{ id: string; name: string } | null>(null);
+  const [localCategoryModal, setLocalCategoryModal] = useState<{
+    isOpen: boolean;
+    debt: Debt | null;
+  }>({ isOpen: false, debt: null });
+
+  const handleCategoryUpdated = async (newCategory: string) => {
+    if (!localCategoryModal.debt) return;
+    const debtId = localCategoryModal.debt.id;
+    setDebts((prev) =>
+      prev.map((d) => (d.id === debtId ? { ...d, category: newCategory } : d))
+    );
+    if (selectedDebt && selectedDebt.id === debtId) {
+      setSelectedDebt((prev) => (prev ? { ...prev, category: newCategory } : null));
+    }
+    await fetchDebts();
+    showToast('Categoría actualizada exitosamente');
+  };
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -354,6 +373,29 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
         <button
           type="button"
+          onClick={() => setLocalCategoryModal({ isOpen: true, debt: selectedDebt })}
+          style={{
+            width: '36px',
+            height: '36px',
+            borderRadius: 'var(--radius-full, 9999px)',
+            background: 'var(--surface-color)',
+            border: '1px solid var(--accent-light, rgba(0,0,0,0.08))',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'var(--text-secondary)',
+            cursor: 'pointer',
+            transition: 'transform 150ms ease-out',
+          }}
+          onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+          onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+          title="Personalizar mi categoría"
+        >
+          <Tag size={16} />
+        </button>
+        <button
+          type="button"
           onClick={() => { setEditingDebt(selectedDebt); setShowForm(true); }}
           disabled={isMember}
           style={{
@@ -470,27 +512,72 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
             onClick={(e) => e.stopPropagation()}
             style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.85rem' }}
           >
-            {selectedDebt.category && (() => {
+            {selectedDebt.category ? (() => {
               const catObj = categories.find(c => c.name.toLowerCase() === selectedDebt.category?.toLowerCase());
               const { IconComponent, hexColor } = resolveCategoryVisuals(catObj, selectedDebt.category);
               return (
-                <div style={{
+                <div
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setLocalCategoryModal({ isOpen: true, debt: selectedDebt });
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  title="Personalizar mi categoría"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    padding: '0.2rem 0.6rem',
+                    borderRadius: 'var(--radius-full)',
+                    background: `${hexColor}18`,
+                    border: `1px solid ${hexColor}35`,
+                    color: hexColor,
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: 'transform 150ms ease-out',
+                  }}
+                  onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+                  onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                >
+                  <IconComponent size={12} />
+                  <span>{selectedDebt.category}</span>
+                  <Tag size={10} style={{ opacity: 0.7 }} />
+                </div>
+              );
+            })() : (
+              <div
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setLocalCategoryModal({ isOpen: true, debt: selectedDebt });
+                }}
+                role="button"
+                tabIndex={0}
+                title="Personalizar mi categoría"
+                style={{
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '0.35rem',
                   padding: '0.2rem 0.6rem',
                   borderRadius: 'var(--radius-full)',
-                  background: `${hexColor}18`,
-                  border: `1px solid ${hexColor}35`,
-                  color: hexColor,
+                  background: 'var(--surface-muted)',
+                  border: '1px dashed var(--border-color)',
+                  color: 'var(--text-secondary)',
                   fontSize: '0.75rem',
                   fontWeight: 600,
-                }}>
-                  <IconComponent size={12} />
-                  <span>{selectedDebt.category}</span>
-                </div>
-              );
-            })()}
+                  cursor: 'pointer',
+                  transition: 'transform 150ms ease-out',
+                }}
+                onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+                onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+              >
+                <Tag size={12} />
+                <span>Mi categoría</span>
+              </div>
+            )}
 
             {selectedDebt.start_date && (
               <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
@@ -870,7 +957,19 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
           </div>
         )}
 
-        <ConfirmModal
+        {/* Modal: Personalizar Categoría Local */}
+        {localCategoryModal.isOpen && localCategoryModal.debt && (
+          <LocalCategoryModal
+            isOpen={localCategoryModal.isOpen}
+            onClose={() => setLocalCategoryModal({ isOpen: false, debt: null })}
+            entityId={localCategoryModal.debt.id}
+            entityTitle={localCategoryModal.debt.concept}
+            currentCategory={localCategoryModal.debt.category}
+            onCategoryUpdated={handleCategoryUpdated}
+          />
+        )}
+
+      <ConfirmModal
           isOpen={confirmDelete.isOpen}
           title="Confirmar Eliminación"
           message={confirmDelete.debtId 
@@ -1006,10 +1105,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
             );
 
             const primaryAmount = formatCurrencyAmount(remainingInMain, mainCurrency);
-            let secondaryAmount = `de ${formatCurrencyAmount(debtInMain, mainCurrency)}`;
-            if (!isSameCurrency(debt.currency, mainCurrency)) {
-              secondaryAmount += ` · Orig: ${formatCurrency(remaining, debt.currency)}`;
-            }
+            const secondaryAmount = `de ${formatCurrencyAmount(debtInMain, mainCurrency)}`;
 
             let dueDateColor = 'var(--text-tertiary)';
             let isOverdue = false;
@@ -1078,30 +1174,20 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
                     <AlertCircle size={10} />
                     Vencida
                   </span>
-                ) : (
-                  <span
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '0.25rem',
-                      fontSize: '0.7rem',
-                      fontWeight: 500,
-                      color: itemThemeColor,
-                      background: 'var(--surface-muted)',
-                      padding: '0.12rem 0.5rem',
-                      borderRadius: 'var(--radius-full)',
-                    }}
-                  >
-                    <AlertCircle size={10} />
-                    Activa
-                  </span>
-                )}
+                ) : null}
 
-                {debt.category && (() => {
+                {debt.category ? (() => {
                   const catObj = categories.find(c => c.name.toLowerCase() === debt.category?.toLowerCase());
                   const { IconComponent, hexColor } = resolveCategoryVisuals(catObj, debt.category);
                   return (
                     <span
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setLocalCategoryModal({ isOpen: true, debt });
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      title="Personalizar mi categoría"
                       style={{
                         display: 'inline-flex',
                         alignItems: 'center',
@@ -1113,13 +1199,48 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
                         border: `1px solid ${hexColor}35`,
                         padding: '0.12rem 0.5rem',
                         borderRadius: 'var(--radius-full)',
+                        cursor: 'pointer',
+                        transition: 'transform 150ms ease-out',
                       }}
+                      onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+                      onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
                     >
                       <IconComponent size={10} />
-                      {debt.category}
+                      <span>{debt.category}</span>
                     </span>
                   );
-                })()}
+                })() : (
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setLocalCategoryModal({ isOpen: true, debt });
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    title="Personalizar mi categoría"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                      fontSize: '0.7rem',
+                      fontWeight: 600,
+                      color: 'var(--text-secondary)',
+                      background: 'var(--surface-muted)',
+                      border: '1px dashed var(--border-color)',
+                      padding: '0.12rem 0.5rem',
+                      borderRadius: 'var(--radius-full)',
+                      cursor: 'pointer',
+                      transition: 'transform 150ms ease-out',
+                    }}
+                    onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+                    onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                  >
+                    <Tag size={10} />
+                    <span>Categoría</span>
+                  </span>
+                )}
 
                 {debt.is_shared && (
                   <div
@@ -1127,7 +1248,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
                       e.stopPropagation();
                       setActiveShareModalItem({ id: debt.id, name: debt.concept });
                     }}
-                    style={{ display: 'inline-flex', alignItems: 'center' }}
+                    style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}
                     title="Ver miembros compartidos"
                   >
                     <MemberAvatars members={debt.shared_members} size={20} />
@@ -1228,6 +1349,15 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
         secondaryActions={
           selectedDebtForSheet
             ? [
+                {
+                  label: 'Personalizar mi categoría',
+                  icon: <Tag size={16} />,
+                  onClick: () => {
+                    const d = selectedDebtForSheet;
+                    setSelectedDebtForSheet(null);
+                    setLocalCategoryModal({ isOpen: true, debt: d });
+                  },
+                },
                 {
                   label: 'Ver Historial',
                   icon: <Receipt size={16} />,
@@ -1394,6 +1524,18 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
         }}>
           {toastMessage}
         </div>
+      )}
+
+      {/* Modal: Personalizar Categoría Local */}
+      {localCategoryModal.isOpen && localCategoryModal.debt && (
+        <LocalCategoryModal
+          isOpen={localCategoryModal.isOpen}
+          onClose={() => setLocalCategoryModal({ isOpen: false, debt: null })}
+          entityId={localCategoryModal.debt.id}
+          entityTitle={localCategoryModal.debt.concept}
+          currentCategory={localCategoryModal.debt.category}
+          onCategoryUpdated={handleCategoryUpdated}
+        />
       )}
 
       <ConfirmModal

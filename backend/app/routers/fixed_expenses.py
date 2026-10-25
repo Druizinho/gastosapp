@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime, date
 
-from .. import crud_fixed_expenses, crud, schemas, bcv_service, models
+from .. import crud_fixed_expenses, crud, schemas, bcv_service, models, sharing
 from ..database import get_db
 from ..auth import get_current_user
 
@@ -143,6 +144,17 @@ async def check_fixed_expense(
     if existing_check.scalars().first():
         raise HTTPException(status_code=409, detail="Este gasto fijo ya está marcado como pagado para este mes")
 
+    membership = await sharing.get_membership(db, expense_id, user_id)
+    cleaned_category = check_data.category.strip() if check_data.category and check_data.category.strip() else None
+    if membership:
+        cat = cleaned_category or membership[1].local_category or db_expense.category or "Gastos Fijos"
+        if cleaned_category:
+            membership[1].local_category = cleaned_category
+    else:
+        cat = cleaned_category or db_expense.category or "Gastos Fijos"
+        if cleaned_category and db_expense.user_id == user_id:
+            db_expense.category = cleaned_category
+
     # 2. Si se solicita, crear el gasto real en el dashboard
     created_expense_id = None
     if check_data.create_expense:
@@ -150,7 +162,7 @@ async def check_fixed_expense(
         expense_create = schemas.ExpenseCreate(
             amount=check_data.paid_amount,
             description=f"Gasto fijo: {db_expense.name}",
-            category=db_expense.category or "Sin Categoría",
+            category=cat,
             date=check_data.paid_date or vet_today(),
             currency=check_data.currency or schemas.CurrencyType.BS,
         )
@@ -159,9 +171,12 @@ async def check_fixed_expense(
         )
         created_expense_id = db_real_expense.id
 
+    check_data_for_crud = check_data.model_copy(update={"category": None})
+    check_data_for_crud.__pydantic_fields_set__.discard("category")
+
     try:
         return await crud_fixed_expenses.check_fixed_expense(
-            db, fixed_expense_id=expense_id, check_data=check_data,
+            db, fixed_expense_id=expense_id, check_data=check_data_for_crud,
             extra_data=equivalents, expense_id=created_expense_id,
             user_id=user_id
         )

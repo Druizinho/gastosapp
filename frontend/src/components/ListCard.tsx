@@ -68,60 +68,66 @@ export const ListCard: React.FC<ListCardProps> = ({
         ...style,
       }}
     >
-      {icon && (
-        <div
-          className="list-card-icon-container"
-          style={{
-            backgroundColor: iconBg || (statusColor !== 'transparent' ? `${statusColor}18` : 'var(--surface-muted)'),
-            color: iconColor || (statusColor !== 'transparent' ? statusColor : 'var(--text-primary)'),
-            border: statusColor !== 'transparent' ? `1px solid ${statusColor}33` : undefined,
-          }}
-        >
-          {icon}
-        </div>
-      )}
-
-      <div className="list-card-spine">
-        <div className={`list-card-title ${isPaused ? 'strikethrough' : ''}`}>
-          {title}
-        </div>
-        {subtitle && <div className="list-card-subtitle">{subtitle}</div>}
-        {badges && <div className="list-card-badges">{badges}</div>}
-        {progressPercent !== null && (
-          <div className="list-card-progress-bar-container">
-            <div
-              className="list-card-progress-bar-fill"
-              style={{
-                width: `${progressPercent}%`,
-                backgroundColor: progress?.color || (statusColor !== 'transparent' ? statusColor : 'var(--accent-color)'),
-              }}
-            />
+      {/* Tier 1 (.list-card-top) */}
+      <div className="list-card-top">
+        {icon && (
+          <div
+            className="list-card-icon-container"
+            style={{
+              backgroundColor: iconBg || (statusColor !== 'transparent' ? `${statusColor}18` : 'var(--surface-muted)'),
+              color: iconColor || (statusColor !== 'transparent' ? statusColor : 'var(--text-primary)'),
+              border: statusColor !== 'transparent' ? `1px solid ${statusColor}33` : undefined,
+            }}
+          >
+            {icon}
           </div>
         )}
-        {children}
+        <div className="list-card-spine">
+          <div className={`list-card-title ${isPaused ? 'strikethrough' : ''}`}>{title}</div>
+          {subtitle && <div className="list-card-subtitle">{subtitle}</div>}
+        </div>
+        {quickAction && (
+          <div
+            className="list-card-quick-action-wrapper"
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
+          >
+            {quickAction}
+          </div>
+        )}
       </div>
 
-      {(primaryAmount !== undefined || secondaryAmount !== undefined) && (
-        <div className="list-card-trailing">
-          {primaryAmount !== undefined && (
-            <div className="list-card-amount-primary">{primaryAmount}</div>
-          )}
-          {secondaryAmount !== undefined && (
-            <div className="list-card-amount-secondary">{secondaryAmount}</div>
+      {/* Tier 2 (.list-card-meta-row) */}
+      {(badges || primaryAmount !== undefined || secondaryAmount !== undefined) && (
+        <div className="list-card-meta-row">
+          {badges && <div className="list-card-badges">{badges}</div>}
+          {(primaryAmount !== undefined || secondaryAmount !== undefined) && (
+            <div className="list-card-amounts-column">
+              {primaryAmount !== undefined && (
+                <div className="list-card-amount-primary">{primaryAmount}</div>
+              )}
+              {secondaryAmount !== undefined && (
+                <div className="list-card-amount-secondary">{secondaryAmount}</div>
+              )}
+            </div>
           )}
         </div>
       )}
 
-      {quickAction && (
-        <div
-          className="list-card-quick-action-wrapper"
-          onClick={(e) => {
-            e.stopPropagation();
-          }}
-        >
-          {quickAction}
+      {/* Tier 3 (.list-card-progress-bar-container & .list-card-footer) */}
+      {progressPercent !== null && (
+        <div className="list-card-progress-bar-container">
+          <div
+            className="list-card-progress-bar-fill"
+            style={{
+              width: `${progressPercent}%`,
+              backgroundColor: progress?.color || (statusColor !== 'transparent' ? statusColor : 'var(--accent-color)'),
+            }}
+          />
         </div>
       )}
+      {children && <div className="list-card-footer">{children}</div>}
     </div>
   );
 };

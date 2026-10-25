@@ -9,7 +9,8 @@ import {
   Clock,
   Users,
   FolderKanban,
-  RotateCcw
+  RotateCcw,
+  Tag
 } from 'lucide-react';
 import type {
   SavingGoal,
@@ -35,6 +36,7 @@ import SavingGoalForm from './SavingGoalForm';
 import SavingDepositForm from './SavingDepositForm';
 import ConfirmModal from './ConfirmModal';
 import { MemberAvatars, ShareMembersModal } from './panas';
+import { LocalCategoryModal } from './panas/LocalCategoryModal';
 import ListCard from './ListCard';
 import ListCardBottomSheet from './ListCardBottomSheet';
 import { useCategories } from '../context/CategoriesContext';
@@ -95,6 +97,22 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
   const [editingDeposit, setEditingDeposit] = useState<SavingDeposit | undefined>(undefined);
   const [selectedDepositForSheet, setSelectedDepositForSheet] = useState<SavingDeposit | null>(null);
   const [activeShareModalItem, setActiveShareModalItem] = useState<{ id: string; name: string } | null>(null);
+  const [localCategoryModal, setLocalCategoryModal] = useState<{ isOpen: boolean; goal: SavingGoal | null }>({
+    isOpen: false,
+    goal: null,
+  });
+
+  const handleCategoryUpdated = (newCategory: string) => {
+    if (!localCategoryModal.goal) return;
+    const goalId = localCategoryModal.goal.id;
+    setGoals((prev) =>
+      prev.map((g) => (g.id === goalId ? { ...g, category: newCategory } : g))
+    );
+    if (selectedGoal && selectedGoal.id === goalId) {
+      setSelectedGoal((prev) => (prev ? { ...prev, category: newCategory } : null));
+    }
+    showToast('Categoría actualizada exitosamente');
+  };
 
   const [confirmDelete, setConfirmDelete] = useState<{
     isOpen: boolean;
@@ -527,21 +545,66 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
               </div>
             )}
 
-            {selectedGoal.category && (
-              <span style={{
-                fontSize: '0.75rem',
-                fontWeight: 600,
-                color: color,
-                background: `${color}18`,
-                border: `1px solid ${color}35`,
-                padding: '0.2rem 0.6rem',
-                borderRadius: 'var(--radius-full)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.35rem',
-              }}>
+            {selectedGoal.category ? (
+              <span
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setLocalCategoryModal({ isOpen: true, goal: selectedGoal });
+                }}
+                role="button"
+                tabIndex={0}
+                title="Personalizar mi categoría"
+                style={{
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  color: color,
+                  background: `${color}18`,
+                  border: `1px solid ${color}35`,
+                  padding: '0.2rem 0.6rem',
+                  borderRadius: 'var(--radius-full)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  cursor: 'pointer',
+                  transition: 'transform 150ms ease-out',
+                }}
+                onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+                onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+              >
                 <HeaderIcon size={12} />
-                {selectedGoal.category}
+                <span>{selectedGoal.category}</span>
+                <Tag size={10} style={{ opacity: 0.7 }} />
+              </span>
+            ) : (
+              <span
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setLocalCategoryModal({ isOpen: true, goal: selectedGoal });
+                }}
+                role="button"
+                tabIndex={0}
+                title="Personalizar mi categoría"
+                style={{
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  color: 'var(--text-secondary)',
+                  background: 'var(--surface-muted)',
+                  border: '1px dashed var(--border-color)',
+                  padding: '0.2rem 0.6rem',
+                  borderRadius: 'var(--radius-full)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  cursor: 'pointer',
+                  transition: 'transform 150ms ease-out',
+                }}
+                onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+                onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+              >
+                <Tag size={12} />
+                <span>Mi categoría</span>
               </span>
             )}
 
@@ -865,6 +928,35 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
                   : (isProject ? 'Finalizar Proyecto' : 'Completar Meta')}
               </span>
             </button>
+
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setLocalCategoryModal({ isOpen: true, goal: selectedGoal });
+              }}
+              style={{
+                padding: '0.85rem 1rem',
+                background: 'var(--surface-muted)',
+                border: '1px solid var(--accent-light)',
+                borderRadius: 'var(--radius-md)',
+                color: 'var(--text-primary)',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                whiteSpace: 'nowrap',
+                transition: 'transform 150ms ease-out',
+              }}
+              onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+              onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+              title="Personalizar mi categoría"
+            >
+              <Tag size={16} />
+              <span>Mi categoría</span>
+            </button>
           </div>
 
           {/* Resumen de Cierre si está completado */}
@@ -1156,7 +1248,19 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
           />
         )}
 
-        {/* Toast Notification */}
+        {/* Modal: Personalizar Categoría Local */}
+        {localCategoryModal.isOpen && localCategoryModal.goal && (
+          <LocalCategoryModal
+            isOpen={localCategoryModal.isOpen}
+            onClose={() => setLocalCategoryModal({ isOpen: false, goal: null })}
+            entityId={localCategoryModal.goal.id}
+            entityTitle={localCategoryModal.goal.name}
+            currentCategory={localCategoryModal.goal.category}
+            onCategoryUpdated={handleCategoryUpdated}
+          />
+        )}
+
+      {/* Toast Notification */}
         {toastMessage && (
           <div style={{
             position: 'fixed',
@@ -1417,14 +1521,21 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
                       e.stopPropagation();
                       setActiveShareModalItem({ id: goal.id, name: goal.name });
                     }}
-                    style={{ display: 'inline-flex', alignItems: 'center' }}
+                    style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}
                     title="Gestionar miembros"
                   >
                     <MemberAvatars members={goal.shared_members} size={18} />
                   </div>
                 )}
-                {goal.category && (
+                {goal.category ? (
                   <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setLocalCategoryModal({ isOpen: true, goal });
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    title="Personalizar mi categoría"
                     style={{
                       fontSize: '0.7rem',
                       fontWeight: 600,
@@ -1436,10 +1547,45 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: '0.25rem',
+                      cursor: 'pointer',
+                      transition: 'transform 150ms ease-out',
                     }}
+                    onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+                    onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
                   >
                     <IconComponent size={10} />
-                    {goal.category}
+                    <span>{goal.category}</span>
+                  </span>
+                ) : (
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setLocalCategoryModal({ isOpen: true, goal });
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    title="Personalizar mi categoría"
+                    style={{
+                      fontSize: '0.7rem',
+                      fontWeight: 600,
+                      color: 'var(--text-secondary)',
+                      background: 'var(--surface-muted)',
+                      border: '1px dashed var(--border-color)',
+                      padding: '0.12rem 0.5rem',
+                      borderRadius: 'var(--radius-full)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                      cursor: 'pointer',
+                      transition: 'transform 150ms ease-out',
+                    }}
+                    onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+                    onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                  >
+                    <Tag size={10} />
+                    <span>Categoría</span>
                   </span>
                 )}
                 {goal.target_date && (
@@ -1497,11 +1643,12 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
                       alignItems: 'center',
                       fontSize: '0.72rem',
                       color: 'var(--text-secondary)',
-                      marginTop: '0.15rem',
+                      marginTop: '0.25rem',
+                      lineHeight: 1.2,
                     }}
                   >
                     {isOverBudget ? (
-                      <span style={{ color: '#F59E0B', fontWeight: 700 }}>
+                      <span style={{ color: '#F59E0B', fontWeight: 600 }}>
                         +{formatCurrency(saved - target, goal.currency)} sobre presupuesto
                       </span>
                     ) : (
@@ -1569,6 +1716,18 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
             fetchData();
             showToast('Has salido del fondo compartido');
           }}
+        />
+      )}
+
+      {/* Modal: Personalizar Categoría Local */}
+      {localCategoryModal.isOpen && localCategoryModal.goal && (
+        <LocalCategoryModal
+          isOpen={localCategoryModal.isOpen}
+          onClose={() => setLocalCategoryModal({ isOpen: false, goal: null })}
+          entityId={localCategoryModal.goal.id}
+          entityTitle={localCategoryModal.goal.name}
+          currentCategory={localCategoryModal.goal.category}
+          onCategoryUpdated={handleCategoryUpdated}
         />
       )}
 

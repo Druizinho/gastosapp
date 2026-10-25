@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft,
   Calendar,
   Plus,
   Edit3,
@@ -14,7 +13,8 @@ import {
   Check,
   Lock,
   RotateCcw,
-  Users
+  Users,
+  ArrowLeft
 } from 'lucide-react';
 import type {
   MonthlyBudgetResponse,
@@ -42,6 +42,8 @@ import { useCurrencyPreference } from '../context/CurrencyPreferenceContext';
 import ListCard from './ListCard';
 import ConfirmModal from './ConfirmModal';
 import { MemberAvatars } from './panas';
+import { PageHeader } from './ui/PageHeader';
+import { SummaryHeroCard, type SummaryMetricItem } from './ui/SummaryHeroCard';
 
 interface BudgetsProps {
   onBack?: () => void;
@@ -132,8 +134,11 @@ export const TrafficLightProgressBar: React.FC<TrafficLightProgressBarProps> = (
 };
 
 export interface BudgetHeroCardProps {
-  title: string;
-  badge: React.ReactNode;
+  title?: string;
+  eyebrow?: string;
+  badge?: React.ReactNode;
+  badgeText?: string;
+  badgeIcon?: React.ReactNode;
   spentMap: { usd: number; bs: number; eur: number; usdt: number };
   limitMap?: { usd?: number | null; bs?: number | null; eur?: number | null; usdt?: number | null };
   displayCurrency: DisplayCurrency;
@@ -149,7 +154,10 @@ export interface BudgetHeroCardProps {
 
 export const BudgetHeroCard: React.FC<BudgetHeroCardProps> = ({
   title,
+  eyebrow,
   badge,
+  badgeText,
+  badgeIcon,
   spentMap,
   limitMap,
   displayCurrency,
@@ -165,123 +173,77 @@ export const BudgetHeroCard: React.FC<BudgetHeroCardProps> = ({
   const p = prefixMap[displayCurrency];
   const s = suffixMap[displayCurrency];
   const spent = spentMap[displayCurrency] ?? 0;
-  const spentStr = formatAmount(spent, p) + s;
+  const spentStr = `${formatAmount(spent, p)}${s}`;
   const lim = limitMap ? limitMap[displayCurrency] : undefined;
-  let amountDisplay = spentStr;
-  if (lim !== null && lim !== undefined && lim > 0) {
-    amountDisplay = `${spentStr} / ${formatAmount(lim, p)}${s}`;
-  }
+  const hasLimit = lim !== null && lim !== undefined && lim > 0;
+  const limitStr = hasLimit ? `${formatAmount(lim, p)}${s}` : 'Sin límite';
+  const remaining = hasLimit ? lim - spent : 0;
+  const remainingStr = hasLimit ? `${formatAmount(remaining, p)}${s}` : '—';
 
   const resolvedLight =
     trafficLight || (percentage >= 100 ? 'red' : percentage >= 80 ? 'yellow' : 'green');
   const lightColor =
     resolvedLight === 'red' ? '#EF4444' : resolvedLight === 'yellow' ? '#F59E0B' : '#10B981';
 
+  const metrics: SummaryMetricItem[] = [
+    {
+      label: 'GASTADO',
+      value: spentStr,
+    },
+    {
+      label: 'LÍMITE',
+      value: limitStr,
+    },
+    {
+      label: 'DISPONIBLE',
+      value: remainingStr,
+      valueColor: hasLimit ? (remaining <= 0 ? '#EF4444' : lightColor) : undefined,
+    },
+  ];
+
   return (
-    <div
-      className="soft-card"
-      onClick={onCycleCurrency}
-      style={{
-        marginBottom: '1.25rem',
-        padding: '1.25rem',
-        cursor: 'pointer',
-        background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.06) 0%, var(--surface-color) 100%)',
-      }}
+    <SummaryHeroCard
+      eyebrow={eyebrow || title || 'PRESUPUESTO'}
+      badgeText={badgeText || (typeof badge === 'string' ? badge : undefined)}
+      badgeIcon={badgeIcon}
+      mainAmount={isLoading ? '...' : spentStr}
+      statusSubtext={hasLimit ? `de ${limitStr} límite mensual` : 'Sin límite mensual fijado'}
+      currencyHintText={`Toca para alternar (${displayCurrency.toUpperCase()})`}
+      onCycleCurrency={onCycleCurrency}
+      accentColor={lightColor}
+      metrics={metrics}
+      progress={
+        showProgress
+          ? {
+              percent: Math.min(100, Math.max(0, percentage || 0)),
+              leftLabel: progressTitle || 'Límite del mes consumido',
+              rightLabel: `${Math.round(percentage || 0)}%`,
+              color: lightColor,
+            }
+          : undefined
+      }
     >
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '0.4rem',
-        }}
-      >
-        <span
-          style={{
-            fontSize: '0.75rem',
-            color: 'var(--text-secondary)',
-            fontWeight: 600,
-            textTransform: 'uppercase',
-            letterSpacing: '0.04em',
-          }}
-        >
-          {title}
-        </span>
-        {badge}
-      </div>
-
-      <div
-        style={{
-          fontSize: '1.85rem',
-          fontWeight: 800,
-          color: 'var(--text-primary)',
-          letterSpacing: '-0.02em',
-        }}
-      >
-        {isLoading ? '...' : amountDisplay}
-      </div>
-
-      <div
-        style={{
-          fontSize: '0.7rem',
-          color: 'var(--text-tertiary)',
-          marginTop: '0.2rem',
-          marginBottom: '0.75rem',
-        }}
-      >
-        Toca para alternar moneda ({displayCurrency.toUpperCase()})
-      </div>
-
-      {showProgress && (
-        <div style={{ marginBottom: '0.75rem' }}>
-          {progressTitle && (
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '0.35rem',
-              }}
-            >
-              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                {progressTitle}
-              </span>
-              <span
-                style={{
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  color: lightColor,
-                }}
-              >
-                {Math.round(percentage)}%
-              </span>
-            </div>
-          )}
-          <TrafficLightProgressBar
-            percentage={percentage}
-            trafficLight={trafficLight}
-            height={8}
-          />
-        </div>
-      )}
-
       {(footerLeft || footerRight) && (
         <div
+          onClick={(e) => e.stopPropagation()}
           style={{
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '0.5rem',
             paddingTop: '0.65rem',
-            borderTop: '1px solid var(--border-color)',
+            marginTop: '0.85rem',
+            borderTop: '1px solid var(--border-color, rgba(0, 0, 0, 0.07))',
             fontSize: '0.75rem',
-            color: 'var(--text-secondary)',
+            color: 'var(--text-secondary, #475569)',
           }}
         >
           {footerLeft || <div />}
           {footerRight || <div />}
         </div>
       )}
-    </div>
+    </SummaryHeroCard>
   );
 };
 
@@ -629,6 +591,124 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
     return budgetResponse.budgets.some((b) => !b.is_confirmed);
   }, [budgetResponse]);
 
+  const monthNavigator = (
+    <div
+      style={{
+        position: 'relative',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.5rem',
+        background: 'var(--surface-color)',
+        padding: '0.4rem 0.6rem',
+        borderRadius: 'var(--radius-md)',
+        border: '1px solid var(--border-color)',
+        cursor: 'pointer',
+        flexShrink: 0,
+      }}
+    >
+      <Calendar size={18} color="var(--text-secondary)" />
+      <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+        {shortMonthLabel}
+      </span>
+      <input
+        type="month"
+        value={currentMonthYear}
+        onChange={(e) => {
+          if (e.target.value) setCurrentMonthYear(e.target.value);
+        }}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          opacity: 0,
+          cursor: 'pointer',
+        }}
+      />
+    </div>
+  );
+
+  const detailRightAction = selectedBudget ? (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0 }}>
+      {selectedBudget.is_read_only ? (
+        selectedBudget.share_id ? (
+          <button
+            type="button"
+            onClick={handleLeaveSharedBudget}
+            disabled={isLeavingShare}
+            title="Salir del presupuesto compartido"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              padding: '0.45rem 0.85rem',
+              borderRadius: 'var(--radius-full)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              background: 'rgba(239, 68, 68, 0.08)',
+              color: '#EF4444',
+              fontSize: '0.75rem',
+              fontWeight: 600,
+              cursor: isLeavingShare ? 'not-allowed' : 'pointer',
+            }}
+          >
+            <Trash2 size={13} />
+            {isLeavingShare ? 'Saliendo...' : 'Salir del compartido'}
+          </button>
+        ) : null
+      ) : (
+        <>
+          <button
+            onClick={() => handleOpenBudgetModal(selectedBudget)}
+            title={selectedBudget.is_primary ? 'Editar nombre y moneda' : 'Editar grupo'}
+            style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: 'var(--radius-full)',
+              background: 'var(--surface-color)',
+              border: '1px solid var(--border-color)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              color: 'var(--text-secondary)',
+              boxShadow: 'var(--shadow-sm)',
+            }}
+          >
+            <Edit3 size={15} />
+          </button>
+          {!selectedBudget.is_primary && (
+            <button
+              onClick={() =>
+                setConfirmDeleteBudget({
+                  isOpen: true,
+                  budgetId: selectedBudget.id,
+                  budgetName: selectedBudget.name,
+                })
+              }
+              title="Eliminar este grupo"
+              style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: 'var(--radius-full)',
+                background: 'var(--surface-color)',
+                border: '1px solid var(--border-color)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                color: 'var(--expense-color)',
+                boxShadow: 'var(--shadow-sm)',
+              }}
+            >
+              <Trash2 size={15} />
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  ) : null;
+
   return (
     <div style={{ padding: '1rem', paddingBottom: '6rem', maxWidth: '600px', margin: '0 auto' }}>
       {/* ======================================================== */}
@@ -637,103 +717,12 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
       {!selectedBudget && (
         <>
           {/* Header */}
-          <header
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'nowrap',
-              gap: '0.5rem',
-              marginBottom: '1.25rem',
-              paddingTop: '0.5rem',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
-              <button
-                onClick={handleBack}
-                style={{
-                  width: '40px',
-                  height: '40px',
-                  borderRadius: 'var(--radius-full)',
-                  background: 'var(--surface-color)',
-                  border: 'none',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  boxShadow: 'var(--shadow-sm)',
-                  color: 'var(--text-primary)',
-                  flexShrink: 0,
-                }}
-              >
-                <ArrowLeft size={20} />
-              </button>
-              <div style={{ minWidth: 0 }}>
-                <h1
-                  style={{
-                    fontSize: '1.2rem',
-                    fontWeight: 700,
-                    color: 'var(--text-primary)',
-                    margin: 0,
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                  }}
-                >
-                  Presupuestos
-                </h1>
-                <p
-                  style={{
-                    fontSize: '0.75rem',
-                    color: 'var(--text-secondary)',
-                    margin: 0,
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                  }}
-                >
-                  Planificación y techos mensuales
-                </p>
-              </div>
-            </div>
-
-            {/* Compact Month Navigator */}
-            <div
-              style={{
-                position: 'relative',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                background: 'var(--surface-color)',
-                padding: '0.4rem 0.6rem',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--border-color)',
-                cursor: 'pointer',
-                flexShrink: 0,
-              }}
-            >
-              <Calendar size={18} color="var(--text-secondary)" />
-              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                {shortMonthLabel}
-              </span>
-              <input
-                type="month"
-                value={currentMonthYear}
-                onChange={(e) => {
-                  if (e.target.value) setCurrentMonthYear(e.target.value);
-                }}
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: '100%',
-                  opacity: 0,
-                  cursor: 'pointer',
-                }}
-              />
-            </div>
-          </header>
+          <PageHeader
+            title="Presupuestos"
+            subtitle="Planificación y techos mensuales"
+            onBack={handleBack}
+            rightAction={monthNavigator}
+          />
 
           {/* Auto-clone unconfirmed banner */}
           {hasUnconfirmedBudgets && (
@@ -781,28 +770,9 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
 
           {/* Hero Card: Presupuesto Principal (Plan Maestro) */}
           <BudgetHeroCard
-            title="Presupuesto Principal (Plan Maestro)"
-            badge={
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.35rem',
-                  padding: '0.2rem 0.6rem',
-                  borderRadius: 'var(--radius-full)',
-                  background: 'rgba(245, 158, 11, 0.15)',
-                  border: '1px solid rgba(245, 158, 11, 0.3)',
-                  color: '#B45309',
-                  fontSize: '0.75rem',
-                  fontWeight: 700,
-                  whiteSpace: 'nowrap',
-                  flexShrink: 0,
-                }}
-              >
-                <Star size={12} fill="#F59E0B" color="#F59E0B" />
-                Plan Maestro
-              </div>
-            }
+            eyebrow="PLAN MAESTRO"
+            badgeText="Plan Maestro"
+            badgeIcon={<Star size={12} fill="#F59E0B" color="#F59E0B" />}
             spentMap={{
               usd: budgetResponse?.total_spent_usd ?? 0,
               bs: budgetResponse?.total_spent_bs ?? 0,
@@ -1287,114 +1257,79 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              flexWrap: 'nowrap',
-              gap: '0.5rem',
+              flexWrap: 'wrap',
+              gap: '0.75rem',
               marginBottom: '1.25rem',
               paddingTop: '0.5rem',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0, flex: '1 1 auto' }}>
               <button
+                type="button"
                 onClick={() => setSelectedBudgetId(null)}
+                aria-label="Volver"
                 style={{
                   width: '40px',
                   height: '40px',
-                  borderRadius: 'var(--radius-full)',
-                  background: 'var(--surface-color)',
+                  borderRadius: 'var(--radius-full, 9999px)',
+                  background: 'var(--surface-color, #FFFFFF)',
                   border: 'none',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   cursor: 'pointer',
-                  boxShadow: 'var(--shadow-sm)',
-                  color: 'var(--text-primary)',
+                  boxShadow: 'var(--shadow-sm, 0 1px 2px rgba(0,0,0,0.05))',
+                  color: 'var(--text-primary, #0F172A)',
                   flexShrink: 0,
+                  transition: 'transform 150ms ease-out, box-shadow 150ms ease-out',
                 }}
               >
                 <ArrowLeft size={20} />
               </button>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
+
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                   <h1
                     style={{
-                      fontSize: '1.2rem',
-                      fontWeight: 700,
+                      fontSize: '1.3rem',
+                      fontWeight: 800,
                       color: 'var(--text-primary)',
                       margin: 0,
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
+                      letterSpacing: '-0.02em',
+                      lineHeight: 1.2,
+                      wordBreak: 'break-word',
                     }}
                   >
                     {selectedBudget.is_primary ? 'Plan Maestro' : selectedBudget.name}
                   </h1>
-                  {selectedBudget.is_read_only ? (
+                  {selectedBudget.is_read_only && (
                     <span
                       style={{
                         display: 'inline-flex',
                         alignItems: 'center',
                         gap: '0.25rem',
-                        fontSize: '0.65rem',
+                        fontSize: '0.7rem',
                         fontWeight: 700,
                         color: '#3B82F6',
                         background: 'rgba(59, 130, 246, 0.12)',
                         border: '1px solid rgba(59, 130, 246, 0.25)',
-                        padding: '0.1rem 0.45rem',
+                        padding: '0.15rem 0.5rem',
                         borderRadius: 'var(--radius-full)',
                         flexShrink: 0,
                       }}
                     >
-                      <Users size={11} />
+                      <Layers size={10} />
                       Compartido por {selectedBudget.shared_by || 'Pana'} · Solo lectura
-                    </span>
-                  ) : selectedBudget.is_primary ? (
-                    <span
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '0.25rem',
-                        fontSize: '0.65rem',
-                        fontWeight: 700,
-                        color: '#B45309',
-                        background: 'rgba(245, 158, 11, 0.15)',
-                        border: '1px solid rgba(245, 158, 11, 0.3)',
-                        padding: '0.1rem 0.45rem',
-                        borderRadius: 'var(--radius-full)',
-                        flexShrink: 0,
-                      }}
-                    >
-                      <Star size={11} fill="#F59E0B" color="#F59E0B" />
-                      Principal
-                    </span>
-                  ) : (
-                    <span
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '0.25rem',
-                        fontSize: '0.65rem',
-                        fontWeight: 700,
-                        color: 'var(--primary-color)',
-                        background: 'rgba(16, 185, 129, 0.12)',
-                        border: '1px solid rgba(16, 185, 129, 0.25)',
-                        padding: '0.1rem 0.45rem',
-                        borderRadius: 'var(--radius-full)',
-                        flexShrink: 0,
-                      }}
-                    >
-                      <Layers size={11} />
-                      Grupo
                     </span>
                   )}
                 </div>
                 <p
                   style={{
-                    fontSize: '0.75rem',
-                    color: 'var(--text-secondary)',
-                    margin: 0,
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
+                    fontSize: '0.8rem',
+                    color: 'var(--text-tertiary)',
+                    margin: '2px 0 0 0',
+                    fontWeight: 500,
+                    wordBreak: 'break-word',
                   }}
                 >
                   {selectedBudget.is_read_only
@@ -1406,119 +1341,21 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
               </div>
             </div>
 
-            {/* Edit / Delete actions for this budget */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0 }}>
-              {selectedBudget.is_read_only ? (
-                selectedBudget.share_id ? (
-                  <button
-                    type="button"
-                    onClick={handleLeaveSharedBudget}
-                    disabled={isLeavingShare}
-                    title="Salir del presupuesto compartido"
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '0.35rem',
-                      padding: '0.45rem 0.85rem',
-                      borderRadius: 'var(--radius-full)',
-                      border: '1px solid rgba(239, 68, 68, 0.3)',
-                      background: 'rgba(239, 68, 68, 0.08)',
-                      color: '#EF4444',
-                      fontSize: '0.75rem',
-                      fontWeight: 600,
-                      cursor: isLeavingShare ? 'not-allowed' : 'pointer',
-                    }}
-                  >
-                    <Trash2 size={13} />
-                    {isLeavingShare ? 'Saliendo...' : 'Salir del compartido'}
-                  </button>
-                ) : null
-              ) : (
-                <>
-                  <button
-                    onClick={() => handleOpenBudgetModal(selectedBudget)}
-                    title={selectedBudget.is_primary ? 'Editar nombre y moneda' : 'Editar grupo'}
-                    style={{
-                      width: '36px',
-                      height: '36px',
-                      borderRadius: 'var(--radius-full)',
-                      background: 'var(--surface-color)',
-                      border: '1px solid var(--border-color)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                      color: 'var(--text-secondary)',
-                      boxShadow: 'var(--shadow-sm)',
-                    }}
-                  >
-                    <Edit3 size={15} />
-                  </button>
-                  {!selectedBudget.is_primary && (
-                    <button
-                      onClick={() =>
-                        setConfirmDeleteBudget({
-                          isOpen: true,
-                          budgetId: selectedBudget.id,
-                          budgetName: selectedBudget.name,
-                        })
-                      }
-                      title="Eliminar este grupo"
-                      style={{
-                        width: '36px',
-                        height: '36px',
-                        borderRadius: 'var(--radius-full)',
-                        background: 'var(--surface-color)',
-                        border: '1px solid var(--border-color)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        cursor: 'pointer',
-                        color: 'var(--expense-color)',
-                        boxShadow: 'var(--shadow-sm)',
-                      }}
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
+            {/* Right action */}
+            {detailRightAction && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0, marginLeft: 'auto' }}>
+                {detailRightAction}
+              </div>
+            )}
           </header>
 
           {/* Hero Card for THIS Budget */}
           <BudgetHeroCard
-            title={selectedBudget.is_primary ? 'Techo Total del Plan Maestro' : `Techo de "${selectedBudget.name}"`}
-            badge={
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.35rem',
-                  padding: '0.2rem 0.6rem',
-                  borderRadius: 'var(--radius-full)',
-                  background:
-                    selectedBudget.global_traffic_light === 'red'
-                      ? 'rgba(239, 68, 68, 0.12)'
-                      : selectedBudget.global_traffic_light === 'yellow'
-                      ? 'rgba(245, 158, 11, 0.12)'
-                      : 'rgba(16, 185, 129, 0.12)',
-                  color:
-                    selectedBudget.global_traffic_light === 'red'
-                      ? '#EF4444'
-                      : selectedBudget.global_traffic_light === 'yellow'
-                      ? '#F59E0B'
-                      : '#10B981',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  whiteSpace: 'nowrap',
-                  flexShrink: 0,
-                }}
-              >
-                {selectedBudget.effective_global_limit && selectedBudget.effective_global_limit > 0
-                  ? `${Math.round(selectedBudget.global_spent_percentage)}% consumido`
-                  : 'Sin límites asignados'}
-              </div>
+            eyebrow={selectedBudget.is_primary ? 'PLAN MAESTRO' : 'GRUPO DE CATEGORÍAS'}
+            badgeText={
+              selectedBudget.effective_global_limit && selectedBudget.effective_global_limit > 0
+                ? `${Math.round(selectedBudget.global_spent_percentage)}% consumido`
+                : 'Sin límites asignados'
             }
             spentMap={{
               usd: selectedBudget.total_spent_usd,
@@ -1666,19 +1503,27 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                   const isYellow = cl.traffic_light === 'yellow';
                   const statusColor = isRed ? '#EF4444' : isYellow ? '#F59E0B' : '#10B981';
 
-                  const title = (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                      <span
-                        style={{
-                          fontSize: '0.95rem',
-                          fontWeight: 600,
-                          color: 'var(--text-primary)',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                        }}
-                      >
-                        {catName}
+                  const title = catName;
+
+                  const subtitle = (
+                    <div
+                      style={{
+                        fontSize: '0.75rem',
+                        color: cl.remaining_amount < 0 ? '#EF4444' : 'var(--text-tertiary)',
+                        fontWeight: cl.remaining_amount < 0 ? 600 : 400,
+                        marginTop: '0.15rem',
+                      }}
+                    >
+                      {cl.remaining_amount < 0
+                        ? `Excedido por ${currSym} ${formatAmount(Math.abs(cl.remaining_amount))}`
+                        : `Disponible: ${currSym} ${formatAmount(cl.remaining_amount)}`}
+                    </div>
+                  );
+
+                  const badges = (
+                    <>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 600, color: statusColor }}>
+                        {Math.round(cl.spent_percentage)}% consumido
                       </span>
                       {!selectedBudget.is_primary && (
                         <span
@@ -1699,28 +1544,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                           <Lock size={10} /> Heredado
                         </span>
                       )}
-                    </div>
-                  );
-
-                  const subtitle = (
-                    <div
-                      style={{
-                        fontSize: '0.75rem',
-                        color: cl.remaining_amount < 0 ? '#EF4444' : 'var(--text-tertiary)',
-                        fontWeight: cl.remaining_amount < 0 ? 600 : 400,
-                        marginTop: '0.15rem',
-                      }}
-                    >
-                      {cl.remaining_amount < 0
-                        ? `Excedido por ${currSym} ${formatAmount(Math.abs(cl.remaining_amount))}`
-                        : `Disponible: ${currSym} ${formatAmount(cl.remaining_amount)}`}
-                    </div>
-                  );
-
-                  const badges = (
-                    <span style={{ fontSize: '0.75rem', fontWeight: 600, color: statusColor }}>
-                      {Math.round(cl.spent_percentage)}% consumido
-                    </span>
+                    </>
                   );
 
                   const primaryAmount = `${currSym} ${formatAmount(cl.spent_amount)} / ${formatAmount(cl.limit_amount)}`;
@@ -2004,11 +1828,11 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
               }}
             >
               <div>
-                <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
                   {categoryModal.existingLimit && Number(categoryModal.existingLimit.limit_amount) > 0
                     ? 'Editar Límite Mensual'
                     : 'Asignar Límite Mensual'}
-                </h3>
+                </h2>
                 <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '0.2rem 0 0 0' }}>
                   {categoryModal.categoryName} • Plan Maestro
                 </p>
@@ -2056,7 +1880,6 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                   type="text"
                   value={categoryModal.categoryName}
                   disabled
-                  className="input-field"
                   style={{ width: '100%', marginTop: '0.35rem', opacity: 0.7 }}
                 />
               </div>
@@ -2070,7 +1893,6 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                   onChange={(e) =>
                     setCategoryModal((prev) => ({ ...prev, currency: e.target.value as CurrencyType }))
                   }
-                  className="input-field"
                   style={{ width: '100%', marginTop: '0.35rem' }}
                 >
                   {CURRENCY_OPTIONS.map((opt) => (
@@ -2093,32 +1915,21 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                   placeholder="0.00"
                   value={categoryModal.limitAmount}
                   onChange={(e) => setCategoryModal((prev) => ({ ...prev, limitAmount: e.target.value }))}
-                  className="input-field"
                   style={{ width: '100%', marginTop: '0.35rem', fontSize: '1.1rem', fontWeight: 600 }}
                 />
               </div>
 
-              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <div className="form-actions">
                 <button
                   type="button"
                   onClick={() => setCategoryModal((prev) => ({ ...prev, isOpen: false }))}
-                  style={{
-                    flex: 1,
-                    padding: '0.75rem',
-                    borderRadius: '12px',
-                    border: 'none',
-                    background: 'var(--surface-muted)',
-                    color: 'var(--text-primary)',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
+                  className="btn-cancel"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="btn btn-primary"
-                  style={{ flex: 1, padding: '0.75rem', borderRadius: '12px', fontWeight: 600 }}
+                  className="btn-submit"
                 >
                   Guardar Límite
                 </button>
@@ -2324,9 +2135,9 @@ const BudgetFormModal: React.FC<BudgetFormModalProps> = ({
           }}
         >
           <div>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
               {isEdit ? (isPrimary ? 'Editar Plan Maestro' : 'Editar Grupo') : 'Nuevo Grupo de Categorías'}
-            </h3>
+            </h2>
             <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '0.2rem 0 0 0' }}>
               {isPrimary
                 ? 'Configura el nombre y moneda base de tu Plan Maestro'
@@ -2401,7 +2212,6 @@ const BudgetFormModal: React.FC<BudgetFormModalProps> = ({
               placeholder={isPrimary ? 'Plan Maestro' : 'Ej. Hogar, Salidas, Pareja'}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="input-field"
               style={{ width: '100%', marginTop: '0.35rem' }}
             />
           </div>
@@ -2414,7 +2224,6 @@ const BudgetFormModal: React.FC<BudgetFormModalProps> = ({
             <select
               value={currency}
               onChange={(e) => setCurrency(e.target.value as CurrencyType)}
-              className="input-field"
               style={{ width: '100%', marginTop: '0.35rem' }}
             >
               {CURRENCY_OPTIONS.map((opt) => (
@@ -2577,34 +2386,19 @@ const BudgetFormModal: React.FC<BudgetFormModalProps> = ({
           )}
 
           {/* Action buttons */}
-          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
+          <div className="form-actions">
             <button
               type="button"
               onClick={onClose}
-              style={{
-                flex: 1,
-                padding: '0.75rem',
-                borderRadius: '12px',
-                border: 'none',
-                background: 'var(--surface-muted)',
-                color: 'var(--text-primary)',
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
+              className="btn-cancel"
+              disabled={isSubmitting}
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="btn btn-primary"
-              style={{
-                flex: 1,
-                padding: '0.75rem',
-                borderRadius: '12px',
-                fontWeight: 600,
-                opacity: isSubmitting ? 0.7 : 1,
-              }}
+              className="btn-submit"
             >
               {isSubmitting ? 'Guardando...' : isEdit ? 'Guardar Cambios' : 'Crear Grupo'}
             </button>

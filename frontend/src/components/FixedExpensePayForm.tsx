@@ -1,19 +1,31 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { FixedExpense, FixedExpenseCheckCreate, CurrencyType, ExchangeRates } from '../types';
 import { CURRENCY_OPTIONS } from '../types';
 import { getRates } from '../api';
+import { CategorySelect } from './CategorySelect';
 import { Receipt } from 'lucide-react';
 
 interface FixedExpensePayFormProps {
-  expense: FixedExpense;
-  monthYear: string;
-  onSubmit: (data: FixedExpenseCheckCreate) => Promise<void>;
+  expense?: FixedExpense;
+  fixedExpense?: FixedExpense;
+  monthYear?: string;
+  onSubmit?: (data: FixedExpenseCheckCreate) => Promise<void>;
+  onPay?: (month: string, year: string, registerAsExpense: boolean, category?: string) => Promise<void> | void;
   onCancel: () => void;
 }
 
-const FixedExpensePayForm: React.FC<FixedExpensePayFormProps> = ({ expense, monthYear, onSubmit, onCancel }) => {
-  const [paidAmount, setPaidAmount] = useState<string>(expense.amount.toString());
-  const [currency, setCurrency] = useState<CurrencyType>(expense.currency);
+const FixedExpensePayForm: React.FC<FixedExpensePayFormProps> = ({
+  expense,
+  fixedExpense,
+  monthYear,
+  onSubmit,
+  onPay,
+  onCancel,
+}) => {
+  const activeExpense = expense || fixedExpense;
+  const [paidAmount, setPaidAmount] = useState<string>(activeExpense ? activeExpense.amount.toString() : '0');
+  const [currency, setCurrency] = useState<CurrencyType>(activeExpense ? activeExpense.currency : 'USD_BCV');
+  const [category, setCategory] = useState<string>(activeExpense?.category || 'Gastos Fijos');
   const [createExpense, setCreateExpense] = useState(true);
   const [notes, setNotes] = useState('');
   const [manualRate, setManualRate] = useState('');
@@ -24,30 +36,44 @@ const FixedExpensePayForm: React.FC<FixedExpensePayFormProps> = ({ expense, mont
     getRates().then(setRates).catch(() => {});
   }, []);
 
+  if (!activeExpense) return null;
+
+  const effectiveMonthYear = monthYear || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!paidAmount) return;
 
     setIsSubmitting(true);
     try {
-      await onSubmit({
-        month_year: monthYear,
-        paid_amount: parseFloat(paidAmount.replace(',', '.')),
-        currency,
-        paid_date: new Date().toISOString().split('T')[0],
-        create_expense: createExpense,
-        notes: notes || undefined,
-        manual_rate: manualRate ? parseFloat(manualRate.replace(',', '.')) : undefined,
-      });
+      const chosenCategory = createExpense ? (category.trim() || undefined) : undefined;
+      const [y, m] = effectiveMonthYear.split('-');
+
+      if (onSubmit) {
+        await onSubmit({
+          month_year: effectiveMonthYear,
+          paid_amount: parseFloat(paidAmount.replace(',', '.')),
+          currency,
+          paid_date: new Date().toISOString().split('T')[0],
+          create_expense: createExpense,
+          category: chosenCategory,
+          notes: notes || undefined,
+          manual_rate: manualRate ? parseFloat(manualRate.replace(',', '.')) : undefined,
+        });
+      }
+
+      if (onPay) {
+        await onPay(m, y, createExpense, chosenCategory);
+      }
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const monthLabel = (() => {
-    const [y, m] = monthYear.split('-');
+    const [y, m] = effectiveMonthYear.split('-');
     const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-    return `${months[parseInt(m) - 1]} ${y}`;
+    return `${months[parseInt(m, 10) - 1]} ${y}`;
   })();
 
   const currentRate = rates?.usd_bs;
@@ -57,7 +83,7 @@ const FixedExpensePayForm: React.FC<FixedExpensePayFormProps> = ({ expense, mont
       <div className="expense-form-container">
         <h2>Marcar como Pagado</h2>
         <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '-0.5rem 0 1rem' }}>
-          {expense.name} — {monthLabel}
+          {activeExpense.name} — {monthLabel}
         </p>
         <form onSubmit={handleSubmit}>
 
@@ -136,6 +162,19 @@ const FixedExpensePayForm: React.FC<FixedExpensePayFormProps> = ({ expense, mont
             </div>
             <Receipt size={18} style={{ color: createExpense ? 'var(--income-color)' : 'var(--text-tertiary)', flexShrink: 0 }} />
           </div>
+
+          {/* Conditional Category Selector for the real expense */}
+          {createExpense && (
+            <div className="form-group" style={{ marginBottom: '1rem' }}>
+              <CategorySelect
+                value={category}
+                onChange={setCategory}
+                label="Categoría del gasto"
+                allowEmpty={false}
+                disabled={isSubmitting}
+              />
+            </div>
+          )}
 
           <div className="form-group">
             <label style={{ display: 'flex', justifyContent: 'space-between' }}>

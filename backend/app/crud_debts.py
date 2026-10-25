@@ -268,7 +268,16 @@ async def add_debt_payment(db: AsyncSession, debt_id: UUID, user_id: UUID, payme
     should_create_expense = bool(register_as_expense or create_exp_flag)
 
     membership = await sharing.get_membership(db, debt_id, user_id)
-    effective_category = data.get("category") or (membership[1].local_category if membership else None) or db_debt.category or "Deudas"
+    payment_cat = data.get("category")
+    if payment_cat and str(payment_cat).strip():
+        chosen_cat = str(payment_cat).strip()
+        if membership:
+            membership[1].local_category = chosen_cat
+        elif db_debt.user_id == user_id:
+            db_debt.category = chosen_cat
+        effective_category = chosen_cat
+    else:
+        effective_category = (membership[1].local_category if (membership and membership[1].local_category) else None) or db_debt.category or "Deudas"
     data["category"] = effective_category
     data["create_expense"] = should_create_expense
 
@@ -377,16 +386,24 @@ async def update_debt_payment(
         register_as_expense = create_exp_flag
 
     if 'category' in update_dict:
-        new_cat = update_dict.pop('category')
-        if membership:
-            member = membership[1]
-            if payment.paid_by_user_id != user_id:
+        raw_cat = update_dict.pop('category')
+        if raw_cat and str(raw_cat).strip():
+            new_cat = str(raw_cat).strip()
+            if membership:
+                member = membership[1]
                 member.local_category = new_cat
+                if payment.paid_by_user_id == user_id:
+                    payment.category = new_cat
             else:
                 payment.category = new_cat
-                member.local_category = new_cat
-        else:
-            payment.category = new_cat
+
+            if payment.expense_id and payment.paid_by_user_id == user_id:
+                exp_res = await db.execute(
+                    select(models.Expense).where(models.Expense.id == payment.expense_id)
+                )
+                linked_exp = exp_res.scalars().first()
+                if linked_exp:
+                    linked_exp.category = new_cat
 
         if not (update_dict or register_as_expense is not None or manual_rate is not None):
             await db.commit()

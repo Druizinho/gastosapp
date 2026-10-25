@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from typing import List
+from typing import List, Any
 from uuid import UUID
 
 from ..database import get_db
@@ -25,6 +25,17 @@ async def get_share_by_entity(
         raise HTTPException(status_code=404, detail="Este ítem no está compartido")
     share, _ = membership
     return await sharing.build_share_info(db, share, user_id)
+
+
+@router.patch("/by-entity/{entity_id}/category")
+async def update_share_entity_category(
+    entity_id: UUID,
+    data: schemas.ShareLocalCategoryUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: Any = Depends(get_current_user)
+):
+    user_id = getattr(current_user, "id", current_user)
+    return await sharing.update_member_local_category(db, entity_id, user_id, data.category)
 
 
 @router.post("/{share_id}/members", response_model=schemas.ShareInfoOut)

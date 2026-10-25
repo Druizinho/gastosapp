@@ -19,6 +19,7 @@ class ShareMemberOut(BaseModel):
     is_owner: bool = False
     is_my_pana: bool = False
     pana_request_pending: bool = False
+    local_category: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -35,6 +36,9 @@ class ShareMembersAdd(BaseModel):
 
 class ShareRoleUpdate(BaseModel):
     role: ShareRole
+
+class ShareLocalCategoryUpdate(BaseModel):
+    category: str = Field(..., min_length=1, max_length=100)
 
 class CurrencyType(str, Enum):
     USD_BCV = "USD_BCV"
@@ -226,6 +230,7 @@ class FixedExpenseCheckBase(BaseModel):
 class FixedExpenseCheckCreate(FixedExpenseCheckBase):
     manual_rate: Optional[Decimal] = Field(None, gt=0)
     paid_by_name: Optional[str] = None
+    category: Optional[str] = None
 
 class FixedExpenseCheckUpdate(BaseModel):
     paid_amount: Optional[Decimal] = Field(None, gt=0)

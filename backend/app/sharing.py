@@ -696,7 +696,8 @@ async def populate_share_meta(
                         is_me=is_me,
                         is_owner=is_owner,
                         is_my_pana=(m.user_id in my_pana_ids_set or is_me),
-                        pana_request_pending=(m.user_id in pending_pana_ids_set)
+                        pana_request_pending=(m.user_id in pending_pana_ids_set),
+                        local_category=m.local_category,
                     )
                 )
 
@@ -809,7 +810,8 @@ async def build_share_info(db: AsyncSession, share: models.Share, user_id: UUID)
                 is_me=is_me,
                 is_owner=is_owner,
                 is_my_pana=(m.user_id in my_pana_ids_set or is_me),
-                pana_request_pending=(m.user_id in pending_pana_ids_set)
+                pana_request_pending=(m.user_id in pending_pana_ids_set),
+                local_category=m.local_category,
             )
         )
 
@@ -820,3 +822,97 @@ async def build_share_info(db: AsyncSession, share: models.Share, user_id: UUID)
         owner_id=share.owner_id,
         members=members_out
     )
+
+
+async def update_member_local_category(
+    db: AsyncSession,
+    entity_id: UUID,
+    user_id: UUID,
+    new_category: str
+) -> dict:
+    clean_cat = new_category.strip()
+    if not clean_cat:
+        raise HTTPException(status_code=400, detail="La categoría no puede estar vacía")
+
+    # a) Query ShareMember matching (entity_id, user_id) (joining Share)
+    stmt = (
+        select(models.ShareMember)
+        .join(models.Share, models.ShareMember.share_id == models.Share.id)
+        .where(
+            models.ShareMember.entity_id == entity_id,
+            models.ShareMember.user_id == user_id,
+        )
+    )
+    res = await db.execute(stmt)
+    member = res.scalars().first()
+
+    # b) If ShareMember exists:
+    if member:
+        member.local_category = clean_cat
+        await db.commit()
+        return {"entity_id": str(entity_id), "local_category": member.local_category}
+
+    # c) If ShareMember does NOT exist:
+    # Verify if user_id owns the underlying entity (search across Debt, FixedExpense, SavingGoal)
+    entity = None
+    entity_type = None
+
+    debt_res = await db.execute(select(models.Debt).where(models.Debt.id == entity_id))
+    entity = debt_res.scalars().first()
+    if entity:
+        entity_type = "debt"
+    else:
+        fe_res = await db.execute(select(models.FixedExpense).where(models.FixedExpense.id == entity_id))
+        entity = fe_res.scalars().first()
+        if entity:
+            entity_type = "fixed_expense"
+        else:
+            sg_res = await db.execute(select(models.SavingGoal).where(models.SavingGoal.id == entity_id))
+            entity = sg_res.scalars().first()
+            if entity:
+                entity_type = "saving_goal"
+
+    if not entity:
+        raise HTTPException(status_code=404, detail="Recurso no encontrado")
+
+    if entity.user_id != user_id:
+        raise HTTPException(status_code=403, detail="No tienes permisos para modificar este recurso")
+
+    # Check if a Share exists for this entity
+    share_res = await db.execute(
+        select(models.Share)
+        .join(models.ShareMember, models.Share.id == models.ShareMember.share_id)
+        .where(models.ShareMember.entity_id == entity_id)
+    )
+    share = share_res.scalars().first()
+
+    if share:
+        # Upsert owner's ShareMember with role='admin' and local_category=clean_cat
+        owner_sm_res = await db.execute(
+            select(models.ShareMember).where(
+                models.ShareMember.share_id == share.id,
+                models.ShareMember.user_id == user_id,
+            )
+        )
+        owner_member = owner_sm_res.scalars().first()
+        if owner_member:
+            owner_member.local_category = clean_cat
+            owner_member.role = "admin"
+        else:
+            owner_member = models.ShareMember(
+                share_id=share.id,
+                user_id=user_id,
+                entity_id=entity_id,
+                role="admin",
+                added_by=user_id,
+                local_category=clean_cat,
+                perspective_type=getattr(entity, "type", None) if entity_type == "debt" else None,
+                counterpart_label=getattr(entity, "counterpart", None) if entity_type == "debt" else None,
+            )
+            db.add(owner_member)
+    else:
+        # Not shared: update entity.category directly
+        entity.category = clean_cat
+
+    await db.commit()
+    return {"entity_id": str(entity_id), "local_category": clean_cat}
