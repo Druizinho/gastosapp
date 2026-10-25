@@ -2066,6 +2066,7 @@ body {
   line-height: 1.2;
   word-break: break-word;
   color: var(--text-tertiary);
+  min-width: 0;
 }
 
 .list-card-quick-action-wrapper {
