@@ -312,25 +312,12 @@ async def create_share(
         role="admin",
         added_by=owner_id,
         local_category=getattr(owner_entity, "category", None),
-        perspective_type=getattr(owner_entity, "type", None) if entity_type == "debt" else None,
-        counterpart_label=getattr(owner_entity, "counterpart", None) if entity_type == "debt" else None
+        perspective_type=None,
+        counterpart_label=None
     )
     db.add(owner_member)
 
-    creator_name = "Mi Pana"
-    if entity_type == "debt":
-        creator_prof = await db.get(models.Profile, owner_id)
-        if creator_prof and creator_prof.display_name:
-            creator_name = creator_prof.display_name
-
     for tid in clean_targets:
-        if entity_type == "debt":
-            inv_type = "owed" if getattr(owner_entity, "type", None) == "receivable" else "receivable"
-            c_label = creator_name
-        else:
-            inv_type = None
-            c_label = None
-
         init_cat = await resolve_initial_member_category(db, tid, entity_type, owner_entity)
 
         member = models.ShareMember(
@@ -340,8 +327,8 @@ async def create_share(
             role="admin" if tid in admin_set else "member",
             added_by=owner_id,
             local_category=init_cat,
-            perspective_type=inv_type,
-            counterpart_label=c_label
+            perspective_type=None,
+            counterpart_label=None
         )
         db.add(member)
 
@@ -378,20 +365,7 @@ async def add_members(
     if not canonical_entity:
         raise HTTPException(status_code=404, detail="Entidad base no encontrada para agregar integrantes")
 
-    owner_name = "Mi Pana"
-    if share.entity_type == "debt":
-        owner_prof = await db.get(models.Profile, share.owner_id)
-        if owner_prof and owner_prof.display_name:
-            owner_name = owner_prof.display_name
-
     for tid in new_targets:
-        if share.entity_type == "debt":
-            inv_type = "owed" if getattr(canonical_entity, "type", None) == "receivable" else "receivable"
-            c_label = owner_name
-        else:
-            inv_type = None
-            c_label = None
-
         init_cat = await resolve_initial_member_category(db, tid, share.entity_type, canonical_entity)
 
         member = models.ShareMember(
@@ -401,8 +375,8 @@ async def add_members(
             role="admin" if tid in admin_set else "member",
             added_by=actor_id,
             local_category=init_cat,
-            perspective_type=inv_type,
-            counterpart_label=c_label
+            perspective_type=None,
+            counterpart_label=None
         )
         db.add(member)
 
@@ -448,11 +422,6 @@ async def remove_member(db: AsyncSession, share: models.Share, user_id_to_remove
             canonical_entity.user_id = owner_m.user_id
             if owner_m.local_category:
                 canonical_entity.category = owner_m.local_category
-            if share.entity_type == "debt":
-                if owner_m.perspective_type:
-                    canonical_entity.type = owner_m.perspective_type
-                if owner_m.counterpart_label:
-                    canonical_entity.counterpart = owner_m.counterpart_label
 
     if len(remaining_members) <= 1:
         if len(remaining_members) == 1 and canonical_entity:
@@ -460,11 +429,6 @@ async def remove_member(db: AsyncSession, share: models.Share, user_id_to_remove
             canonical_entity.user_id = last_m.user_id
             if last_m.local_category:
                 canonical_entity.category = last_m.local_category
-            if share.entity_type == "debt":
-                if last_m.perspective_type:
-                    canonical_entity.type = last_m.perspective_type
-                if last_m.counterpart_label:
-                    canonical_entity.counterpart = last_m.counterpart_label
         await db.delete(share)
 
     await db.flush()
@@ -717,17 +681,6 @@ async def populate_share_meta(
                 except Exception:
                     setattr(e, "category", eff_cat)
 
-            if entity_type == "debt":
-                if my_sm.perspective_type:
-                    try:
-                        set_committed_value(e, "type", my_sm.perspective_type)
-                    except Exception:
-                        setattr(e, "type", my_sm.perspective_type)
-                if my_sm.counterpart_label:
-                    try:
-                        set_committed_value(e, "counterpart", my_sm.counterpart_label)
-                    except Exception:
-                        setattr(e, "counterpart", my_sm.counterpart_label)
 
             # Compute can_edit on child items
             children = (getattr(e, cfg["child_attr"], []) if cfg.get("child_attr") else []) or []
@@ -906,8 +859,8 @@ async def update_member_local_category(
                 role="admin",
                 added_by=user_id,
                 local_category=clean_cat,
-                perspective_type=getattr(entity, "type", None) if entity_type == "debt" else None,
-                counterpart_label=getattr(entity, "counterpart", None) if entity_type == "debt" else None,
+                perspective_type=None,
+                counterpart_label=None,
             )
             db.add(owner_member)
     else:

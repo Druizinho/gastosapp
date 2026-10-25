@@ -10,7 +10,8 @@ import {
   Users,
   FolderKanban,
   RotateCcw,
-  Tag
+  Tag,
+  LogOut
 } from 'lucide-react';
 import type {
   SavingGoal,
@@ -30,12 +31,17 @@ import {
   addSavingDeposit,
   updateSavingDeposit,
   deleteSavingDeposit,
-  getRates
+  getRates,
+  removeShareMember,
+  getShareByEntity
 } from '../api';
 import SavingGoalForm from './SavingGoalForm';
 import SavingDepositForm from './SavingDepositForm';
 import ConfirmModal from './ConfirmModal';
 import { MemberAvatars, ShareMembersModal } from './panas';
+import { LeaveShareModal } from './panas/LeaveShareModal';
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../supabaseClient';
 import { LocalCategoryModal } from './panas/LocalCategoryModal';
 import ListCard from './ListCard';
 import ListCardBottomSheet from './ListCardBottomSheet';
@@ -80,6 +86,7 @@ const formatDate = (dateStr: string) => {
 export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
   const { categories } = useCategories();
   const { mainCurrency, setMainCurrency } = useCurrencyPreference();
+  const { user } = useAuth();
 
   const [goals, setGoals] = useState<SavingGoal[]>([]);
   const [rates, setRates] = useState<ExchangeRates | null>(null);
@@ -97,10 +104,56 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
   const [editingDeposit, setEditingDeposit] = useState<SavingDeposit | undefined>(undefined);
   const [selectedDepositForSheet, setSelectedDepositForSheet] = useState<SavingDeposit | null>(null);
   const [activeShareModalItem, setActiveShareModalItem] = useState<{ id: string; name: string } | null>(null);
+  const [leaveGoalModal, setLeaveGoalModal] = useState<{ isOpen: boolean; goal: SavingGoal | null }>({
+    isOpen: false,
+    goal: null,
+  });
+  const [leaveGoalLoading, setLeaveGoalLoading] = useState(false);
   const [localCategoryModal, setLocalCategoryModal] = useState<{ isOpen: boolean; goal: SavingGoal | null }>({
     isOpen: false,
     goal: null,
   });
+
+  const handleConfirmLeaveGoal = async () => {
+    const goal = leaveGoalModal.goal;
+    if (!goal) return;
+    setLeaveGoalLoading(true);
+    try {
+      let myUserId = user?.id;
+      if (!myUserId) {
+        myUserId = goal.shared_members?.find((m) => m.is_me)?.user_id;
+      }
+      if (!myUserId) {
+        const { data: { user: supaUser } } = await supabase.auth.getUser();
+        myUserId = supaUser?.id;
+      }
+      if (!myUserId) {
+        throw new Error('No se pudo identificar tu ID de usuario');
+      }
+
+      let shareId = goal.share_id;
+      if (!shareId) {
+        const shareData = await getShareByEntity(goal.id);
+        shareId = shareData.share_id;
+      }
+      if (!shareId) {
+        throw new Error('No se encontró el identificador compartido');
+      }
+
+      await removeShareMember(shareId, myUserId);
+      showToast('Te has desvinculado del fondo/proyecto compartido');
+      setGoals((prev) => prev.filter((g) => g.id !== goal.id));
+      if (selectedGoal && selectedGoal.id === goal.id) {
+        setSelectedGoal(null);
+      }
+      setLeaveGoalModal({ isOpen: false, goal: null });
+    } catch (err: any) {
+      console.error('Error al desvincularse de la meta:', err);
+      showToast(err?.response?.data?.detail || err?.message || 'Error al desvincularse');
+    } finally {
+      setLeaveGoalLoading(false);
+    }
+  };
 
   const handleCategoryUpdated = (newCategory: string) => {
     if (!localCategoryModal.goal) return;
@@ -430,35 +483,59 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
         >
           <Edit3 size={16} />
         </button>
-        <button
-          type="button"
-          onClick={() => setConfirmDelete({
-            isOpen: true,
-            goalId: selectedGoal.id,
-            title: isProject ? '¿Eliminar Proyecto?' : '¿Eliminar Fondo?',
-            message: selectedGoal.is_shared
-              ? `Este ${isProject ? 'proyecto' : 'fondo'} está compartido con tus panas (${selectedGoal.shared_members?.length || 2} miembros). Al eliminarlo, también se eliminará para todos.`
-              : `Se eliminará el ${isProject ? 'proyecto' : 'fondo de ahorro'} y todo su historial.`,
-          })}
-          disabled={isMember}
-          style={{
-            width: '36px',
-            height: '36px',
-            borderRadius: 'var(--radius-full, 9999px)',
-            background: 'rgba(239, 68, 68, 0.08)',
-            color: isMember ? 'var(--text-tertiary)' : 'var(--expense-color)',
-            border: '1px solid rgba(239, 68, 68, 0.2)',
-            cursor: isMember ? 'not-allowed' : 'pointer',
-            opacity: isMember ? 0.4 : 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            transition: 'transform 150ms ease-out',
-          }}
-          title={selectedGoal.is_shared && selectedGoal.my_role === 'member' ? "Solo administradores pueden eliminar" : "Eliminar"}
-        >
-          <Trash2 size={16} />
-        </button>
+        {isMember ? (
+          <button
+            type="button"
+            onClick={() => setLeaveGoalModal({ isOpen: true, goal: selectedGoal })}
+            style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: 'var(--radius-full, 9999px)',
+              background: 'rgba(239, 68, 68, 0.08)',
+              color: 'var(--expense-color)',
+              border: '1px solid rgba(239, 68, 68, 0.2)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'transform 150ms ease-out',
+            }}
+            onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+            onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+            title="Desvincularme del proyecto/fondo"
+          >
+            <LogOut size={16} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setConfirmDelete({
+              isOpen: true,
+              goalId: selectedGoal.id,
+              title: isProject ? '¿Eliminar Proyecto?' : '¿Eliminar Fondo?',
+              message: selectedGoal.is_shared
+                ? `Este ${isProject ? 'proyecto' : 'fondo'} está compartido con tus panas (${selectedGoal.shared_members?.length || 2} miembros). Al eliminarlo, también se eliminará para todos.`
+                : `Se eliminará el ${isProject ? 'proyecto' : 'fondo de ahorro'} y todo su historial.`,
+            })}
+            style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: 'var(--radius-full, 9999px)',
+              background: 'rgba(239, 68, 68, 0.08)',
+              color: 'var(--expense-color)',
+              border: '1px solid rgba(239, 68, 68, 0.2)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'transform 150ms ease-out',
+            }}
+            title="Eliminar"
+          >
+            <Trash2 size={16} />
+          </button>
+        )}
       </div>
     );
 
@@ -1206,6 +1283,18 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
           />
         )}
 
+        {leaveGoalModal.goal && (
+          <LeaveShareModal
+            isOpen={leaveGoalModal.isOpen}
+            onClose={() => setLeaveGoalModal({ isOpen: false, goal: null })}
+            onConfirm={handleConfirmLeaveGoal}
+            entityType="saving_goal"
+            entityTitle={leaveGoalModal.goal.name}
+            currency={leaveGoalModal.goal.currency}
+            loading={leaveGoalLoading}
+          />
+        )}
+
         {/* Confirmation Modal in Detail View */}
         <ConfirmModal
           isOpen={confirmDelete.isOpen}
@@ -1716,6 +1805,18 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
             fetchData();
             showToast('Has salido del fondo compartido');
           }}
+        />
+      )}
+
+      {leaveGoalModal.goal && (
+        <LeaveShareModal
+          isOpen={leaveGoalModal.isOpen}
+          onClose={() => setLeaveGoalModal({ isOpen: false, goal: null })}
+          onConfirm={handleConfirmLeaveGoal}
+          entityType="saving_goal"
+          entityTitle={leaveGoalModal.goal.name}
+          currency={leaveGoalModal.goal.currency}
+          loading={leaveGoalLoading}
         />
       )}
 

@@ -129,9 +129,6 @@ async def update_debt(db: AsyncSession, debt_id: UUID, debt: schemas.DebtUpdate,
             if db_debt.user_id == user_id:
                 db_debt.category = new_cat
 
-        if 'counterpart' in update_data and db_debt.user_id != user_id:
-            member.counterpart_label = update_data.pop('counterpart')
-
         changing_fields = {k: v for k, v in update_data.items() if getattr(db_debt, k, None) != v}
         if changing_fields:
             sharing.require_admin(member)

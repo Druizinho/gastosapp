@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Receipt, Pause, Play, Trash2, Edit3, Calendar, CheckCircle2, Circle, Undo2, Share2, Tag } from 'lucide-react';
+import { Plus, Receipt, Pause, Play, Trash2, Edit3, Calendar, CheckCircle2, Circle, Undo2, Share2, Tag, LogOut } from 'lucide-react';
 import {
   getFixedExpenses,
   createFixedExpense,
@@ -8,7 +8,9 @@ import {
   deleteFixedExpense,
   checkFixedExpense,
   uncheckFixedExpense,
-  getRates
+  getRates,
+  removeShareMember,
+  getShareByEntity
 } from '../api';
 import type {
   FixedExpense,
@@ -22,6 +24,9 @@ import FixedExpenseForm from './FixedExpenseForm';
 import FixedExpensePayForm from './FixedExpensePayForm';
 import ConfirmModal from './ConfirmModal';
 import { MemberAvatars, ShareMembersModal } from './panas';
+import { LeaveShareModal } from './panas/LeaveShareModal';
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../supabaseClient';
 import { LocalCategoryModal } from './panas/LocalCategoryModal';
 import { resolveCategoryVisuals } from '../utils/categoryVisuals';
 import { useCurrencyPreference } from '../context/CurrencyPreferenceContext';
@@ -55,6 +60,54 @@ const FixedExpenses: React.FC = () => {
   const [activeShareModalItem, setActiveShareModalItem] = useState<{ id: string; name: string } | null>(null);
   const [activeTab, setActiveTab] = useState<'pending' | 'paid'>('pending');
   const [selectedExpenseForSheet, setSelectedExpenseForSheet] = useState<FixedExpense | null>(null);
+  const [leaveExpenseModal, setLeaveExpenseModal] = useState<{ isOpen: boolean; expense: FixedExpense | null }>({ isOpen: false, expense: null });
+  const [leaveExpenseLoading, setLeaveExpenseLoading] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const { user } = useAuth();
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  const handleConfirmLeaveExpense = async () => {
+    const expense = leaveExpenseModal.expense;
+    if (!expense) return;
+    setLeaveExpenseLoading(true);
+    try {
+      let myUserId = user?.id;
+      if (!myUserId) {
+        myUserId = expense.shared_members?.find((m) => m.is_me)?.user_id;
+      }
+      if (!myUserId) {
+        const { data: { user: supaUser } } = await supabase.auth.getUser();
+        myUserId = supaUser?.id;
+      }
+      if (!myUserId) {
+        throw new Error('No se pudo identificar tu ID de usuario');
+      }
+
+      let shareId = expense.share_id;
+      if (!shareId) {
+        const shareData = await getShareByEntity(expense.id);
+        shareId = shareData.share_id;
+      }
+      if (!shareId) {
+        throw new Error('No se encontró el identificador compartido');
+      }
+
+      await removeShareMember(shareId, myUserId);
+      showToast('Te has desvinculado del gasto fijo compartido');
+      setExpenses((prev) => prev.filter((e) => e.id !== expense.id));
+      setSelectedExpenseForSheet(null);
+      setLeaveExpenseModal({ isOpen: false, expense: null });
+    } catch (err: any) {
+      console.error('Error al desvincularse del gasto fijo:', err);
+      showToast(err?.response?.data?.detail || err?.message || 'Error al desvincularse del gasto fijo');
+    } finally {
+      setLeaveExpenseLoading(false);
+    }
+  };
   const [localCategoryModal, setLocalCategoryModal] = useState<{
     isOpen: boolean;
     expense: FixedExpense | null;
@@ -846,17 +899,27 @@ const FixedExpenses: React.FC = () => {
                     },
                   ]
                 : []),
-              {
-                label: 'Eliminar',
-                icon: <Trash2 size={16} />,
-                danger: true,
-                onClick: () => {
-                  const target = selectedExpenseForSheet;
-                  setSelectedExpenseForSheet(null);
-                  setConfirmDelete({ isOpen: true, expenseId: target.id });
-                },
-                disabled: isMember,
-              },
+              isMember
+                ? {
+                    label: 'Desvincularme',
+                    icon: <LogOut size={16} />,
+                    danger: true,
+                    onClick: () => {
+                      const target = selectedExpenseForSheet;
+                      setSelectedExpenseForSheet(null);
+                      setLeaveExpenseModal({ isOpen: true, expense: target });
+                    },
+                  }
+                : {
+                    label: 'Eliminar',
+                    icon: <Trash2 size={16} />,
+                    danger: true,
+                    onClick: () => {
+                      const target = selectedExpenseForSheet;
+                      setSelectedExpenseForSheet(null);
+                      setConfirmDelete({ isOpen: true, expenseId: target.id });
+                    },
+                  },
             ]}
           >
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -921,6 +984,41 @@ const FixedExpenses: React.FC = () => {
           </ListCardBottomSheet>
         );
       })()}
+      {leaveExpenseModal.expense && (
+        <LeaveShareModal
+          isOpen={leaveExpenseModal.isOpen}
+          onClose={() => setLeaveExpenseModal({ isOpen: false, expense: null })}
+          onConfirm={handleConfirmLeaveExpense}
+          entityType="fixed_expense"
+          entityTitle={leaveExpenseModal.expense.name}
+          currency={leaveExpenseModal.expense.currency}
+          loading={leaveExpenseLoading}
+        />
+      )}
+
+      {toastMessage && (
+        <div style={{
+          position: 'fixed',
+          bottom: '5rem',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          backgroundColor: '#10B981',
+          color: '#ffffff',
+          padding: '0.6rem 1.2rem',
+          borderRadius: '9999px',
+          boxShadow: 'var(--shadow-lg)',
+          zIndex: 9999,
+          fontSize: '0.875rem',
+          fontWeight: 500,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+          animation: 'fadeIn 0.2s ease-in-out'
+        }}>
+          <CheckCircle2 size={16} />
+          {toastMessage}
+        </div>
+      )}
     </div>
   );
 };

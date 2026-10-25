@@ -12,7 +12,8 @@ import {
   TrendingDown,
   TrendingUp,
   Users,
-  Tag
+  Tag,
+  LogOut
 } from 'lucide-react';
 import type {
   Debt,
@@ -32,12 +33,17 @@ import {
   updateDebtPayment,
   deleteDebt,
   getRates,
-  deleteDebtPayment
+  deleteDebtPayment,
+  removeShareMember,
+  getShareByEntity
 } from '../api';
 import DebtForm from './DebtForm';
 import DebtPaymentForm from './DebtPaymentForm';
 import ConfirmModal from './ConfirmModal';
 import { MemberAvatars, ShareMembersModal } from './panas';
+import { LeaveShareModal } from './panas/LeaveShareModal';
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../supabaseClient';
 import { LocalCategoryModal } from './panas/LocalCategoryModal';
 import { useCategories } from '../context/CategoriesContext';
 import { resolveCategoryVisuals } from '../utils/categoryVisuals';
@@ -88,6 +94,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
   const [activeTab, setActiveTab] = useState<'all' | 'owed' | 'receivable'>(initialTab);
   const { categories } = useCategories();
   const { mainCurrency, setMainCurrency } = useCurrencyPreference();
+  const { user } = useAuth();
 
   const [debts, setDebts] = useState<Debt[]>([]);
   const [loading, setLoading] = useState(true);
@@ -107,10 +114,54 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
 
   const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; debtId?: string; paymentId?: string }>({ isOpen: false });
   const [activeShareModalItem, setActiveShareModalItem] = useState<{ id: string; name: string } | null>(null);
+  const [leaveDebtModal, setLeaveDebtModal] = useState<{ isOpen: boolean; debt: Debt | null }>({ isOpen: false, debt: null });
+  const [leaveDebtLoading, setLeaveDebtLoading] = useState(false);
   const [localCategoryModal, setLocalCategoryModal] = useState<{
     isOpen: boolean;
     debt: Debt | null;
   }>({ isOpen: false, debt: null });
+
+  const handleConfirmLeaveDebt = async () => {
+    const debt = leaveDebtModal.debt;
+    if (!debt) return;
+    setLeaveDebtLoading(true);
+    try {
+      let myUserId = user?.id;
+      if (!myUserId) {
+        myUserId = debt.shared_members?.find((m) => m.is_me)?.user_id;
+      }
+      if (!myUserId) {
+        const { data: { user: supaUser } } = await supabase.auth.getUser();
+        myUserId = supaUser?.id;
+      }
+      if (!myUserId) {
+        throw new Error('No se pudo identificar tu ID de usuario');
+      }
+
+      let shareId = debt.share_id;
+      if (!shareId) {
+        const shareData = await getShareByEntity(debt.id);
+        shareId = shareData.share_id;
+      }
+      if (!shareId) {
+        throw new Error('No se encontró el identificador compartido');
+      }
+
+      await removeShareMember(shareId, myUserId);
+      showToast('Te has desvinculado de la deuda compartida');
+      setDebts((prev) => prev.filter((d) => d.id !== debt.id));
+      if (selectedDebt && selectedDebt.id === debt.id) {
+        setSelectedDebt(null);
+      }
+      setSelectedDebtForSheet(null);
+      setLeaveDebtModal({ isOpen: false, debt: null });
+    } catch (err: any) {
+      console.error('Error al desvincularse de la deuda:', err);
+      showToast(err?.response?.data?.detail || err?.message || 'Error al desvincularse de la deuda');
+    } finally {
+      setLeaveDebtLoading(false);
+    }
+  };
 
   const handleCategoryUpdated = async (newCategory: string) => {
     if (!localCategoryModal.debt) return;
@@ -416,28 +467,52 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
         >
           <Edit3 size={16} />
         </button>
-        <button
-          type="button"
-          onClick={() => setConfirmDelete({ isOpen: true, debtId: selectedDebt.id })}
-          disabled={isMember}
-          style={{
-            width: '36px',
-            height: '36px',
-            borderRadius: 'var(--radius-full, 9999px)',
-            background: 'rgba(239, 68, 68, 0.08)',
-            border: '1px solid rgba(239, 68, 68, 0.2)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: isMember ? 'var(--text-tertiary)' : 'var(--expense-color)',
-            cursor: isMember ? 'not-allowed' : 'pointer',
-            opacity: isMember ? 0.4 : 1,
-            transition: 'transform 150ms ease-out',
-          }}
-          title={isMember ? "Solo administradores pueden eliminar la deuda" : "Eliminar deuda"}
-        >
-          <Trash2 size={16} />
-        </button>
+        {isMember ? (
+          <button
+            type="button"
+            onClick={() => setLeaveDebtModal({ isOpen: true, debt: selectedDebt })}
+            style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: 'var(--radius-full, 9999px)',
+              background: 'rgba(239, 68, 68, 0.08)',
+              border: '1px solid rgba(239, 68, 68, 0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--expense-color)',
+              cursor: 'pointer',
+              transition: 'transform 150ms ease-out',
+            }}
+            onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+            onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+            title="Desvincularme de la deuda"
+          >
+            <LogOut size={16} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setConfirmDelete({ isOpen: true, debtId: selectedDebt.id })}
+            style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: 'var(--radius-full, 9999px)',
+              background: 'rgba(239, 68, 68, 0.08)',
+              border: '1px solid rgba(239, 68, 68, 0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--expense-color)',
+              cursor: 'pointer',
+              transition: 'transform 150ms ease-out',
+            }}
+            title="Eliminar deuda"
+          >
+            <Trash2 size={16} />
+          </button>
+        )}
       </div>
     );
 
@@ -1000,6 +1075,27 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
             }}
           />
         )}
+
+        {leaveDebtModal.debt && (() => {
+          const d = leaveDebtModal.debt;
+          const paid = calculatePaid(d);
+          const remaining = Math.max(Number(d.total_amount) - paid, 0);
+          const hasPending = !d.is_settled && remaining > 0;
+
+          return (
+            <LeaveShareModal
+              isOpen={leaveDebtModal.isOpen}
+              onClose={() => setLeaveDebtModal({ isOpen: false, debt: null })}
+              onConfirm={handleConfirmLeaveDebt}
+              entityType="debt"
+              entityTitle={d.concept}
+              hasPendingBalance={hasPending}
+              pendingBalanceAmount={remaining}
+              currency={d.currency}
+              loading={leaveDebtLoading}
+            />
+          );
+        })()}
       </div>
     );
   }
@@ -1391,17 +1487,27 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
                       },
                     ]
                   : []),
-                {
-                  label: 'Eliminar',
-                  icon: <Trash2 size={16} />,
-                  danger: true,
-                  disabled: selectedDebtForSheet.is_shared && selectedDebtForSheet.my_role === 'member',
-                  onClick: () => {
-                    const d = selectedDebtForSheet;
-                    setSelectedDebtForSheet(null);
-                    setConfirmDelete({ isOpen: true, debtId: d.id });
-                  },
-                },
+                selectedDebtForSheet.is_shared && selectedDebtForSheet.my_role === 'member'
+                  ? {
+                      label: 'Desvincularme',
+                      icon: <LogOut size={16} />,
+                      danger: true,
+                      onClick: () => {
+                        const d = selectedDebtForSheet;
+                        setSelectedDebtForSheet(null);
+                        setLeaveDebtModal({ isOpen: true, debt: d });
+                      },
+                    }
+                  : {
+                      label: 'Eliminar',
+                      icon: <Trash2 size={16} />,
+                      danger: true,
+                      onClick: () => {
+                        const d = selectedDebtForSheet;
+                        setSelectedDebtForSheet(null);
+                        setConfirmDelete({ isOpen: true, debtId: d.id });
+                      },
+                    },
               ]
             : undefined
         }
@@ -1568,6 +1674,27 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
           }}
         />
       )}
+
+      {leaveDebtModal.debt && (() => {
+        const d = leaveDebtModal.debt;
+        const paid = calculatePaid(d);
+        const remaining = Math.max(Number(d.total_amount) - paid, 0);
+        const hasPending = !d.is_settled && remaining > 0;
+
+        return (
+          <LeaveShareModal
+            isOpen={leaveDebtModal.isOpen}
+            onClose={() => setLeaveDebtModal({ isOpen: false, debt: null })}
+            onConfirm={handleConfirmLeaveDebt}
+            entityType="debt"
+            entityTitle={d.concept}
+            hasPendingBalance={hasPending}
+            pendingBalanceAmount={remaining}
+            currency={d.currency}
+            loading={leaveDebtLoading}
+          />
+        );
+      })()}
     </div>
   );
 };

@@ -97,9 +97,9 @@ class TestCanonicalSharing(unittest.TestCase):
 
         owner_sm = next(sm for sm in share_members if sm.user_id == owner_id)
         user_b_sm = next(sm for sm in share_members if sm.user_id == user_b)
-        self.assertEqual(owner_sm.perspective_type, "receivable")
-        self.assertEqual(user_b_sm.perspective_type, "owed")
-        self.assertEqual(user_b_sm.counterpart_label, "Owner User")
+        self.assertIsNone(owner_sm.perspective_type)
+        self.assertIsNone(user_b_sm.perspective_type)
+        self.assertIsNone(user_b_sm.counterpart_label)
 
         # Now test add_members for user_c
         with patch("app.sharing.get_members", new_callable=AsyncMock) as mock_get_members, \
@@ -125,10 +125,10 @@ class TestCanonicalSharing(unittest.TestCase):
 
         user_c_sm = next(sm for sm in added_objects if isinstance(sm, models.ShareMember) and sm.user_id == user_c)
         self.assertEqual(user_c_sm.entity_id, canonical_debt.id)
-        self.assertEqual(user_c_sm.perspective_type, "owed")
+        self.assertIsNone(user_c_sm.perspective_type)
 
-        # Test perspective projection in populate_share_meta
-        # When viewed by Owner: type is 'receivable'
+        # Test symmetric perspective projection in populate_share_meta
+        # When viewed by Owner: type is 'receivable' and counterpart is 'Compañeros'
         with patch("app.sharing.get_members", new_callable=AsyncMock) as mock_gm:
             mock_gm.return_value = [owner_sm, user_b_sm, user_c_sm]
             # Mock sm query in populate_share_meta
@@ -151,8 +151,9 @@ class TestCanonicalSharing(unittest.TestCase):
             db.execute.side_effect = mock_exec_side_effect
             await sharing.populate_share_meta(db, [canonical_debt], owner_id, "debt")
             self.assertEqual(canonical_debt.type, "receivable")
+            self.assertEqual(canonical_debt.counterpart, "Compañeros")
 
-            # When viewed by User B: type is 'owed', counterpart is 'Owner User'
+            # When viewed by User B: symmetric view, type is 'receivable', counterpart is 'Compañeros'
             def mock_exec_user_b(query):
                 res = MagicMock()
                 q_str = str(query)
@@ -169,8 +170,8 @@ class TestCanonicalSharing(unittest.TestCase):
 
             db.execute.side_effect = mock_exec_user_b
             await sharing.populate_share_meta(db, [canonical_debt], user_b, "debt")
-            self.assertEqual(canonical_debt.type, "owed")
-            self.assertEqual(canonical_debt.counterpart, "Owner User")
+            self.assertEqual(canonical_debt.type, "receivable")
+            self.assertEqual(canonical_debt.counterpart, "Compañeros")
 
     @sync_run
     async def test_canonical_single_contribution_and_personal_expense(self):
@@ -370,6 +371,93 @@ class TestCanonicalSharing(unittest.TestCase):
         self.assertEqual(len(created_expenses), 1)
         # Should be Member B's local category ("Mantenimiento Casa"), NOT the debt's category ("Hogar")
         self.assertEqual(created_expenses[0].category, "Mantenimiento Casa")
+
+    @sync_run
+    async def test_shared_debt_symmetric_owed_to_bank(self):
+        """
+        Verify that when User A creates a debt of type 'owed' with counterpart 'Banco'
+        and shares with User B, both User A and User B see type == 'owed' and counterpart == 'Banco'.
+        """
+        db = AsyncMock()
+        user_a = uuid4()
+        user_b = uuid4()
+        debt_id = uuid4()
+
+        canonical_debt = models.Debt(
+            id=debt_id,
+            user_id=user_a,
+            concept="Préstamo Bancario",
+            total_amount=Decimal("5000"),
+            currency="USD_BCV",
+            type="owed",
+            counterpart="Banco",
+            category="Préstamos",
+            is_settled=False
+        )
+        canonical_debt.payments = []
+
+        added_objects = []
+        db.add = MagicMock(side_effect=lambda obj: added_objects.append(obj))
+
+        with patch("app.sharing.resolve_initial_member_category", new_callable=AsyncMock) as mock_cat:
+            mock_cat.return_value = "Préstamos"
+            share = await sharing.create_share(
+                db=db,
+                entity_type="debt",
+                owner_id=user_a,
+                owner_entity=canonical_debt,
+                target_ids=[user_b],
+                admin_ids=[]
+            )
+
+        share_members = [o for o in added_objects if isinstance(o, models.ShareMember)]
+        user_a_sm = next(sm for sm in share_members if sm.user_id == user_a)
+        user_b_sm = next(sm for sm in share_members if sm.user_id == user_b)
+
+        # Both members have perspective_type=None and counterpart_label=None
+        self.assertIsNone(user_a_sm.perspective_type)
+        self.assertIsNone(user_b_sm.perspective_type)
+        self.assertIsNone(user_b_sm.counterpart_label)
+
+        # User A view via populate_share_meta
+        def mock_exec_a(query):
+            res = MagicMock()
+            q_str = str(query)
+            if "share_members" in q_str:
+                if "user_id" in q_str:
+                    res.scalars.return_value.all.return_value = [user_a_sm]
+                else:
+                    res.all.return_value = [(user_a_sm, share), (user_b_sm, share)]
+            elif "profiles" in q_str:
+                res.scalars.return_value.all.return_value = []
+            elif "connections" in q_str:
+                res.scalars.return_value.all.return_value = []
+            return res
+
+        db.execute.side_effect = mock_exec_a
+        await sharing.populate_share_meta(db, [canonical_debt], user_a, "debt")
+        self.assertEqual(canonical_debt.type, "owed")
+        self.assertEqual(canonical_debt.counterpart, "Banco")
+
+        # User B view via populate_share_meta
+        def mock_exec_b(query):
+            res = MagicMock()
+            q_str = str(query)
+            if "share_members" in q_str:
+                if "user_id" in q_str:
+                    res.scalars.return_value.all.return_value = [user_b_sm]
+                else:
+                    res.all.return_value = [(user_a_sm, share), (user_b_sm, share)]
+            elif "profiles" in q_str:
+                res.scalars.return_value.all.return_value = []
+            elif "connections" in q_str:
+                res.scalars.return_value.all.return_value = []
+            return res
+
+        db.execute.side_effect = mock_exec_b
+        await sharing.populate_share_meta(db, [canonical_debt], user_b, "debt")
+        self.assertEqual(canonical_debt.type, "owed")
+        self.assertEqual(canonical_debt.counterpart, "Banco")
 
 
 if __name__ == "__main__":
