@@ -35,6 +35,7 @@ class Category(Base):
     debt_count: int = 0
     saving_count: int = 0
     budget_count: int = 0
+    income_count: int = 0
     
     __table_args__ = (UniqueConstraint('user_id', 'name', name='_user_category_uc'),)
 
@@ -184,6 +185,7 @@ class EstimatedIncome(Base):
     name = Column(String, nullable=False)
     expected_amount = Column(Numeric(12, 4), nullable=False)
     currency = Column(String(10), nullable=False, default='BS')
+    category = Column(String(100), nullable=True, default='Ingresos')
     payment_day = Column(Numeric(2, 0), nullable=True)
     is_active = Column(Boolean, nullable=False, server_default='true')
     notes = Column(String, nullable=True)
@@ -304,6 +306,7 @@ class SavingDeposit(Base):
     rate_usdt_bs = Column(Numeric(12, 4), nullable=True)
     deposit_date = Column(Date, nullable=False, server_default=func.current_date())
     note = Column(String, nullable=True)
+    category = Column(String(100), nullable=True)
     create_expense = Column(Boolean, nullable=False, server_default='false')
     expense_id = Column(UUID(as_uuid=True), ForeignKey("expenses.id", ondelete="SET NULL"), nullable=True)
     paid_by_name = Column(String, nullable=True)

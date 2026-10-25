@@ -25,6 +25,8 @@ import {
   Layers,
   Package,
 } from 'lucide-react';
+import ListCard from './ListCard';
+import ListCardBottomSheet from './ListCardBottomSheet';
 
 // Re-export visual helpers for backward compatibility
 export { ICON_MAP, CATEGORY_COLORS, DEFAULT_ICONS, resolveCategoryVisuals };
@@ -54,6 +56,7 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
   const [deletingCategory, setDeletingCategory] = useState<Category | null>(null);
   const [reassignTo, setReassignTo] = useState<string>('');
   const [isDeleting, setIsDeleting] = useState(false);
+  const [selectedCategoryForSheet, setSelectedCategoryForSheet] = useState<Category | null>(null);
 
   // Filtered categories in list
   const filteredCategories = useMemo(() => {
@@ -637,134 +640,115 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
             filteredCategories.map((c) => {
               const { IconComponent, hexColor } = resolveCategoryVisuals(c);
               const totalUsage = c.usage_count ?? 0;
-              const isDefaultSinCat = c.name.trim().toLowerCase() === 'sin categoría' || c.name.trim().toLowerCase() === 'sin categoria';
+              const isDefaultSinCat =
+                c.name.trim().toLowerCase() === 'sin categoría' ||
+                c.name.trim().toLowerCase() === 'sin categoria';
 
-              return (
-                <div
-                  key={c.id}
+              const subtitle = (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '0.15rem' }}>
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      fontSize: '0.72rem',
+                      fontWeight: 600,
+                      color: totalUsage > 0 ? 'var(--text-secondary)' : 'var(--text-tertiary)',
+                      background: totalUsage > 0 ? 'var(--surface-muted)' : 'transparent',
+                      padding: totalUsage > 0 ? '0.12rem 0.5rem' : 0,
+                      borderRadius: 'var(--radius-full)',
+                      whiteSpace: 'nowrap',
+                      lineHeight: 1.3,
+                    }}
+                    title={`Gastos: ${c.expense_count || 0} · Gastos fijos: ${c.fixed_count || 0} · Deudas: ${c.debt_count || 0} · Metas: ${c.saving_count || 0} · Presupuestos: ${c.budget_count || 0} · Ingresos: ${c.income_count || 0}`}
+                  >
+                    {totalUsage === 1 ? '1 registro asociado' : `${totalUsage} registros asociados`}
+                  </span>
+                </div>
+              );
+
+              const badges = isDefaultSinCat ? (
+                <span
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '0.65rem 0.85rem',
-                    background: 'var(--surface-color)',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--border-color)',
-                    transition: 'border-color 0.15s ease, transform 0.15s ease',
+                    fontSize: '0.68rem',
+                    color: 'var(--text-tertiary)',
+                    background: 'var(--surface-muted)',
+                    padding: '0.1rem 0.45rem',
+                    borderRadius: 'var(--radius-full)',
+                    fontWeight: 500,
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0, flex: 1 }}>
-                    <div
-                      style={{
-                        width: '36px',
-                        height: '36px',
-                        borderRadius: '10px',
-                        background: `${hexColor}18`,
-                        border: `1.5px solid ${hexColor}40`,
-                        color: hexColor,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                      }}
-                    >
-                      <IconComponent size={18} />
-                    </div>
+                  Predeterminada
+                </span>
+              ) : null;
 
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div
-                        style={{
-                          fontWeight: 600,
-                          color: 'var(--text-primary)',
-                          fontSize: '0.92rem',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                        }}
-                      >
-                        {c.name}
-                      </div>
+              const quickAction = (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOpenEdit(c);
+                    }}
+                    style={{
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '8px',
+                      background: 'var(--surface-muted)',
+                      border: 'none',
+                      color: 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transition: 'color 0.15s ease, background-color 0.15s ease',
+                    }}
+                    title="Editar categoría"
+                  >
+                    <Pencil size={15} />
+                  </button>
 
-                      {/* Usage breakdown badge */}
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.35rem',
-                          marginTop: '0.2rem',
-                        }}
-                      >
-                        <span
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            fontSize: '0.72rem',
-                            fontWeight: 600,
-                            color: totalUsage > 0 ? 'var(--text-secondary)' : 'var(--text-tertiary)',
-                            background: totalUsage > 0 ? 'var(--surface-muted)' : 'transparent',
-                            padding: totalUsage > 0 ? '0.12rem 0.5rem' : 0,
-                            borderRadius: 'var(--radius-full)',
-                            whiteSpace: 'nowrap',
-                            lineHeight: 1.3,
-                          }}
-                          title={`Gastos: ${c.expense_count || 0} · Gastos fijos: ${c.fixed_count || 0} · Deudas: ${c.debt_count || 0} · Metas: ${c.saving_count || 0} · Presupuestos: ${c.budget_count || 0}`}
-                        >
-                          {totalUsage === 1 ? '1 gasto asociado' : `${totalUsage} gastos asociados`}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0 }}>
+                  {!isDefaultSinCat && (
                     <button
                       type="button"
-                      onClick={() => handleOpenEdit(c)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeletingCategory(c);
+                        setReassignTo('');
+                      }}
                       style={{
                         width: '32px',
                         height: '32px',
                         borderRadius: '8px',
                         background: 'var(--surface-muted)',
                         border: 'none',
-                        color: 'var(--text-secondary)',
+                        color: 'var(--expense-color)',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         transition: 'color 0.15s ease, background-color 0.15s ease',
                       }}
-                      title="Editar categoría"
+                      title="Eliminar categoría"
                     >
-                      <Pencil size={15} />
+                      <Trash2 size={15} />
                     </button>
-
-                    {!isDefaultSinCat && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDeletingCategory(c);
-                          setReassignTo('');
-                        }}
-                        style={{
-                          width: '32px',
-                          height: '32px',
-                          borderRadius: '8px',
-                          background: 'var(--surface-muted)',
-                          border: 'none',
-                          color: 'var(--expense-color)',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          transition: 'color 0.15s ease, background-color 0.15s ease',
-                        }}
-                        title="Eliminar categoría"
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    )}
-                  </div>
+                  )}
                 </div>
+              );
+
+              return (
+                <ListCard
+                  key={c.id}
+                  statusColor={hexColor}
+                  icon={<IconComponent size={18} />}
+                  iconBg={`${hexColor}18`}
+                  iconColor={hexColor}
+                  title={c.name}
+                  subtitle={subtitle}
+                  badges={badges}
+                  quickAction={quickAction}
+                  onClick={() => setSelectedCategoryForSheet(c)}
+                />
               );
             })
           )}
@@ -895,6 +879,127 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
           </div>
         </div>
       )}
+
+      {/* Mobile Bottom Sheet for Category Details & Breakdown */}
+      {selectedCategoryForSheet && (() => {
+        const { IconComponent, hexColor } = resolveCategoryVisuals(selectedCategoryForSheet);
+        const isDefaultSinCat =
+          selectedCategoryForSheet.name.trim().toLowerCase() === 'sin categoría' ||
+          selectedCategoryForSheet.name.trim().toLowerCase() === 'sin categoria';
+
+        const usageItems = [
+          { label: 'Gastos', count: selectedCategoryForSheet.expense_count || 0, color: 'var(--expense-color, #EF4444)' },
+          { label: 'Gastos Fijos', count: selectedCategoryForSheet.fixed_count || 0, color: 'var(--warning-color, #F59E0B)' },
+          { label: 'Deudas', count: selectedCategoryForSheet.debt_count || 0, color: '#8B5CF6' },
+          { label: 'Ahorros / Proyectos', count: selectedCategoryForSheet.saving_count || 0, color: 'var(--accent-color, #6366F1)' },
+          { label: 'Presupuestos', count: selectedCategoryForSheet.budget_count || 0, color: '#3B82F6' },
+          { label: 'Ingresos', count: selectedCategoryForSheet.income_count || 0, color: 'var(--income-color, #10B981)' },
+        ];
+
+        return (
+          <ListCardBottomSheet
+            isOpen={!!selectedCategoryForSheet}
+            onClose={() => setSelectedCategoryForSheet(null)}
+            title={
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <div
+                  style={{
+                    width: '28px',
+                    height: '28px',
+                    borderRadius: '8px',
+                    background: `${hexColor}18`,
+                    color: hexColor,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <IconComponent size={16} />
+                </div>
+                <span>{selectedCategoryForSheet.name}</span>
+              </div>
+            }
+            subtitle="Detalle y uso de la categoría"
+            secondaryActions={[
+              {
+                label: 'Editar',
+                icon: <Pencil size={16} />,
+                onClick: () => {
+                  const target = selectedCategoryForSheet;
+                  setSelectedCategoryForSheet(null);
+                  handleOpenEdit(target);
+                },
+              },
+              ...(!isDefaultSinCat
+                ? [
+                    {
+                      label: 'Eliminar',
+                      icon: <Trash2 size={16} />,
+                      danger: true,
+                      onClick: () => {
+                        const target = selectedCategoryForSheet;
+                        setSelectedCategoryForSheet(null);
+                        setDeletingCategory(target);
+                        setReassignTo('');
+                      },
+                    },
+                  ]
+                : []),
+            ]}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <span
+                  style={{
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    color: 'var(--text-tertiary)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                  }}
+                >
+                  Registros asociados por módulo
+                </span>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(2, 1fr)',
+                    gap: '0.6rem',
+                    marginTop: '0.5rem',
+                  }}
+                >
+                  {usageItems.map((item) => (
+                    <div
+                      key={item.label}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '0.65rem 0.85rem',
+                        background: 'var(--surface-muted)',
+                        borderRadius: '10px',
+                      }}
+                    >
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
+                        {item.label}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: '0.9rem',
+                          fontWeight: 700,
+                          color: item.count > 0 ? item.color : 'var(--text-tertiary)',
+                        }}
+                      >
+                        {item.count}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </ListCardBottomSheet>
+        );
+      })()}
     </div>
   );
 };

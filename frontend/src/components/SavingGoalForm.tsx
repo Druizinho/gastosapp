@@ -5,19 +5,14 @@ import {
   PiggyBank,
   SlidersHorizontal,
   FolderKanban,
-  Wrench,
-  Car,
-  Briefcase,
-  Home,
-  Hammer,
-  ShoppingBag,
   Info
 } from 'lucide-react';
-import type { SavingGoal, SavingGoalCreate, SavingGoalUpdate, Connection } from '../types';
+import type { SavingGoal, SavingGoalCreate, SavingGoalUpdate, Connection, Category } from '../types';
 import { CURRENCY_OPTIONS } from '../types';
-import { getConnections } from '../api';
+import { getConnections, getCategories } from '../api';
 import { ParticipantPicker } from './panas/ParticipantPicker';
 import CategorySelect from './CategorySelect';
+import { resolveCategoryVisuals } from '../utils/categoryVisuals';
 
 interface SavingGoalFormProps {
   initialData?: SavingGoal;
@@ -25,24 +20,6 @@ interface SavingGoalFormProps {
   onCancel: () => void;
   loading: boolean;
 }
-
-const COLOR_PRESETS = [
-  { label: 'Esmeralda', value: '#10B981' },
-  { label: 'Azul', value: '#3B82F6' },
-  { label: 'Ámbar', value: '#F59E0B' },
-  { label: 'Morado', value: '#8B5CF6' },
-  { label: 'Rosa', value: '#EC4899' },
-  { label: 'Cian', value: '#06B6D4' },
-];
-
-const PROJECT_ICONS = [
-  { id: 'wrench', label: 'Taller / Reparación', icon: <Wrench size={16} /> },
-  { id: 'car', label: 'Vehículo', icon: <Car size={16} /> },
-  { id: 'briefcase', label: 'Trabajo / Negocio', icon: <Briefcase size={16} /> },
-  { id: 'home', label: 'Hogar / Remodelación', icon: <Home size={16} /> },
-  { id: 'hammer', label: 'Construcción', icon: <Hammer size={16} /> },
-  { id: 'shopping-bag', label: 'Compras / Evento', icon: <ShoppingBag size={16} /> },
-];
 
 export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
   initialData,
@@ -53,12 +30,15 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
   const isEditing = !!initialData;
   const [goalType, setGoalType] = useState<'saving' | 'project'>(initialData?.type || 'saving');
 
-  // Panas connections
+  // Categories & Panas connections
+  const [categories, setCategories] = useState<Category[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [isSharedChecked, setIsSharedChecked] = useState(false);
   const [selectedPartnerIds, setSelectedPartnerIds] = useState<string[]>([]);
   const [adminPartnerIds, setAdminPartnerIds] = useState<string[]>([]);
   const [showManualRate, setShowManualRate] = useState(false);
+
+  const initialCategory = initialData?.category || (initialData?.type === 'project' ? 'Proyectos' : 'Ahorro');
 
   const [formData, setFormData] = useState<SavingGoalCreate & { is_active?: boolean }>({
     name: '',
@@ -66,7 +46,7 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
     target_amount: '' as any,
     currency: 'USD_BCV',
     target_date: '',
-    category: '',
+    category: initialCategory,
     color: '#10B981',
     icon: 'piggy-bank',
     notes: '',
@@ -75,6 +55,10 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
   });
 
   useEffect(() => {
+    getCategories()
+      .then(setCategories)
+      .catch((err) => console.error('Error fetching categories:', err));
+
     getConnections()
       .then((data) => {
         const accepted = data.filter(c => c.status === 'accepted');
@@ -92,7 +76,7 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
         target_amount: initialData.target_amount ?? ('' as any),
         currency: initialData.currency,
         target_date: initialData.target_date || '',
-        category: initialData.category || '',
+        category: initialData.category || (initialData.type === 'project' ? 'Proyectos' : 'Ahorro'),
         color: initialData.color || (initialData.type === 'project' ? '#3B82F6' : '#10B981'),
         icon: initialData.icon || (initialData.type === 'project' ? 'wrench' : 'piggy-bank'),
         notes: initialData.notes || '',
@@ -128,7 +112,17 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
     }
 
     if (!submitData.target_date) submitData.target_date = null;
-    if (!submitData.category) submitData.category = null;
+
+    const finalCategory = formData.category || (goalType === 'project' ? 'Proyectos' : 'Ahorro');
+    submitData.category = finalCategory;
+
+    const matchedCategory = categories.find(
+      (c) => c.name.trim().toLowerCase() === finalCategory.trim().toLowerCase()
+    );
+    const visuals = resolveCategoryVisuals(matchedCategory, finalCategory);
+    submitData.color = visuals.hexColor;
+    submitData.icon = visuals.iconName;
+
     if (showManualRate && submitData.manual_rate) {
       submitData.manual_rate = Number(submitData.manual_rate);
     } else {
@@ -149,6 +143,14 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
   };
 
   const isProject = goalType === 'project';
+  const activeCategoryName = formData.category || (isProject ? 'Proyectos' : 'Ahorro');
+  const matchedCategory = categories.find(
+    (c) => c.name.trim().toLowerCase() === activeCategoryName.trim().toLowerCase()
+  );
+  const { IconComponent: HeaderIcon, hexColor: headerColor } = resolveCategoryVisuals(
+    matchedCategory,
+    activeCategoryName
+  );
 
   return (
     <div className="modal-backdrop" onClick={onCancel}>
@@ -176,14 +178,14 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
               width: '32px',
               height: '32px',
               borderRadius: 'var(--radius-sm)',
-              background: `${formData.color || (isProject ? '#3B82F6' : '#10B981')}20`,
-              color: formData.color || (isProject ? '#3B82F6' : '#10B981'),
+              background: `${headerColor}20`,
+              color: headerColor,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               flexShrink: 0
             }}>
-              {isProject ? <FolderKanban size={18} /> : <PiggyBank size={18} />}
+              <HeaderIcon size={18} />
             </div>
             <h2 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
               {isEditing
@@ -227,8 +229,7 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
                 setFormData(prev => ({
                   ...prev,
                   type: 'saving',
-                  color: prev.color === '#3B82F6' ? '#10B981' : prev.color,
-                  icon: 'piggy-bank'
+                  category: (!prev.category || prev.category === 'Proyectos' || prev.category === 'Ahorro') ? 'Ahorro' : prev.category
                 }));
               }
             }}
@@ -261,8 +262,7 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
                 setFormData(prev => ({
                   ...prev,
                   type: 'project',
-                  color: prev.color === '#10B981' ? '#3B82F6' : prev.color,
-                  icon: 'wrench'
+                  category: (!prev.category || prev.category === 'Proyectos' || prev.category === 'Ahorro') ? 'Proyectos' : prev.category
                 }));
               }
             }}
@@ -409,10 +409,10 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
             <div className="form-group half">
               <CategorySelect
                 label="Categoría"
-                value={formData.category || ''}
+                value={activeCategoryName}
                 onChange={(newCat) => setFormData(prev => ({ ...prev, category: newCat }))}
-                allowEmpty={true}
-                emptyLabel="(Sin categoría)"
+                categories={categories}
+                onCategoryCreated={(newCat) => setCategories(prev => [...prev, newCat])}
               />
             </div>
             <div className="form-group half">
@@ -427,88 +427,6 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
                 onChange={handleChange}
                 style={{ padding: '0.65rem 0.75rem' }}
               />
-            </div>
-          </div>
-
-          {/* Iconos sugeridos para proyectos */}
-          {isProject && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '0.45rem 0.65rem',
-              background: 'var(--surface-muted)',
-              borderRadius: 'var(--radius-sm)',
-              marginBottom: '0.75rem',
-              border: '1px solid var(--accent-light)'
-            }}>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                Ícono sugerido:
-              </span>
-              <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
-                {PROJECT_ICONS.map((item) => {
-                  const isSelected = (formData.icon || 'wrench') === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => setFormData(prev => ({ ...prev, icon: item.id }))}
-                      style={{
-                        padding: '0.35rem',
-                        borderRadius: 'var(--radius-sm)',
-                        background: isSelected ? (formData.color || '#3B82F6') : 'transparent',
-                        color: isSelected ? 'white' : 'var(--text-secondary)',
-                        border: isSelected ? 'none' : '1px solid var(--accent-light)',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        transition: 'all 0.15s ease'
-                      }}
-                      title={item.label}
-                    >
-                      {item.icon}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Color del Fondo / Proyecto (Inline compacto) */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '0.45rem 0.65rem',
-            background: 'var(--surface-muted)',
-            borderRadius: 'var(--radius-sm)',
-            marginBottom: '0.75rem',
-            border: '1px solid var(--accent-light)'
-          }}>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
-              Color distintivo:
-            </span>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              {COLOR_PRESETS.map((preset) => (
-                <button
-                  key={preset.value}
-                  type="button"
-                  onClick={() => setFormData(prev => ({ ...prev, color: preset.value }))}
-                  style={{
-                    width: '24px',
-                    height: '24px',
-                    borderRadius: '50%',
-                    background: preset.value,
-                    border: formData.color === preset.value ? '2px solid white' : 'none',
-                    boxShadow: formData.color === preset.value ? `0 0 0 2px ${preset.value}` : 'none',
-                    cursor: 'pointer',
-                    transition: 'transform 0.15s',
-                    transform: formData.color === preset.value ? 'scale(1.15)' : 'scale(1)',
-                  }}
-                  title={preset.label}
-                />
-              ))}
             </div>
           </div>
 
@@ -682,8 +600,8 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
               disabled={loading}
               className="btn-submit"
               style={{
-                background: formData.color || (isProject ? '#3B82F6' : 'var(--income-color)'),
-                boxShadow: `0 4px 14px ${(formData.color || (isProject ? '#3B82F6' : '#10B981'))}44`,
+                background: headerColor,
+                boxShadow: `0 4px 14px ${headerColor}44`,
                 padding: '0.75rem 1.25rem',
                 fontSize: '0.9rem',
                 fontWeight: 700

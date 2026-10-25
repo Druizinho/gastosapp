@@ -76,6 +76,13 @@ async def lifespan(app: FastAPI):
     ping_task = asyncio.create_task(_self_ping_loop())
     print("✅ Tarea de self-ping lanzada en segundo plano.")
 
+    # Asegurar tablas base si no existen
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    except Exception as e:
+        print(f"Aviso metadata create_all: {e}")
+
     # Asegurar migración de esquema para presupuestos
     try:
         from .crud_budgets import ensure_budget_schema

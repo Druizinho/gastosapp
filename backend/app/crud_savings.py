@@ -19,6 +19,9 @@ async def get_saving_goals(
     is_completed: Optional[bool] = None,
     is_active: Optional[bool] = None
 ) -> List[models.SavingGoal]:
+    from .crud import ensure_categories_and_debts_schema
+    await ensure_categories_and_debts_schema()
+
     query = select(models.SavingGoal).filter(
         models.SavingGoal.user_id == user_id
     ).options(selectinload(models.SavingGoal.deposits))
@@ -60,6 +63,9 @@ async def create_saving_goal(
     data = goal.model_dump(exclude={'manual_rate', 'shared_with', 'shared_with_ids', 'admin_ids'})
     if extra_data:
         data.update(extra_data)
+
+    if not data.get("category"):
+        data["category"] = "Proyectos" if data.get("type") == "project" else "Ahorro"
 
     clean_targets = [tid for tid in shared_with_ids if tid != user_id]
 
@@ -311,6 +317,10 @@ async def add_saving_deposit(
         del data['manual_rate']
     register_as_expense = data.pop('register_as_expense', False)
 
+    deposit_cat = data.get("category")
+    resolved_cat = deposit_cat or db_goal.category or ("Proyectos" if db_goal.type == "project" else "Ahorro")
+    data["category"] = resolved_cat
+
     if extra_data:
         data.update(extra_data)
 
@@ -318,12 +328,11 @@ async def add_saving_deposit(
 
     expense_id = None
     if register_as_expense:
+        exp_cat = resolved_cat
         if db_goal.type == 'project':
             exp_desc = f"Pago {db_goal.name}: {deposit.note}" if deposit.note else f"Pago de Proyecto: {db_goal.name}"
-            exp_cat = db_goal.category or "Otros"
         else:
             exp_desc = f"Aporte de Ahorro: {db_goal.name}"
-            exp_cat = db_goal.category or "Sin Categoría"
 
         expense_data = {
             "amount": data["amount"],
@@ -448,6 +457,7 @@ async def update_saving_deposit(
 
     update_dict = deposit_update.model_dump(exclude_unset=True)
     manual_rate = update_dict.pop('manual_rate', None)
+    register_as_expense = update_dict.pop('register_as_expense', None)
 
     if extra_data is None and ('amount' in update_dict or 'currency' in update_dict):
         new_amount = update_dict.get('amount', deposit.amount)
@@ -485,9 +495,59 @@ async def update_saving_deposit(
                 exp.currency = update_dict['currency'].value if hasattr(update_dict['currency'], 'value') else str(update_dict['currency'])
             if 'deposit_date' in update_dict:
                 exp.date = update_dict['deposit_date']
+            if 'category' in update_dict:
+                exp.category = update_dict['category']
             for key in ["amount_usd", "amount_bs", "amount_eur", "amount_usdt", "rate_usd_bs", "rate_eur_bs", "rate_usdt_bs"]:
                 if key in update_dict:
                     setattr(exp, key, update_dict[key])
+
+    # Handle register_as_expense toggle
+    if register_as_expense is True and not deposit.expense_id:
+        target_owner_id = deposit.paid_by_user_id or user_id
+        g_res = await db.execute(select(models.SavingGoal).where(models.SavingGoal.id == deposit.goal_id))
+        db_goal = g_res.scalars().first()
+        is_project = db_goal.type == 'project' if db_goal else False
+        exp_cat = deposit.category or (db_goal.category if db_goal else None) or ("Proyectos" if is_project else "Ahorro")
+        if is_project:
+            exp_desc = f"Pago {db_goal.name}: {deposit.note}" if (db_goal and deposit.note) else (f"Pago de Proyecto: {db_goal.name}" if db_goal else "Pago de Proyecto")
+        else:
+            goal_name = db_goal.name if db_goal else "Ahorro"
+            exp_desc = f"Aporte de Ahorro: {goal_name}"
+
+        curr_val = deposit.currency.value if hasattr(deposit.currency, 'value') else str(deposit.currency)
+        expense_data = {
+            "amount": deposit.amount,
+            "currency": curr_val,
+            "description": exp_desc,
+            "category": exp_cat,
+            "date": deposit.deposit_date,
+            "user_id": target_owner_id,
+            "amount_usd": deposit.amount_usd,
+            "amount_bs": deposit.amount_bs,
+            "amount_eur": deposit.amount_eur,
+            "amount_usdt": deposit.amount_usdt,
+            "rate_usd_bs": deposit.rate_usd_bs,
+            "rate_eur_bs": deposit.rate_eur_bs,
+            "rate_usdt_bs": deposit.rate_usdt_bs,
+        }
+        db_expense = models.Expense(**expense_data)
+        db.add(db_expense)
+        await db.flush()
+        deposit.expense_id = db_expense.id
+        deposit.create_expense = True
+    elif register_as_expense is False and deposit.expense_id:
+        target_owner_id = deposit.paid_by_user_id or user_id
+        exp_res = await db.execute(
+            select(models.Expense).filter(
+                models.Expense.id == deposit.expense_id,
+                models.Expense.user_id == target_owner_id
+            )
+        )
+        exp = exp_res.scalars().first()
+        if exp:
+            await db.delete(exp)
+        deposit.expense_id = None
+        deposit.create_expense = False
 
     if membership and deposit.sync_id:
         share, _ = membership

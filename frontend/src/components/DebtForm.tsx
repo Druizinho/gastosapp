@@ -28,7 +28,7 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
     type,
     counterpart: '',
     concept: '',
-    category: initialData?.category || '',
+    category: initialData?.category ?? (!initialData ? 'Deudas' : ''),
     total_amount: '' as any,
     currency: 'USD_BCV',
     start_date: new Date().toISOString().split('T')[0],

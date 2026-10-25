@@ -200,6 +200,8 @@ DEFAULT_CATEGORIES = [
     {"name": "Gastos Fijos", "icon": "Receipt", "color": "#14B8A6"},
     {"name": "Deudas", "icon": "CreditCard", "color": "#F97316"},
     {"name": "Ahorro", "icon": "PiggyBank", "color": "#22C55E"},
+    {"name": "Proyectos", "icon": "FolderKanban", "color": "#3B82F6"},
+    {"name": "Ingresos", "icon": "Wallet", "color": "#10B981"},
     {"name": "Sin Categoría", "icon": "HelpCircle", "color": "#64748B"},
 ]
 
@@ -209,62 +211,269 @@ async def ensure_categories_and_debts_schema() -> None:
     global _categories_debts_schema_ensured
     if _categories_debts_schema_ensured:
         return
+
+    statements = [
+        # 1. categories columns
+        "ALTER TABLE categories ADD COLUMN IF NOT EXISTS icon VARCHAR(50) DEFAULT 'Package'",
+        # 2. debts columns
+        "ALTER TABLE debts ADD COLUMN IF NOT EXISTS category VARCHAR(100) DEFAULT 'Deudas'",
+        # 3. debt_payments columns
+        "ALTER TABLE debt_payments ADD COLUMN IF NOT EXISTS category VARCHAR(100)",
+        "ALTER TABLE debt_payments ADD COLUMN IF NOT EXISTS create_expense BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE debt_payments ADD COLUMN IF NOT EXISTS expense_id UUID",
+        # 4. estimated_incomes columns
+        "ALTER TABLE estimated_incomes ADD COLUMN IF NOT EXISTS category VARCHAR(100) DEFAULT 'Ingresos'",
+        # 5. saving_goals columns
+        "ALTER TABLE saving_goals ADD COLUMN IF NOT EXISTS category VARCHAR(100) DEFAULT 'Ahorro'",
+        # 6. saving_deposits columns
+        "ALTER TABLE saving_deposits ADD COLUMN IF NOT EXISTS category VARCHAR(100)",
+        "ALTER TABLE saving_deposits ADD COLUMN IF NOT EXISTS create_expense BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE saving_deposits ADD COLUMN IF NOT EXISTS expense_id UUID",
+        # 7. fixed_expenses columns
+        "ALTER TABLE fixed_expenses ADD COLUMN IF NOT EXISTS category VARCHAR(100) DEFAULT 'Gastos Fijos'",
+        # 8. Migrate legacy categories rows where color holds an icon name
+        """
+        UPDATE categories 
+        SET icon = color 
+        WHERE (icon IS NULL OR icon = 'Package' OR icon = '') 
+          AND color IS NOT NULL 
+          AND color NOT LIKE '#%'
+        """,
+        # 9. Normalize category colors
+        """
+        UPDATE categories 
+        SET color = CASE 
+            WHEN lower(name) = 'alimentación' OR lower(color) = 'utensils' THEN '#F59E0B'
+            WHEN lower(name) = 'transporte' OR lower(color) = 'car' THEN '#3B82F6'
+            WHEN lower(name) = 'vivienda' OR lower(color) = 'home' THEN '#8B5CF6'
+            WHEN lower(name) = 'servicios' OR lower(color) = 'zap' THEN '#06B6D4'
+            WHEN lower(name) = 'salud' OR lower(color) = 'heartpulse' THEN '#EF4444'
+            WHEN lower(name) = 'ocio' OR lower(color) = 'tv' THEN '#EC4899'
+            WHEN lower(name) = 'compras' OR lower(color) = 'shoppingcart' THEN '#10B981'
+            WHEN lower(name) = 'educación' OR lower(color) = 'graduationcap' THEN '#6366F1'
+            WHEN lower(name) = 'gastos fijos' OR lower(color) = 'receipt' THEN '#14B8A6'
+            WHEN lower(name) = 'deudas' OR lower(color) = 'creditcard' THEN '#F97316'
+            WHEN lower(name) = 'ahorro' OR lower(color) = 'piggybank' THEN '#22C55E'
+            WHEN lower(name) = 'proyectos' OR lower(color) = 'folderkanban' THEN '#3B82F6'
+            WHEN lower(name) = 'ingresos' OR lower(color) = 'wallet' THEN '#10B981'
+            ELSE '#6366F1'
+        END
+        WHERE color IS NULL OR color NOT LIKE '#%'
+        """,
+        "UPDATE categories SET icon = 'Package' WHERE icon IS NULL OR icon = ''",
+        # 10. Heal existing USD_CASH records across tables
+        """
+        UPDATE expenses
+        SET 
+            amount_bs = ROUND(amount * GREATEST(COALESCE(amount_bs / NULLIF(amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0)), 4),
+            amount_usd = CASE 
+                WHEN rate_usd_bs IS NOT NULL AND rate_usd_bs > 0 
+                THEN ROUND((amount * GREATEST(COALESCE(amount_bs / NULLIF(amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0))) / rate_usd_bs, 4)
+                ELSE amount_usd 
+            END,
+            amount_eur = CASE 
+                WHEN rate_eur_bs IS NOT NULL AND rate_eur_bs > 0 
+                THEN ROUND((amount * GREATEST(COALESCE(amount_bs / NULLIF(amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0))) / rate_eur_bs, 4)
+                ELSE amount_eur 
+            END,
+            amount_usdt = CASE 
+                WHEN rate_usdt_bs IS NOT NULL AND rate_usdt_bs > 0 
+                THEN ROUND((amount * GREATEST(COALESCE(amount_bs / NULLIF(amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0))) / rate_usdt_bs, 4)
+                ELSE amount_usdt 
+            END
+        WHERE currency = 'USD_CASH' 
+          AND amount > 0 
+          AND GREATEST(COALESCE(amount_bs / NULLIF(amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0)) > 0
+        """,
+        """
+        UPDATE fixed_expenses
+        SET 
+            amount_bs = ROUND(amount * GREATEST(COALESCE(amount_bs / NULLIF(amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0)), 4),
+            amount_usd = CASE 
+                WHEN rate_usd_bs IS NOT NULL AND rate_usd_bs > 0 
+                THEN ROUND((amount * GREATEST(COALESCE(amount_bs / NULLIF(amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0))) / rate_usd_bs, 4)
+                ELSE amount_usd 
+            END,
+            amount_eur = CASE 
+                WHEN rate_eur_bs IS NOT NULL AND rate_eur_bs > 0 
+                THEN ROUND((amount * GREATEST(COALESCE(amount_bs / NULLIF(amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0))) / rate_eur_bs, 4)
+                ELSE amount_eur 
+            END,
+            amount_usdt = CASE 
+                WHEN rate_usdt_bs IS NOT NULL AND rate_usdt_bs > 0 
+                THEN ROUND((amount * GREATEST(COALESCE(amount_bs / NULLIF(amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0))) / rate_usdt_bs, 4)
+                ELSE amount_usdt 
+            END
+        WHERE currency = 'USD_CASH' 
+          AND amount > 0 
+          AND GREATEST(COALESCE(amount_bs / NULLIF(amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0)) > 0
+        """,
+        """
+        UPDATE debt_payments
+        SET 
+            amount_bs = ROUND(amount * GREATEST(COALESCE(amount_bs / NULLIF(amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0)), 4),
+            amount_usd = CASE 
+                WHEN rate_usd_bs IS NOT NULL AND rate_usd_bs > 0 
+                THEN ROUND((amount * GREATEST(COALESCE(amount_bs / NULLIF(amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0))) / rate_usd_bs, 4)
+                ELSE amount_usd 
+            END,
+            amount_eur = CASE 
+                WHEN rate_eur_bs IS NOT NULL AND rate_eur_bs > 0 
+                THEN ROUND((amount * GREATEST(COALESCE(amount_bs / NULLIF(amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0))) / rate_eur_bs, 4)
+                ELSE amount_eur 
+            END,
+            amount_usdt = CASE 
+                WHEN rate_usdt_bs IS NOT NULL AND rate_usdt_bs > 0 
+                THEN ROUND((amount * GREATEST(COALESCE(amount_bs / NULLIF(amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0))) / rate_usdt_bs, 4)
+                ELSE amount_usdt 
+            END
+        WHERE currency = 'USD_CASH' 
+          AND amount > 0 
+          AND GREATEST(COALESCE(amount_bs / NULLIF(amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0)) > 0
+        """,
+        """
+        UPDATE saving_deposits
+        SET 
+            amount_bs = ROUND(amount * GREATEST(COALESCE(amount_bs / NULLIF(amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0)), 4),
+            amount_usd = CASE 
+                WHEN rate_usd_bs IS NOT NULL AND rate_usd_bs > 0 
+                THEN ROUND((amount * GREATEST(COALESCE(amount_bs / NULLIF(amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0))) / rate_usd_bs, 4)
+                ELSE amount_usd 
+            END,
+            amount_eur = CASE 
+                WHEN rate_eur_bs IS NOT NULL AND rate_eur_bs > 0 
+                THEN ROUND((amount * GREATEST(COALESCE(amount_bs / NULLIF(amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0))) / rate_eur_bs, 4)
+                ELSE amount_eur 
+            END,
+            amount_usdt = CASE 
+                WHEN rate_usdt_bs IS NOT NULL AND rate_usdt_bs > 0 
+                THEN ROUND((amount * GREATEST(COALESCE(amount_bs / NULLIF(amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0))) / rate_usdt_bs, 4)
+                ELSE amount_usdt 
+            END
+        WHERE currency = 'USD_CASH' 
+          AND amount > 0 
+          AND GREATEST(COALESCE(amount_bs / NULLIF(amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0)) > 0
+        """,
+        """
+        UPDATE saving_goals
+        SET 
+            amount_bs = ROUND(target_amount * GREATEST(COALESCE(amount_bs / NULLIF(target_amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0)), 4),
+            amount_usd = CASE 
+                WHEN rate_usd_bs IS NOT NULL AND rate_usd_bs > 0 
+                THEN ROUND((target_amount * GREATEST(COALESCE(amount_bs / NULLIF(target_amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0))) / rate_usd_bs, 4)
+                ELSE amount_usd 
+            END,
+            amount_eur = CASE 
+                WHEN rate_eur_bs IS NOT NULL AND rate_eur_bs > 0 
+                THEN ROUND((target_amount * GREATEST(COALESCE(amount_bs / NULLIF(target_amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0))) / rate_eur_bs, 4)
+                ELSE amount_eur 
+            END,
+            amount_usdt = CASE 
+                WHEN rate_usdt_bs IS NOT NULL AND rate_usdt_bs > 0 
+                THEN ROUND((target_amount * GREATEST(COALESCE(amount_bs / NULLIF(target_amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0))) / rate_usdt_bs, 4)
+                ELSE amount_usdt 
+            END
+        WHERE currency = 'USD_CASH' 
+          AND target_amount > 0 
+          AND GREATEST(COALESCE(amount_bs / NULLIF(target_amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0)) > 0
+        """,
+        """
+        UPDATE fixed_expense_checks
+        SET 
+            amount_bs = ROUND(paid_amount * GREATEST(COALESCE(amount_bs / NULLIF(paid_amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0)), 4),
+            amount_usd = CASE 
+                WHEN rate_usd_bs IS NOT NULL AND rate_usd_bs > 0 
+                THEN ROUND((paid_amount * GREATEST(COALESCE(amount_bs / NULLIF(paid_amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0))) / rate_usd_bs, 4)
+                ELSE amount_usd 
+            END,
+            amount_eur = CASE 
+                WHEN rate_eur_bs IS NOT NULL AND rate_eur_bs > 0 
+                THEN ROUND((paid_amount * GREATEST(COALESCE(amount_bs / NULLIF(paid_amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0))) / rate_eur_bs, 4)
+                ELSE amount_eur 
+            END,
+            amount_usdt = CASE 
+                WHEN rate_usdt_bs IS NOT NULL AND rate_usdt_bs > 0 
+                THEN ROUND((paid_amount * GREATEST(COALESCE(amount_bs / NULLIF(paid_amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0))) / rate_usdt_bs, 4)
+                ELSE amount_usdt 
+            END
+        WHERE currency = 'USD_CASH' 
+          AND paid_amount > 0 
+          AND GREATEST(COALESCE(amount_bs / NULLIF(paid_amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0)) > 0
+        """,
+        """
+        UPDATE income_checks
+        SET 
+            amount_bs = ROUND(real_amount * GREATEST(COALESCE(amount_bs / NULLIF(real_amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0)), 4),
+            amount_usd = CASE 
+                WHEN rate_usd_bs IS NOT NULL AND rate_usd_bs > 0 
+                THEN ROUND((real_amount * GREATEST(COALESCE(amount_bs / NULLIF(real_amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0))) / rate_usd_bs, 4)
+                ELSE amount_usd 
+            END,
+            amount_eur = CASE 
+                WHEN rate_eur_bs IS NOT NULL AND rate_eur_bs > 0 
+                THEN ROUND((real_amount * GREATEST(COALESCE(amount_bs / NULLIF(real_amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0))) / rate_eur_bs, 4)
+                ELSE amount_eur 
+            END,
+            amount_usdt = CASE 
+                WHEN rate_usdt_bs IS NOT NULL AND rate_usdt_bs > 0 
+                THEN ROUND((real_amount * GREATEST(COALESCE(amount_bs / NULLIF(real_amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0))) / rate_usdt_bs, 4)
+                ELSE amount_usdt 
+            END
+        WHERE currency = 'USD_CASH' 
+          AND real_amount > 0 
+          AND GREATEST(COALESCE(amount_bs / NULLIF(real_amount, 0), 0), COALESCE(rate_usd_bs, 0), COALESCE(rate_eur_bs, 0), COALESCE(rate_usdt_bs, 0)) > 0
+        """,
+    ]
+
+    for stmt in statements:
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text(stmt))
+        except Exception:
+            # Table might not exist yet or dialect variance; do not abort other statements
+            pass
+
+    # Foreign key for debt_payments.expense_id
     try:
         async with engine.begin() as conn:
-            # 1. categories columns
-            await conn.execute(
-                text("ALTER TABLE categories ADD COLUMN IF NOT EXISTS icon VARCHAR(50) DEFAULT 'Package'")
-            )
-            # 2. debts columns
-            await conn.execute(
-                text("ALTER TABLE debts ADD COLUMN IF NOT EXISTS category VARCHAR(100) DEFAULT 'Deudas'")
-            )
-            # 3. debt_payments columns
-            await conn.execute(
-                text("ALTER TABLE debt_payments ADD COLUMN IF NOT EXISTS category VARCHAR(100)")
-            )
-            await conn.execute(
-                text("ALTER TABLE debt_payments ADD COLUMN IF NOT EXISTS create_expense BOOLEAN NOT NULL DEFAULT FALSE")
-            )
-            await conn.execute(
-                text("ALTER TABLE debt_payments ADD COLUMN IF NOT EXISTS expense_id UUID REFERENCES expenses(id) ON DELETE SET NULL")
-            )
-            # 4. Migrate legacy categories rows where color holds an icon name
-            await conn.execute(
-                text("""
-                    UPDATE categories 
-                    SET icon = color 
-                    WHERE (icon IS NULL OR icon = 'Package' OR icon = '') 
-                      AND color IS NOT NULL 
-                      AND color NOT LIKE '#%'
-                """)
-            )
-            await conn.execute(
-                text("""
-                    UPDATE categories 
-                    SET color = CASE 
-                        WHEN lower(name) = 'alimentación' OR lower(color) = 'utensils' THEN '#F59E0B'
-                        WHEN lower(name) = 'transporte' OR lower(color) = 'car' THEN '#3B82F6'
-                        WHEN lower(name) = 'vivienda' OR lower(color) = 'home' THEN '#8B5CF6'
-                        WHEN lower(name) = 'servicios' OR lower(color) = 'zap' THEN '#06B6D4'
-                        WHEN lower(name) = 'salud' OR lower(color) = 'heartpulse' THEN '#EF4444'
-                        WHEN lower(name) = 'ocio' OR lower(color) = 'tv' THEN '#EC4899'
-                        WHEN lower(name) = 'compras' OR lower(color) = 'shoppingcart' THEN '#10B981'
-                        WHEN lower(name) = 'educación' OR lower(color) = 'graduationcap' THEN '#6366F1'
-                        WHEN lower(name) = 'gastos fijos' OR lower(color) = 'receipt' THEN '#14B8A6'
-                        WHEN lower(name) = 'deudas' OR lower(color) = 'creditcard' THEN '#F97316'
-                        WHEN lower(name) = 'ahorro' OR lower(color) = 'piggybank' THEN '#22C55E'
-                        ELSE '#6366F1'
-                    END
-                    WHERE color IS NULL OR color NOT LIKE '#%'
-                """)
-            )
-            await conn.execute(
-                text("UPDATE categories SET icon = 'Package' WHERE icon IS NULL OR icon = ''")
-            )
-        _categories_debts_schema_ensured = True
-    except Exception as e:
-        print(f"Aviso asegurando esquema de categorías y deudas: {e}")
+            await conn.execute(text("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint WHERE conname = 'fk_debt_payments_expense_id'
+                    ) THEN
+                        ALTER TABLE debt_payments 
+                        ADD CONSTRAINT fk_debt_payments_expense_id 
+                        FOREIGN KEY (expense_id) REFERENCES expenses(id) ON DELETE SET NULL;
+                    END IF;
+                EXCEPTION WHEN OTHERS THEN
+                    NULL;
+                END $$;
+            """))
+    except Exception:
+        pass
+
+    # Foreign key for saving_deposits.expense_id
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint WHERE conname = 'fk_saving_deposits_expense_id'
+                    ) THEN
+                        ALTER TABLE saving_deposits 
+                        ADD CONSTRAINT fk_saving_deposits_expense_id 
+                        FOREIGN KEY (expense_id) REFERENCES expenses(id) ON DELETE SET NULL;
+                    END IF;
+                EXCEPTION WHEN OTHERS THEN
+                    NULL;
+                END $$;
+            """))
+    except Exception:
+        pass
+
+    _categories_debts_schema_ensured = True
 
 def _normalize_category_instance(cat: models.Category) -> None:
     if not cat.icon or cat.icon.strip() == "":
@@ -298,6 +507,10 @@ def _normalize_category_instance(cat: models.Category) -> None:
             "creditcard": "#F97316",
             "ahorro": "#22C55E",
             "piggybank": "#22C55E",
+            "proyectos": "#3B82F6",
+            "folderkanban": "#3B82F6",
+            "ingresos": "#10B981",
+            "wallet": "#10B981",
             "sin categoría": "#64748B",
             "helpcircle": "#64748B",
         }
@@ -338,6 +551,7 @@ async def seed_default_categories(db: AsyncSession, user_id: UUID, only_if_empty
     return res.scalars().all()
 
 async def get_categories(db: AsyncSession, user_id: UUID):
+    await ensure_categories_and_debts_schema()
     result = await db.execute(
         select(models.Category).filter(models.Category.user_id == user_id).order_by(models.Category.created_at.asc())
     )
@@ -364,42 +578,73 @@ async def get_categories(db: AsyncSession, user_id: UUID):
     for cat in cats:
         _normalize_category_instance(cat)
 
-    # Grouped counts across 5 tables (no N+1 queries)
-    exp_res = await db.execute(
-        select(models.Expense.category, func.count(models.Expense.id))
-        .where(models.Expense.user_id == user_id)
-        .group_by(models.Expense.category)
-    )
-    exp_counts = {row[0].strip().lower(): row[1] for row in exp_res.all() if row[0]}
+    # Grouped counts across tables (resilient to schema delays)
+    exp_counts = {}
+    try:
+        exp_res = await db.execute(
+            select(models.Expense.category, func.count(models.Expense.id))
+            .where(models.Expense.user_id == user_id)
+            .group_by(models.Expense.category)
+        )
+        exp_counts = {row[0].strip().lower(): row[1] for row in exp_res.all() if row[0]}
+    except Exception:
+        await db.rollback()
 
-    fe_res = await db.execute(
-        select(models.FixedExpense.category, func.count(models.FixedExpense.id))
-        .where(models.FixedExpense.user_id == user_id)
-        .group_by(models.FixedExpense.category)
-    )
-    fe_counts = {row[0].strip().lower(): row[1] for row in fe_res.all() if row[0]}
+    fe_counts = {}
+    try:
+        fe_res = await db.execute(
+            select(models.FixedExpense.category, func.count(models.FixedExpense.id))
+            .where(models.FixedExpense.user_id == user_id)
+            .group_by(models.FixedExpense.category)
+        )
+        fe_counts = {row[0].strip().lower(): row[1] for row in fe_res.all() if row[0]}
+    except Exception:
+        await db.rollback()
 
-    debt_res = await db.execute(
-        select(models.Debt.category, func.count(models.Debt.id))
-        .where(models.Debt.user_id == user_id)
-        .group_by(models.Debt.category)
-    )
-    debt_counts = {row[0].strip().lower(): row[1] for row in debt_res.all() if row[0]}
+    debt_counts = {}
+    try:
+        debt_res = await db.execute(
+            select(models.Debt.category, func.count(models.Debt.id))
+            .where(models.Debt.user_id == user_id)
+            .group_by(models.Debt.category)
+        )
+        debt_counts = {row[0].strip().lower(): row[1] for row in debt_res.all() if row[0]}
+    except Exception:
+        await db.rollback()
 
-    saving_res = await db.execute(
-        select(models.SavingGoal.category, func.count(models.SavingGoal.id))
-        .where(models.SavingGoal.user_id == user_id)
-        .group_by(models.SavingGoal.category)
-    )
-    saving_counts = {row[0].strip().lower(): row[1] for row in saving_res.all() if row[0]}
+    saving_counts = {}
+    try:
+        saving_res = await db.execute(
+            select(models.SavingGoal.category, func.count(models.SavingGoal.id))
+            .where(models.SavingGoal.user_id == user_id)
+            .group_by(models.SavingGoal.category)
+        )
+        saving_counts = {row[0].strip().lower(): row[1] for row in saving_res.all() if row[0]}
+    except Exception:
+        await db.rollback()
 
-    budget_res = await db.execute(
-        select(models.BudgetCategoryLimit.category_name, func.count(models.BudgetCategoryLimit.id))
-        .join(models.MonthlyBudget, models.BudgetCategoryLimit.budget_id == models.MonthlyBudget.id)
-        .where(models.MonthlyBudget.user_id == user_id)
-        .group_by(models.BudgetCategoryLimit.category_name)
-    )
-    budget_counts = {row[0].strip().lower(): row[1] for row in budget_res.all() if row[0]}
+    budget_counts = {}
+    try:
+        budget_res = await db.execute(
+            select(models.BudgetCategoryLimit.category_name, func.count(models.BudgetCategoryLimit.id))
+            .join(models.MonthlyBudget, models.BudgetCategoryLimit.budget_id == models.MonthlyBudget.id)
+            .where(models.MonthlyBudget.user_id == user_id)
+            .group_by(models.BudgetCategoryLimit.category_name)
+        )
+        budget_counts = {row[0].strip().lower(): row[1] for row in budget_res.all() if row[0]}
+    except Exception:
+        await db.rollback()
+
+    inc_counts = {}
+    try:
+        inc_res = await db.execute(
+            select(models.EstimatedIncome.category, func.count(models.EstimatedIncome.id))
+            .where(models.EstimatedIncome.user_id == user_id)
+            .group_by(models.EstimatedIncome.category)
+        )
+        inc_counts = {row[0].strip().lower(): row[1] for row in inc_res.all() if row[0]}
+    except Exception:
+        await db.rollback()
 
     for cat in cats:
         k = (cat.name or "").strip().lower()
@@ -408,12 +653,14 @@ async def get_categories(db: AsyncSession, user_id: UUID):
         dc = debt_counts.get(k, 0)
         sc = saving_counts.get(k, 0)
         bc = budget_counts.get(k, 0)
+        ic = inc_counts.get(k, 0)
         cat.expense_count = ec
         cat.fixed_count = fc
         cat.debt_count = dc
         cat.saving_count = sc
         cat.budget_count = bc
-        cat.usage_count = ec + fc + dc + sc
+        cat.income_count = ic
+        cat.usage_count = ec + fc + dc + sc + ic
 
     return cats
 
@@ -549,6 +796,27 @@ async def update_category(db: AsyncSession, category_id: UUID, category_update: 
                 .values(category=new_name)
             )
 
+        # 6. Update estimated incomes
+        await db.execute(
+            models.EstimatedIncome.__table__.update()
+            .where(models.EstimatedIncome.user_id == user_id)
+            .where(models.EstimatedIncome.category == old_name)
+            .values(category=new_name)
+        )
+
+        # 7. Update saving deposits
+        user_goal_ids_res = await db.execute(
+            select(models.SavingGoal.id).where(models.SavingGoal.user_id == user_id)
+        )
+        user_goal_ids = user_goal_ids_res.scalars().all()
+        if user_goal_ids:
+            await db.execute(
+                models.SavingDeposit.__table__.update()
+                .where(models.SavingDeposit.goal_id.in_(user_goal_ids))
+                .where(models.SavingDeposit.category == old_name)
+                .values(category=new_name)
+            )
+
         # 6. Synchronize BudgetCategoryLimit for user's budgets
         user_budgets_res = await db.execute(
             select(models.MonthlyBudget.id).where(models.MonthlyBudget.user_id == user_id)
@@ -654,6 +922,27 @@ async def delete_category(db: AsyncSession, category_id: UUID, user_id: UUID, re
             .where(models.DebtPayment.debt_id.in_(user_debt_ids))
             .where(models.DebtPayment.category == category_name)
             .values(category=target_category)
+        )
+
+    # 6. Reassign estimated incomes
+    await db.execute(
+        models.EstimatedIncome.__table__.update()
+        .where(models.EstimatedIncome.user_id == user_id)
+        .where(models.EstimatedIncome.category == category_name)
+        .values(category=reassign_to if reassign_to else "Ingresos")
+    )
+
+    # 7. Reassign saving deposits
+    user_goal_ids_res = await db.execute(
+        select(models.SavingGoal.id).where(models.SavingGoal.user_id == user_id)
+    )
+    user_goal_ids = user_goal_ids_res.scalars().all()
+    if user_goal_ids:
+        await db.execute(
+            models.SavingDeposit.__table__.update()
+            .where(models.SavingDeposit.goal_id.in_(user_goal_ids))
+            .where(models.SavingDeposit.category == category_name)
+            .values(category=reassign_to if reassign_to else None)
         )
 
     # 6. Synchronize BudgetCategoryLimit rows

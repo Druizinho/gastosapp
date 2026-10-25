@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
-import { createPortal } from 'react-dom';
 import type { Expense, Category } from '../types';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Pencil, Trash2, ChevronDown } from 'lucide-react';
+import { Pencil, Trash2 } from 'lucide-react';
 import { resolveCategoryVisuals } from '../utils/categoryVisuals';
+import { useCurrencyPreference } from '../context/CurrencyPreferenceContext';
+import { formatListCardAmounts } from '../utils/currencyFormat';
+import { CurrencyBreakdownCard } from './ui/CurrencyBreakdownCard';
+import ListCard from './ListCard';
+import ListCardBottomSheet from './ListCardBottomSheet';
 
 interface ExpenseItemProps {
   expense: Expense;
@@ -13,8 +17,6 @@ interface ExpenseItemProps {
   categoryColor?: string;
   categoryObj?: Category;
 }
-
-
 
 const getCurrencyBadge = (currency: string) => {
   switch (currency) {
@@ -27,160 +29,89 @@ const getCurrencyBadge = (currency: string) => {
   }
 };
 
-const formatVal = (val: number | null | undefined, prefix: string) => {
-  if (val === null || val === undefined) return 'N/A';
-  return `${prefix}${Number(val).toFixed(2)}`;
-};
-
 const ExpenseItem: React.FC<ExpenseItemProps> = ({ expense, onEdit, onDelete, categoryObj, categoryColor }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const { mainCurrency } = useCurrencyPreference();
   const effectiveCatObj = categoryObj || (categoryColor ? ({ name: expense.category, color: categoryColor } as Category) : null);
   const { IconComponent, hexColor } = resolveCategoryVisuals(effectiveCatObj, expense.category);
+  const { primaryAmount, secondaryAmount } = formatListCardAmounts(expense, mainCurrency);
 
   return (
-    <div
-      className="soft-card expense-item"
-      onClick={() => setIsExpanded(!isExpanded)}
-      style={{
-        padding: '1.25rem',
-        marginBottom: '1rem',
-        borderRadius: '16px',
-        cursor: 'pointer',
-        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        position: 'relative',
-        overflow: 'hidden'
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', width: '100%', flex: 1 }}>
-        <div style={{
-          backgroundColor: `${hexColor}18`,
-          color: hexColor,
-          width: '44px',
-          height: '44px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          borderRadius: '12px',
-          border: `1px solid ${hexColor}35`,
-          flexShrink: 0
-        }}>
-          <IconComponent size={22} />
-        </div>
+    <>
+      <ListCard
+        statusColor={hexColor}
+        icon={<IconComponent size={22} />}
+        iconBg={`${hexColor}18`}
+        iconColor={hexColor}
+        title={expense.description}
+        subtitle={format(parseISO(expense.date), "dd MMM yyyy", { locale: es })}
+        badges={
+          <span
+            style={{
+              backgroundColor: `${hexColor}18`,
+              color: hexColor,
+              border: `1px solid ${hexColor}35`,
+              padding: '0.1rem 0.45rem',
+              borderRadius: 'var(--radius-full)',
+              fontSize: '0.68rem',
+              fontWeight: 600,
+            }}
+          >
+            {expense.category}
+          </span>
+        }
+        primaryAmount={primaryAmount}
+        secondaryAmount={secondaryAmount}
+        onClick={() => setIsExpanded(true)}
+      />
 
-        <div style={{ flex: 1, minWidth: 0, paddingRight: '0.5rem' }}>
-          <h3 style={{ 
-            fontSize: '1.05rem', 
-            fontWeight: 600, 
-            color: 'var(--text-primary)', 
-            marginBottom: '0.2rem', 
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            display: 'block'
-          }}>
-            {expense.description}
-          </h3>
-          <div style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)' }}>
-            {format(parseISO(expense.date), "dd MMM yyyy", { locale: es })}
-          </div>
-        </div>
+      <ListCardBottomSheet
+        isOpen={isExpanded}
+        onClose={() => setIsExpanded(false)}
+        title="Detalle del Gasto"
+        subtitle={expense.description}
+        headerExtra={getCurrencyBadge(expense.currency)}
+        secondaryActions={[
+          {
+            label: 'Editar',
+            icon: <Pencil size={16} />,
+            onClick: () => {
+              setIsExpanded(false);
+              onEdit(expense);
+            },
+          },
+          {
+            label: 'Borrar',
+            icon: <Trash2 size={16} />,
+            danger: true,
+            onClick: () => {
+              setIsExpanded(false);
+              onDelete(expense.id);
+            },
+          },
+        ]}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <CurrencyBreakdownCard
+            originalAmount={expense.amount}
+            originalCurrency={expense.currency}
+            amountBs={expense.amount_bs}
+            amountUsd={expense.amount_usd}
+            amountEur={expense.amount_eur}
+            amountUsdt={expense.amount_usdt}
+            rateUsdBs={expense.rate_usd_bs}
+            rateEurBs={expense.rate_eur_bs}
+            rateUsdtBs={expense.rate_usdt_bs}
+          />
 
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: '90px' }}>
-          <div style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-primary)', textAlign: 'right', width: '100%' }}>
-            {formatVal(expense.amount_usd, '$')}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: 'var(--text-tertiary)', marginTop: '0.25rem', justifyContent: 'flex-end', width: '100%' }}>
-            <span style={{ fontSize: '0.75rem' }}>Ver más</span>
-            <ChevronDown
-              size={14}
-              style={{
-                transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                transition: 'transform 0.3s ease'
-              }}
-            />
-          </div>
-        </div>
-      </div>
-
-      {isExpanded && createPortal(
-        <div className="bottom-sheet-overlay" onClick={() => setIsExpanded(false)}>
-          <div className="bottom-sheet" onClick={(e) => e.stopPropagation()}>
-            <div className="bottom-sheet-handle" />
-            <h3 style={{ marginBottom: '0.25rem', color: 'var(--text-primary)', fontSize: '1.2rem', fontWeight: 600 }}>Detalle del Gasto</h3>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginBottom: '1rem', wordBreak: 'break-word', lineHeight: 1.4 }}>
-              {expense.description}
-            </p>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                <span style={{
-                  backgroundColor: `${hexColor}18`,
-                  color: hexColor,
-                  border: `1px solid ${hexColor}35`,
-                  padding: '2px 8px',
-                  borderRadius: '12px',
-                  fontSize: '0.75rem',
-                  fontWeight: 600
-                }}>
-                  {expense.category}
-                </span>
-                {getCurrencyBadge(expense.currency)}
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', background: 'var(--surface-muted)', padding: '1rem', borderRadius: '12px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Equiv. Bs</span>
-                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', textAlign: 'right' }}>
-                    {formatVal(expense.amount_bs, 'Bs ')}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Equiv. Dólar BCV</span>
-                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', textAlign: 'right' }}>
-                    {formatVal(expense.amount_usd, '$ ')}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Equiv. Euro BCV</span>
-                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', textAlign: 'right' }}>
-                    {formatVal(expense.amount_eur, '€ ')}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Equiv. USDT</span>
-                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', textAlign: 'right' }}>
-                    {formatVal(expense.amount_usdt, '$ ')}
-                  </span>
-                </div>
-              </div>
-
-              {expense.currency === 'USD_CASH' && (
-                <div style={{ fontSize: '0.75rem', color: '#10b981', fontStyle: 'italic' }}>
-                  * Efectivo: se usa la tasa más alta o facilitada.
-                </div>
-              )}
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', marginTop: '0.5rem' }}>
-                <button
-                  onClick={(e) => { e.stopPropagation(); setIsExpanded(false); onDelete(expense.id); }}
-                  style={{ flex: 1, padding: '0.75rem', borderRadius: '12px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontWeight: 600 }}
-                >
-                  <Trash2 size={18} /> Borrar
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); setIsExpanded(false); onEdit(expense); }}
-                  style={{ flex: 1, padding: '0.75rem', borderRadius: '12px', background: 'var(--accent-light)', color: 'var(--text-primary)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontWeight: 600 }}
-                >
-                  <Pencil size={18} /> Editar
-                </button>
-              </div>
-
+          {expense.currency === 'USD_CASH' && (
+            <div style={{ fontSize: '0.75rem', color: '#10b981', fontStyle: 'italic', marginTop: '0.25rem' }}>
+              * Efectivo: se usa la tasa más alta o facilitada.
             </div>
-          </div>
-        </div>,
-        document.body
-      )}
-    </div>
+          )}
+        </div>
+      </ListCardBottomSheet>
+    </>
   );
 };
 

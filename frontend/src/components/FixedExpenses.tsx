@@ -1,41 +1,64 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Receipt, Pause, Play, Trash2, Edit3, Calendar, CheckCircle2, Circle, Undo2 } from 'lucide-react';
-import { getFixedExpenses, getFixedExpenseSummary, createFixedExpense, updateFixedExpense, deleteFixedExpense, checkFixedExpense, uncheckFixedExpense } from '../api';
-import type { FixedExpense, FixedExpenseCreate, FixedExpenseUpdate, FixedExpenseSummary, FixedExpenseCheckCreate } from '../types';
+import { Plus, Receipt, Pause, Play, Trash2, Edit3, Calendar, CheckCircle2, Circle, Undo2, Share2 } from 'lucide-react';
+import {
+  getFixedExpenses,
+  createFixedExpense,
+  updateFixedExpense,
+  deleteFixedExpense,
+  checkFixedExpense,
+  uncheckFixedExpense,
+  getRates
+} from '../api';
+import type {
+  FixedExpense,
+  FixedExpenseCreate,
+  FixedExpenseUpdate,
+  FixedExpenseCheckCreate,
+  ExchangeRates,
+  MainCurrencyPreference
+} from '../types';
 import FixedExpenseForm from './FixedExpenseForm';
 import FixedExpensePayForm from './FixedExpensePayForm';
 import ConfirmModal from './ConfirmModal';
 import { MemberAvatars, ShareMembersModal } from './panas';
 import { resolveCategoryVisuals } from '../utils/categoryVisuals';
-
-const currencyLabels: Record<string, string> = {
-  'USD_BCV': '$',
-  'EUR_BCV': '€',
-  'BS': 'Bs.',
-  'USDT': 'USDT',
-  'USD_CASH': '$ Cash',
-};
-
-const formatAmount = (amount: number | null | undefined, prefix: string = '') => {
-  if (amount === null || amount === undefined) return '—';
-  return `${prefix}${Number(amount).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-};
+import { useCurrencyPreference } from '../context/CurrencyPreferenceContext';
+import {
+  formatCurrencyAmount,
+  formatListCardAmounts,
+  convertItemAmountToMainCurrency
+} from '../utils/currencyFormat';
+import { PageHeader } from './ui/PageHeader';
+import { SummaryHeroCard } from './ui/SummaryHeroCard';
+import { SegmentedTabs } from './ui/SegmentedTabs';
+import { EmptyState } from './ui/EmptyState';
+import { CurrencyBreakdownCard } from './ui/CurrencyBreakdownCard';
+import ListCard from './ListCard';
+import ListCardBottomSheet from './ListCardBottomSheet';
 
 const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
 const FixedExpenses: React.FC = () => {
   const navigate = useNavigate();
+  const { mainCurrency } = useCurrencyPreference();
+  const [displayCurrency, setDisplayCurrency] = useState<MainCurrencyPreference>(mainCurrency);
+
   const [expenses, setExpenses] = useState<FixedExpense[]>([]);
-  const [summary, setSummary] = useState<FixedExpenseSummary | null>(null);
+  const [rates, setRates] = useState<ExchangeRates | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<FixedExpense | null>(null);
   const [payingExpense, setPayingExpense] = useState<FixedExpense | null>(null);
   const [confirmDelete, setConfirmDelete] = useState({ isOpen: false, expenseId: '' });
   const [activeShareModalItem, setActiveShareModalItem] = useState<{ id: string; name: string } | null>(null);
-  const [displayCurrency, setDisplayCurrency] = useState<'bs' | 'usd' | 'eur' | 'usdt'>('usd');
   const [activeTab, setActiveTab] = useState<'pending' | 'paid'>('pending');
+  const [selectedExpenseForSheet, setSelectedExpenseForSheet] = useState<FixedExpense | null>(null);
+
+  // Sync preference with local display currency
+  useEffect(() => {
+    setDisplayCurrency(mainCurrency);
+  }, [mainCurrency]);
 
   // Month selector
   const [currentMonth, setCurrentMonth] = useState(() => {
@@ -45,18 +68,24 @@ const FixedExpenses: React.FC = () => {
 
   const monthLabel = useMemo(() => {
     const [y, m] = currentMonth.split('-');
-    return `${monthNames[parseInt(m) - 1]} ${y}`;
+    return `${monthNames[parseInt(m, 10) - 1]} ${y}`;
+  }, [currentMonth]);
+
+  const shortMonth = useMemo(() => {
+    const shortMonths = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    const [y, m] = currentMonth.split('-');
+    return `${shortMonths[parseInt(m, 10) - 1]} ${y}`;
   }, [currentMonth]);
 
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const [expensesData, summaryData] = await Promise.all([
+      const [expensesData, ratesData] = await Promise.all([
         getFixedExpenses(),
-        getFixedExpenseSummary(currentMonth)
+        getRates().catch(() => null),
       ]);
       setExpenses(expensesData);
-      setSummary(summaryData);
+      if (ratesData) setRates(ratesData);
     } catch (error) {
       console.error('Error fetching fixed expenses:', error);
     } finally {
@@ -78,8 +107,8 @@ const FixedExpenses: React.FC = () => {
     const startOfCurrentMonth = new Date(Date.UTC(y, m - 1, 1));
     const endOfCurrentMonth = new Date(Date.UTC(y, m, 0, 23, 59, 59, 999));
 
-    expenses.forEach(exp => {
-      const hasCheck = exp.checks?.some(c => c.month_year === currentMonth);
+    expenses.forEach((exp) => {
+      const hasCheck = exp.checks?.some((c) => c.month_year === currentMonth);
 
       // If created after this month and no check in this month, skip
       if (exp.created_at && new Date(exp.created_at) > endOfCurrentMonth && !hasCheck) {
@@ -108,7 +137,58 @@ const FixedExpenses: React.FC = () => {
 
   const totalActive = paidExpenses.length + pendingExpenses.length;
   const totalPaid = paidExpenses.length;
-  const progressPercent = totalActive > 0 ? (totalPaid / totalActive) * 100 : 0;
+  const countPercent = totalActive > 0 ? (totalPaid / totalActive) * 100 : 0;
+
+  // Monetary calculations in selected summary currency
+  const { paidAmountInSelected, pendingAmountInSelected, totalCommittedInSelected } = useMemo(() => {
+    let paidSum = 0;
+    let pendingSum = 0;
+
+    paidExpenses.forEach((exp) => {
+      const check = exp.checks?.find((c) => c.month_year === currentMonth);
+      if (check) {
+        paidSum += convertItemAmountToMainCurrency(
+          {
+            amount: check.paid_amount,
+            currency: check.currency,
+            amount_usd: check.amount_usd,
+            amount_bs: check.amount_bs,
+            amount_eur: check.amount_eur,
+            amount_usdt: check.amount_usdt,
+          },
+          displayCurrency,
+          rates
+        );
+      }
+    });
+
+    pendingExpenses.forEach((exp) => {
+      pendingSum += convertItemAmountToMainCurrency(
+        {
+          amount: exp.amount,
+          currency: exp.currency,
+          amount_usd: exp.amount_usd,
+          amount_bs: exp.amount_bs,
+          amount_eur: exp.amount_eur,
+          amount_usdt: exp.amount_usdt,
+        },
+        displayCurrency,
+        rates
+      );
+    });
+
+    return {
+      paidAmountInSelected: paidSum,
+      pendingAmountInSelected: pendingSum,
+      totalCommittedInSelected: paidSum + pendingSum,
+    };
+  }, [paidExpenses, pendingExpenses, displayCurrency, rates, currentMonth]);
+
+  const cycleDisplayCurrency = () => {
+    const currencies: MainCurrencyPreference[] = ['USD', 'BS', 'EUR', 'USDT'];
+    const idx = currencies.indexOf(displayCurrency);
+    setDisplayCurrency(currencies[(idx + 1) % currencies.length]);
+  };
 
   const handleCreateOrUpdate = async (data: FixedExpenseCreate | FixedExpenseUpdate) => {
     try {
@@ -172,419 +252,349 @@ const FixedExpenses: React.FC = () => {
     }
   };
 
-  const getSummaryAmount = () => {
-    if (!summary) return '0.00';
-    const map = { bs: summary.total_bs, usd: summary.total_usd, eur: summary.total_eur, usdt: summary.total_usdt };
-    const prefixMap = { bs: 'Bs. ', usd: '$ ', eur: '€ ', usdt: '' };
-    const suffixMap = { bs: '', usd: '', eur: '', usdt: ' USDT' };
-    return `${prefixMap[displayCurrency]}${Number(map[displayCurrency]).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${suffixMap[displayCurrency]}`;
-  };
-
-  const cycleDisplayCurrency = () => {
-    const order: Array<'bs' | 'usd' | 'eur' | 'usdt'> = ['usd', 'bs', 'eur', 'usdt'];
-    const idx = order.indexOf(displayCurrency);
-    setDisplayCurrency(order[(idx + 1) % order.length]);
-  };
-
   const renderExpenseCard = (expense: FixedExpense, isPaid: boolean = false) => {
-    const check = expense.checks?.find(c => c.month_year === currentMonth);
+    const check = expense.checks?.find((c) => c.month_year === currentMonth);
+    const { IconComponent, hexColor } = resolveCategoryVisuals(null, expense.category || undefined);
+    const isMember = expense.is_shared && expense.my_role === 'member';
 
-    return (
-      <div
-        key={expense.id}
-        className="soft-card"
-        style={{
-          padding: '1rem 1.25rem',
-          opacity: expense.is_active ? 1 : 0.55,
-          transition: 'opacity 0.2s ease',
-          borderLeft: isPaid ? '3px solid var(--income-color)' : undefined,
+    const statusColor = isPaid
+      ? 'var(--income-color)'
+      : !expense.is_active
+      ? 'var(--text-tertiary)'
+      : 'var(--warning-color)';
+
+    const quickAction = (
+      <button
+        type="button"
+        className="list-card-quick-action"
+        onClick={(e) => {
+          e.stopPropagation();
+          if (isPaid) {
+            if (check?.can_edit !== false) handleUncheck(expense);
+          } else if (expense.is_active) {
+            setPayingExpense(expense);
+          } else if (!isMember) {
+            handleToggleActive(expense);
+          }
         }}
+        disabled={isPaid && check?.can_edit === false}
+        title={
+          isPaid
+            ? check?.can_edit === false
+              ? 'Solo quien registró el pago puede deshacerlo'
+              : 'Deshacer pago'
+            : expense.is_active
+            ? 'Marcar como pagado'
+            : isMember
+            ? 'Solo administradores pueden reactivar'
+            : 'Reactivar'
+        }
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.35rem' }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ 
-              fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)',
-              textDecoration: expense.is_active ? 'none' : 'line-through',
-            }}>
-              {expense.name}
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', alignItems: 'center', marginTop: '0.25rem' }}>
-              {expense.category && (() => {
-                const { IconComponent, hexColor } = resolveCategoryVisuals(null, expense.category);
-                return (
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
-                    fontSize: '0.7rem', fontWeight: 600,
-                    color: hexColor, background: `${hexColor}18`,
-                    border: `1px solid ${hexColor}35`,
-                    padding: '0.12rem 0.5rem', borderRadius: 'var(--radius-full)',
-                  }}>
-                    <IconComponent size={10} />
-                    {expense.category}
-                  </span>
-                );
-              })()}
-              {expense.is_shared && (
-                <div
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setActiveShareModalItem({ id: expense.id, name: expense.name });
-                  }}
-                  style={{ marginTop: '0.25rem', display: 'inline-block' }}
-                  title="Gestionar miembros del gasto fijo"
-                >
-                  <MemberAvatars members={expense.shared_members} size={22} />
-                </div>
-              )}
-            </div>
-          </div>
-          <div style={{ textAlign: 'right', flexShrink: 0 }}>
-            <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-              {currencyLabels[expense.currency]} {formatAmount(expense.amount)}
-            </div>
-            {expense.amount_bs && expense.currency !== 'BS' && (
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-                ≈ Bs. {formatAmount(expense.amount_bs)}
-              </div>
-            )}
-            {expense.amount_usd && expense.currency !== 'USD_BCV' && expense.currency !== 'USD_CASH' && (
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-                ≈ $ {formatAmount(expense.amount_usd)}
-              </div>
-            )}
-          </div>
-        </div>
+        {isPaid ? (
+          <CheckCircle2 size={22} color="var(--income-color)" />
+        ) : expense.is_active ? (
+          <Circle size={22} color="var(--text-tertiary)" />
+        ) : (
+          <Play size={18} color="var(--income-color)" />
+        )}
+      </button>
+    );
 
-        {/* Paid check info */}
-        {isPaid && check && (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '0.5rem',
-            padding: '0.4rem 0.6rem', borderRadius: 'var(--radius-xs)',
-            background: 'rgba(16, 185, 129, 0.06)', marginBottom: '0.35rem',
-            fontSize: '0.75rem', color: 'var(--income-color)', fontWeight: 500,
-          }}>
-            <CheckCircle2 size={13} />
-            <span>
-              Pagado {check.paid_date} — {currencyLabels[check.currency]} {formatAmount(check.paid_amount)}
-              {check.paid_by_name && (
-                <span style={{ opacity: 0.9, fontWeight: 600 }}> • Por {check.paid_by_name}</span>
-              )}
-            </span>
-            {check.create_expense && (
-              <span style={{
-                marginLeft: 'auto', fontSize: '0.65rem',
-                background: 'rgba(16, 185, 129, 0.12)', padding: '0.1rem 0.4rem',
-                borderRadius: 'var(--radius-full)',
-              }}>
-                📊 En Dashboard
-              </span>
-            )}
+    const badges = (
+      <>
+        {expense.category && (
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.25rem',
+              fontSize: '0.7rem',
+              fontWeight: 600,
+              color: hexColor,
+              background: `${hexColor}18`,
+              border: `1px solid ${hexColor}35`,
+              padding: '0.12rem 0.5rem',
+              borderRadius: 'var(--radius-full)',
+            }}
+          >
+            <IconComponent size={10} />
+            {expense.category}
+          </span>
+        )}
+        {expense.is_shared && (
+          <div
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveShareModalItem({ id: expense.id, name: expense.name });
+            }}
+            title="Gestionar miembros del gasto fijo"
+            style={{ display: 'inline-flex', alignItems: 'center' }}
+          >
+            <MemberAvatars members={expense.shared_members} size={20} />
           </div>
         )}
+        {isPaid && check && (
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.2rem',
+              fontSize: '0.68rem',
+              color: 'var(--income-color)',
+              background: 'rgba(16, 185, 129, 0.1)',
+              padding: '0.1rem 0.45rem',
+              borderRadius: 'var(--radius-full)',
+              fontWeight: 600,
+            }}
+          >
+            <CheckCircle2 size={10} />
+            Pagado
+          </span>
+        )}
+      </>
+    );
 
-        {/* Bottom info row */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            {expense.payment_day && (
-              <span style={{
-                display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
-                fontSize: '0.75rem', color: 'var(--text-tertiary)',
-              }}>
-                <Calendar size={12} />
-                Día {expense.payment_day}
-              </span>
-            )}
-            {expense.notes && (
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
-                {expense.notes.length > 30 ? expense.notes.substring(0, 30) + '...' : expense.notes}
-              </span>
-            )}
-          </div>
+    const subtitle = (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+        {expense.payment_day && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+            <Calendar size={12} />
+            Día {expense.payment_day}
+          </span>
+        )}
+        {expense.notes && (
+          <span style={{ fontStyle: 'italic', opacity: 0.85 }}>
+            {expense.notes.length > 25 ? `${expense.notes.substring(0, 25)}...` : expense.notes}
+          </span>
+        )}
+      </span>
+    );
 
-          {/* Action buttons */}
-          <div style={{ display: 'flex', gap: '0.25rem' }}>
-            {expense.is_active && !isPaid && (
-              <button
-                onClick={() => setPayingExpense(expense)}
-                title="Marcar como pagado"
-                style={{
-                  width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
-                  background: 'var(--surface-muted)', border: 'none', display: 'flex',
-                  alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                  color: 'var(--text-tertiary)', transition: 'all 0.15s ease',
-                }}
-              >
-                <Circle size={16} />
-              </button>
-            )}
-            {expense.is_active && isPaid && (
-              <button
-                onClick={() => handleUncheck(expense)}
-                disabled={check?.can_edit === false}
-                title={check?.can_edit === false ? "Solo quien registró el pago o un admin puede deshacerlo" : "Deshacer pago"}
-                style={{
-                  width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
-                  background: 'rgba(16, 185, 129, 0.15)', border: 'none', display: 'flex',
-                  alignItems: 'center', justifyContent: 'center',
-                  cursor: check?.can_edit === false ? 'not-allowed' : 'pointer',
-                  opacity: check?.can_edit === false ? 0.4 : 1,
-                  color: 'var(--income-color)', transition: 'all 0.15s ease',
-                }}
-              >
-                <Undo2 size={14} />
-              </button>
-            )}
-            <button
-              onClick={() => handleToggleActive(expense)}
-              disabled={expense.is_shared && expense.my_role === 'member'}
-              title={expense.is_shared && expense.my_role === 'member' ? 'Solo administradores pueden pausar/reactivar' : (expense.is_active ? 'Pausar' : 'Reactivar')}
-              style={{
-                width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
-                background: 'var(--surface-muted)', border: 'none', display: 'flex',
-                alignItems: 'center', justifyContent: 'center',
-                cursor: (expense.is_shared && expense.my_role === 'member') ? 'not-allowed' : 'pointer',
-                opacity: (expense.is_shared && expense.my_role === 'member') ? 0.4 : 1,
-                color: expense.is_active ? 'var(--warning-color)' : 'var(--income-color)',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              {expense.is_active ? <Pause size={14} /> : <Play size={14} />}
-            </button>
-            <button
-              onClick={() => { setEditingExpense(expense); setIsFormOpen(true); }}
-              disabled={expense.is_shared && expense.my_role === 'member'}
-              title={expense.is_shared && expense.my_role === 'member' ? 'Solo administradores pueden editar el gasto fijo' : 'Editar'}
-              style={{
-                width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
-                background: 'var(--surface-muted)', border: 'none', display: 'flex',
-                alignItems: 'center', justifyContent: 'center',
-                cursor: (expense.is_shared && expense.my_role === 'member') ? 'not-allowed' : 'pointer',
-                opacity: (expense.is_shared && expense.my_role === 'member') ? 0.4 : 1,
-                color: 'var(--text-secondary)', transition: 'all 0.15s ease',
-              }}
-            >
-              <Edit3 size={14} />
-            </button>
-            <button
-              onClick={() => setConfirmDelete({ isOpen: true, expenseId: expense.id })}
-              disabled={expense.is_shared && expense.my_role === 'member'}
-              title={expense.is_shared && expense.my_role === 'member' ? 'Solo administradores pueden dar de baja el gasto fijo' : 'Eliminar'}
-              style={{
-                width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
-                background: 'var(--surface-muted)', border: 'none', display: 'flex',
-                alignItems: 'center', justifyContent: 'center',
-                cursor: (expense.is_shared && expense.my_role === 'member') ? 'not-allowed' : 'pointer',
-                opacity: (expense.is_shared && expense.my_role === 'member') ? 0.4 : 1,
-                color: 'var(--expense-color)', transition: 'all 0.15s ease',
-              }}
-            >
-              <Trash2 size={14} />
-            </button>
-          </div>
-        </div>
-      </div>
+    const itemForAmounts = isPaid && check
+      ? {
+          amount: check.paid_amount,
+          currency: check.currency,
+          amount_usd: check.amount_usd,
+          amount_bs: check.amount_bs,
+          amount_eur: check.amount_eur,
+          amount_usdt: check.amount_usdt,
+        }
+      : {
+          amount: expense.amount,
+          currency: expense.currency,
+          amount_usd: expense.amount_usd,
+          amount_bs: expense.amount_bs,
+          amount_eur: expense.amount_eur,
+          amount_usdt: expense.amount_usdt,
+        };
+
+    const { primaryAmount, secondaryAmount } = formatListCardAmounts(itemForAmounts, mainCurrency, rates);
+
+    return (
+      <ListCard
+        key={expense.id}
+        statusColor={statusColor}
+        icon={<IconComponent size={22} />}
+        iconBg={`${hexColor}18`}
+        iconColor={hexColor}
+        title={expense.name}
+        subtitle={subtitle}
+        badges={badges}
+        isPaused={!expense.is_active}
+        primaryAmount={primaryAmount}
+        secondaryAmount={secondaryAmount}
+        quickAction={quickAction}
+        onClick={() => setSelectedExpenseForSheet(expense)}
+      />
     );
   };
 
   return (
     <div style={{ padding: '1rem', paddingBottom: '6rem', maxWidth: '600px', margin: '0 auto' }}>
-      {/* Header with back button */}
-      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'nowrap', gap: '0.5rem', marginBottom: '1.5rem', paddingTop: '0.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
-          <button
-            onClick={() => navigate('/herramientas')}
-            style={{
-              width: '40px', height: '40px', borderRadius: 'var(--radius-full)',
-              background: 'var(--surface-color)', border: 'none', display: 'flex',
-              alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-              boxShadow: 'var(--shadow-sm)', color: 'var(--text-primary)',
-              flexShrink: 0
-            }}
-          >
-            <ArrowLeft size={20} />
-          </button>
-          <div style={{ minWidth: 0 }}>
-            <h1 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              Gastos Fijos
-            </h1>
-            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              Gastos recurrentes
-            </p>
+      <PageHeader
+        title="Gastos Fijos"
+        subtitle="Pagos recurrentes del mes"
+        onBack={() => navigate('/herramientas')}
+        rightAction={
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div
+              style={{
+                position: 'relative',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                background: 'var(--surface-color, #FFFFFF)',
+                padding: '0.45rem 0.65rem',
+                borderRadius: 'var(--radius-md, 12px)',
+                border: '1px solid var(--border-color, rgba(0,0,0,0.08))',
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+            >
+              <Calendar size={16} color="var(--text-secondary)" />
+              <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                {shortMonth}
+              </span>
+              <input
+                type="month"
+                value={currentMonth}
+                onChange={(e) => {
+                  if (e.target.value) setCurrentMonth(e.target.value);
+                }}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: '100%',
+                  opacity: 0,
+                  cursor: 'pointer',
+                }}
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setEditingExpense(null);
+                setIsFormOpen(true);
+              }}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                background: '#F59E0B',
+                color: '#FFFFFF',
+                border: 'none',
+                borderRadius: 'var(--radius-md, 12px)',
+                padding: '0.5rem 0.85rem',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                boxShadow: '0 3px 10px rgba(245, 158, 11, 0.35)',
+                transition: 'transform 150ms ease-out',
+                flexShrink: 0,
+              }}
+              onMouseDown={(e) => {
+                e.currentTarget.style.transform = 'scale(0.96)';
+              }}
+              onMouseUp={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+            >
+              <Plus size={16} strokeWidth={2.5} />
+              <span>Nuevo</span>
+            </button>
           </div>
-        </div>
-
-        {/* Compact Month Navigator */}
-        <div style={{ 
-          position: 'relative', display: 'flex', alignItems: 'center', gap: '0.5rem', 
-          background: 'var(--surface-color)', padding: '0.4rem 0.6rem', 
-          borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', 
-          cursor: 'pointer', flexShrink: 0
-        }}>
-          <Calendar size={18} color="var(--text-secondary)" />
-          <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-            {React.useMemo(() => {
-              const shortMonths = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-              const [y, m] = currentMonth.split('-');
-              return `${shortMonths[parseInt(m) - 1]} ${y}`;
-            }, [currentMonth])}
-          </span>
-          <input
-            type="month"
-            value={currentMonth}
-            onChange={(e) => {
-              if (e.target.value) setCurrentMonth(e.target.value);
-            }}
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              height: '100%',
-              opacity: 0,
-              cursor: 'pointer'
-            }}
-          />
-        </div>
-      </header>
-
-
+        }
+      />
 
       {/* Summary card with progress bar */}
-      <div
-        className="soft-card"
-        onClick={cycleDisplayCurrency}
-        style={{ 
-          marginBottom: '1.5rem', padding: '1.5rem', cursor: 'pointer',
-          background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.06) 0%, var(--surface-color) 100%)',
+      <SummaryHeroCard
+        eyebrow="Total Mensual Comprometido"
+        badgeText={`${totalActive} activos`}
+        badgeIcon={<Receipt size={14} />}
+        mainAmount={isLoading ? '...' : formatCurrencyAmount(totalCommittedInSelected, displayCurrency)}
+        currencyHintText="Toca para alternar moneda"
+        onCycleCurrency={cycleDisplayCurrency}
+        accentColor="#F59E0B"
+        metrics={[
+          {
+            label: 'PAGADO',
+            value: formatCurrencyAmount(paidAmountInSelected, displayCurrency),
+            valueColor: '#10B981',
+          },
+          {
+            label: 'PENDIENTE',
+            value: formatCurrencyAmount(pendingAmountInSelected, displayCurrency),
+            valueColor: '#F59E0B',
+          },
+        ]}
+        progress={{
+          percent: countPercent,
+          leftLabel: `${totalPaid}/${totalActive} pagados`,
+          rightLabel: `${Math.round(countPercent)}%`,
+          color: totalActive > 0 && totalPaid === totalActive ? '#10B981' : '#F59E0B',
         }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Total Mensual Comprometido
-          </span>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '0.5rem',
-            padding: '0.25rem 0.6rem', borderRadius: 'var(--radius-full)',
-            background: 'rgba(245, 158, 11, 0.1)', color: '#F59E0B',
-            fontSize: '0.75rem', fontWeight: 600,
-            whiteSpace: 'nowrap', flexShrink: 0
-          }}>
-            <Receipt size={14} />
-            {totalActive} activos
-          </div>
-        </div>
-        <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-          {isLoading ? '...' : getSummaryAmount()}
-        </div>
-        <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginTop: '0.25rem', marginBottom: '0.75rem' }}>
-          Toca para cambiar moneda
-        </div>
-
-        {/* Progress bar */}
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-              {totalPaid}/{totalActive} pagados
-            </span>
-            <span style={{ fontSize: '0.75rem', color: progressPercent === 100 ? 'var(--income-color)' : 'var(--text-secondary)', fontWeight: 500 }}>
-              {Math.round(progressPercent)}%
-            </span>
-          </div>
-          <div style={{
-            height: '8px', borderRadius: 'var(--radius-full)',
-            background: 'var(--surface-muted)', overflow: 'hidden',
-          }}>
-            <div style={{
-              height: '100%', borderRadius: 'var(--radius-full)',
-              background: progressPercent === 100
-                ? 'linear-gradient(90deg, var(--income-color), #34D399)'
-                : 'linear-gradient(90deg, #F59E0B, #FBBF24)',
-              width: `${progressPercent}%`,
-              transition: 'width 0.4s ease-out',
-            }} />
-          </div>
-        </div>
-      </div>
-
-      {/* Add button */}
-      <button
-        onClick={() => { setEditingExpense(null); setIsFormOpen(true); }}
-        style={{
-          width: '100%', padding: '0.875rem', marginBottom: '1.25rem',
-          background: 'var(--surface-color)', border: '2px dashed var(--accent-light)',
-          borderRadius: 'var(--radius-md)', cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
-          color: 'var(--text-secondary)', fontFamily: 'inherit', fontSize: '0.9rem', fontWeight: 600,
-          transition: 'all 0.2s ease',
-        }}
-      >
-        <Plus size={18} />
-        Agregar gasto fijo
-      </button>
+      />
 
       {/* Expense list */}
       {isLoading ? (
         <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-tertiary)' }}>Cargando...</div>
       ) : expenses.length === 0 ? (
-        <div className="empty-state">
-          <Receipt size={48} style={{ marginBottom: '1rem', opacity: 0.3 }} />
-          <p style={{ fontSize: '1rem', fontWeight: 500, marginBottom: '0.5rem' }}>Sin gastos fijos</p>
-          <p style={{ fontSize: '0.85rem' }}>Agrega tus gastos recurrentes como alquiler, servicios, suscripciones, etc.</p>
-        </div>
+        <EmptyState
+          icon={<Receipt size={28} />}
+          title="Sin gastos fijos"
+          description="Agrega tus gastos recurrentes como alquiler, servicios, suscripciones, etc."
+          actionLabel="Agregar gasto fijo"
+          onAction={() => {
+            setEditingExpense(null);
+            setIsFormOpen(true);
+          }}
+          actionColor="#F59E0B"
+        />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          
-          {/* Tabs */}
-          <div style={{ display: 'flex', background: 'var(--surface-muted)', borderRadius: 'var(--radius-full)', padding: '0.25rem' }}>
-            <button
-              onClick={() => setActiveTab('pending')}
-              style={{
-                flex: 1, padding: '0.6rem', border: 'none', borderRadius: 'var(--radius-full)',
-                fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
-                background: activeTab === 'pending' ? 'var(--surface-color)' : 'transparent',
-                color: activeTab === 'pending' ? 'var(--warning-color)' : 'var(--text-secondary)',
-                boxShadow: activeTab === 'pending' ? 'var(--shadow-sm)' : 'none'
-              }}
-            >
-              Pendientes ({pendingExpenses.length + pausedExpenses.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('paid')}
-              style={{
-                flex: 1, padding: '0.6rem', border: 'none', borderRadius: 'var(--radius-full)',
-                fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
-                background: activeTab === 'paid' ? 'var(--surface-color)' : 'transparent',
-                color: activeTab === 'paid' ? 'var(--income-color)' : 'var(--text-secondary)',
-                boxShadow: activeTab === 'paid' ? 'var(--shadow-sm)' : 'none'
-              }}
-            >
-              Pagados ({paidExpenses.length})
-            </button>
-          </div>
+          <SegmentedTabs<'pending' | 'paid'>
+            activeTab={activeTab}
+            onChange={setActiveTab}
+            activeColor={activeTab === 'paid' ? '#10B981' : '#F59E0B'}
+            tabs={[
+              {
+                id: 'pending',
+                label: 'Pendientes',
+                count: pendingExpenses.length + pausedExpenses.length,
+              },
+              {
+                id: 'paid',
+                label: 'Pagados',
+                count: paidExpenses.length,
+              },
+            ]}
+          />
 
           {/* Pending section */}
           {activeTab === 'pending' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {pendingExpenses.length === 0 && pausedExpenses.length === 0 ? (
-                <p style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: '2rem 0', fontSize: '0.9rem' }}>
-                  No hay gastos pendientes.
-                </p>
+                <EmptyState
+                  compact
+                  title="Sin gastos pendientes"
+                  description="No tienes pagos fijos pendientes por realizar en este mes."
+                />
               ) : (
                 <>
-                  {pendingExpenses.map(exp => renderExpenseCard(exp, false))}
-                  
+                  {pendingExpenses.map((exp) => renderExpenseCard(exp, false))}
+
                   {pausedExpenses.length > 0 && (
                     <>
-                      <div style={{
-                        display: 'flex', alignItems: 'center', gap: '0.5rem',
-                        marginTop: '1rem', marginBottom: '0.2rem', paddingLeft: '0.25rem',
-                      }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem',
+                          marginTop: '1rem',
+                          marginBottom: '0.2rem',
+                          paddingLeft: '0.25rem',
+                        }}
+                      >
                         <Pause size={14} style={{ color: 'var(--text-tertiary)' }} />
-                        <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        <span
+                          style={{
+                            fontSize: '0.8rem',
+                            fontWeight: 600,
+                            color: 'var(--text-tertiary)',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.04em',
+                          }}
+                        >
                           Pausados
                         </span>
                       </div>
-                      {pausedExpenses.map(exp => renderExpenseCard(exp, false))}
+                      {pausedExpenses.map((exp) => renderExpenseCard(exp, false))}
                     </>
                   )}
                 </>
@@ -596,23 +606,28 @@ const FixedExpenses: React.FC = () => {
           {activeTab === 'paid' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {paidExpenses.length === 0 ? (
-                <p style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: '2rem 0', fontSize: '0.9rem' }}>
-                  Aún no has registrado pagos este mes.
-                </p>
+                <EmptyState
+                  compact
+                  title="Sin pagos registrados"
+                  description="Aún no has registrado pagos para este mes."
+                />
               ) : (
-                paidExpenses.map(exp => renderExpenseCard(exp, true))
+                paidExpenses.map((exp) => renderExpenseCard(exp, true))
               )}
             </div>
           )}
 
           {/* All paid celebration */}
           {totalActive > 0 && totalPaid === totalActive && pendingExpenses.length === 0 && activeTab === 'pending' && (
-            <div style={{
-              textAlign: 'center', padding: '1.5rem',
-              background: 'rgba(16, 185, 129, 0.06)',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid rgba(16, 185, 129, 0.15)',
-            }}>
+            <div
+              style={{
+                textAlign: 'center',
+                padding: '1.5rem',
+                background: 'rgba(16, 185, 129, 0.06)',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid rgba(16, 185, 129, 0.15)',
+              }}
+            >
               <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🎉</div>
               <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--income-color)' }}>
                 ¡Todos los gastos fijos pagados!
@@ -630,7 +645,10 @@ const FixedExpenses: React.FC = () => {
         <FixedExpenseForm
           initialData={editingExpense}
           onSubmit={handleCreateOrUpdate}
-          onCancel={() => { setIsFormOpen(false); setEditingExpense(null); }}
+          onCancel={() => {
+            setIsFormOpen(false);
+            setEditingExpense(null);
+          }}
         />
       )}
 
@@ -646,14 +664,16 @@ const FixedExpenses: React.FC = () => {
 
       {/* Confirm Delete Modal */}
       {(() => {
-        const toDelete = expenses.find(e => e.id === confirmDelete.expenseId);
+        const toDelete = expenses.find((e) => e.id === confirmDelete.expenseId);
         return (
           <ConfirmModal
             isOpen={confirmDelete.isOpen}
             title="Dar de baja / Eliminar gasto fijo"
-            message={toDelete?.is_shared
-              ? `Este gasto fijo está compartido con tus panas (${toDelete.shared_members?.length || 2} miembros). A partir de este mes dejará de aparecer para todos. Si registraste pagos en meses anteriores, se mantendrán en el historial. ¿Deseas continuar?`
-              : "¿Estás seguro de que quieres dar de baja este gasto fijo? A partir de este mes dejará de aparecer. Si registraste pagos en meses anteriores, se mantendrán protegidos en tu historial."}
+            message={
+              toDelete?.is_shared
+                ? `Este gasto fijo está compartido con tus panas (${toDelete.shared_members?.length || 2} miembros). A partir de este mes dejará de aparecer para todos. Si registraste pagos en meses anteriores, se mantendrán en el historial. ¿Deseas continuar?`
+                : '¿Estás seguro de que quieres dar de baja este gasto fijo? A partir de este mes dejará de aparecer. Si registraste pagos en meses anteriores, se mantendrán protegidos en tu historial.'
+            }
             onConfirm={handleConfirmDelete}
             onCancel={() => setConfirmDelete({ isOpen: false, expenseId: '' })}
           />
@@ -673,6 +693,157 @@ const FixedExpenses: React.FC = () => {
           }}
         />
       )}
+
+      {/* Mobile Bottom Sheet for Details & Actions */}
+      {selectedExpenseForSheet && (() => {
+        const isPaid = selectedExpenseForSheet.checks?.some((c) => c.month_year === currentMonth);
+        const check = selectedExpenseForSheet.checks?.find((c) => c.month_year === currentMonth);
+        const isMember = selectedExpenseForSheet.is_shared && selectedExpenseForSheet.my_role === 'member';
+
+        return (
+          <ListCardBottomSheet
+            isOpen={!!selectedExpenseForSheet}
+            onClose={() => setSelectedExpenseForSheet(null)}
+            title={selectedExpenseForSheet.name}
+            subtitle={
+              selectedExpenseForSheet.payment_day
+                ? `Pago estimado: Día ${selectedExpenseForSheet.payment_day} de cada mes`
+                : 'Gasto fijo recurrente'
+            }
+            primaryAction={
+              !isPaid && selectedExpenseForSheet.is_active
+                ? {
+                    label: 'Marcar como Pagado',
+                    icon: <Circle size={18} />,
+                    onClick: () => {
+                      const target = selectedExpenseForSheet;
+                      setSelectedExpenseForSheet(null);
+                      setPayingExpense(target);
+                    },
+                  }
+                : isPaid && selectedExpenseForSheet.is_active
+                ? {
+                    label: 'Deshacer Pago',
+                    icon: <Undo2 size={18} />,
+                    onClick: () => {
+                      const target = selectedExpenseForSheet;
+                      setSelectedExpenseForSheet(null);
+                      handleUncheck(target);
+                    },
+                    disabled: check?.can_edit === false,
+                  }
+                : undefined
+            }
+            secondaryActions={[
+              {
+                label: selectedExpenseForSheet.is_active ? 'Pausar Gasto' : 'Reactivar Gasto',
+                icon: selectedExpenseForSheet.is_active ? <Pause size={16} /> : <Play size={16} />,
+                onClick: () => {
+                  const target = selectedExpenseForSheet;
+                  setSelectedExpenseForSheet(null);
+                  handleToggleActive(target);
+                },
+                disabled: isMember,
+              },
+              {
+                label: 'Editar',
+                icon: <Edit3 size={16} />,
+                onClick: () => {
+                  const target = selectedExpenseForSheet;
+                  setSelectedExpenseForSheet(null);
+                  setEditingExpense(target);
+                  setIsFormOpen(true);
+                },
+                disabled: isMember,
+              },
+              ...(selectedExpenseForSheet.is_shared
+                ? [
+                    {
+                      label: 'Panas Compartidos',
+                      icon: <Share2 size={16} />,
+                      onClick: () => {
+                        const target = selectedExpenseForSheet;
+                        setSelectedExpenseForSheet(null);
+                        setActiveShareModalItem({ id: target.id, name: target.name });
+                      },
+                    },
+                  ]
+                : []),
+              {
+                label: 'Eliminar',
+                icon: <Trash2 size={16} />,
+                danger: true,
+                onClick: () => {
+                  const target = selectedExpenseForSheet;
+                  setSelectedExpenseForSheet(null);
+                  setConfirmDelete({ isOpen: true, expenseId: target.id });
+                },
+                disabled: isMember,
+              },
+            ]}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <CurrencyBreakdownCard
+                originalAmount={isPaid && check ? check.paid_amount : selectedExpenseForSheet.amount}
+                originalCurrency={isPaid && check ? check.currency : selectedExpenseForSheet.currency}
+                amountBs={isPaid && check ? check.amount_bs : selectedExpenseForSheet.amount_bs}
+                amountUsd={isPaid && check ? check.amount_usd : selectedExpenseForSheet.amount_usd}
+                amountEur={isPaid && check ? check.amount_eur : selectedExpenseForSheet.amount_eur}
+                amountUsdt={isPaid && check ? check.amount_usdt : selectedExpenseForSheet.amount_usdt}
+                rateUsdBs={isPaid && check ? check.rate_usd_bs : selectedExpenseForSheet.rate_usd_bs}
+                rateEurBs={isPaid && check ? check.rate_eur_bs : selectedExpenseForSheet.rate_eur_bs}
+                rateUsdtBs={isPaid && check ? check.rate_usdt_bs : selectedExpenseForSheet.rate_usdt_bs}
+                fallbackRates={rates}
+                isPendingReference={!isPaid}
+              />
+
+              {selectedExpenseForSheet.notes && (
+                <div
+                  style={{
+                    fontSize: '0.85rem',
+                    color: 'var(--text-secondary)',
+                    background: 'var(--surface-muted)',
+                    padding: '0.6rem 0.75rem',
+                    borderRadius: 'var(--radius-sm)',
+                  }}
+                >
+                  <strong>Nota:</strong> {selectedExpenseForSheet.notes}
+                </div>
+              )}
+
+              {isPaid && check && (
+                <div
+                  style={{
+                    padding: '0.75rem',
+                    borderRadius: 'var(--radius-sm)',
+                    background: 'rgba(16, 185, 129, 0.08)',
+                    border: '1px solid rgba(16, 185, 129, 0.2)',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      color: 'var(--income-color)',
+                      fontWeight: 600,
+                      fontSize: '0.85rem',
+                    }}
+                  >
+                    <CheckCircle2 size={16} />
+                    <span>Pagado el {check.paid_date}</span>
+                  </div>
+                  {check.paid_by_name && (
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                      Por {check.paid_by_name}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </ListCardBottomSheet>
+        );
+      })()}
     </div>
   );
 };

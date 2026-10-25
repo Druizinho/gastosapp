@@ -33,13 +33,15 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ initialData, onSubmit, onCanc
       setDate(initialData.date);
       setCurrency(initialData.currency);
       
-      // Cargar la tasa histórica
+      // Cargar la tasa histórica solo para divisas estándar (no inicializar rate_usd_bs para USD_CASH)
       if (initialData.currency === 'EUR_BCV' && initialData.rate_eur_bs) {
         setManualRate(initialData.rate_eur_bs.toString());
       } else if (initialData.currency === 'USDT' && initialData.rate_usdt_bs) {
         setManualRate(initialData.rate_usdt_bs.toString());
-      } else if (initialData.rate_usd_bs) {
+      } else if (initialData.currency === 'USD_BCV' && initialData.rate_usd_bs) {
         setManualRate(initialData.rate_usd_bs.toString());
+      } else {
+        setManualRate('');
       }
     } else if (categories.length > 0 && (!category || category === 'Sin Categoría')) {
       setCategory(categories[0].name);

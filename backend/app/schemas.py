@@ -81,6 +81,7 @@ class CategoryResponse(CategoryBase):
     debt_count: int = 0
     saving_count: int = 0
     budget_count: int = 0
+    income_count: int = 0
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -399,6 +400,7 @@ class EstimatedIncomeBase(BaseModel):
     name: str = Field(..., min_length=1)
     expected_amount: Decimal = Field(..., gt=0)
     currency: CurrencyType = Field(default=CurrencyType.BS)
+    category: Optional[str] = "Ingresos"
     payment_day: Optional[int] = Field(None, ge=1, le=31)
     is_active: bool = True
     notes: Optional[str] = None
@@ -410,6 +412,7 @@ class EstimatedIncomeUpdate(BaseModel):
     name: Optional[str] = None
     expected_amount: Optional[Decimal] = Field(None, gt=0)
     currency: Optional[CurrencyType] = None
+    category: Optional[str] = None
     payment_day: Optional[int] = Field(None, ge=1, le=31)
     is_active: Optional[bool] = None
     notes: Optional[str] = None
@@ -585,6 +588,7 @@ class SavingDepositBase(BaseModel):
     currency: CurrencyType = Field(default=CurrencyType.BS)
     deposit_date: Optional[datetime.date] = None
     note: Optional[str] = None
+    category: Optional[str] = None
 
 class SavingDepositCreate(SavingDepositBase):
     manual_rate: Optional[Decimal] = Field(None, gt=0)
@@ -596,6 +600,8 @@ class SavingDepositUpdate(BaseModel):
     deposit_date: Optional[datetime.date] = None
     note: Optional[str] = None
     manual_rate: Optional[Decimal] = Field(None, gt=0)
+    category: Optional[str] = None
+    register_as_expense: Optional[bool] = None
 
 class SavingDepositResponse(SavingDepositBase):
     id: UUID

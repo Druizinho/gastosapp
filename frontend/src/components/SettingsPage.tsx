@@ -3,16 +3,33 @@ import CategoryManager from './CategoryManager';
 import ProfileManager from './ProfileManager';
 import { NotificationSettings } from './NotificationSettings';
 
-import { LogOut, User, Folder, ChevronRight, ArrowLeft, Globe, Palette, Bell, Users } from 'lucide-react';
+import { LogOut, User, Folder, ChevronRight, ChevronDown, ArrowLeft, Globe, Palette, Bell, Users, Check } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { useCurrencyPreference } from '../context/CurrencyPreferenceContext';
+import type { MainCurrencyPreference } from '../types';
 
 type SettingsView = 'menu' | 'profile' | 'categories' | 'notifications';
+
+const MAIN_CURRENCY_OPTIONS: { id: MainCurrencyPreference; label: string; symbol: string; desc: string }[] = [
+  { id: 'USD', label: 'USD ($ BCV)', symbol: '$', desc: 'Dólares oficiales a tasa BCV' },
+  { id: 'BS', label: 'BS (Bolívares)', symbol: 'Bs.', desc: 'Bolívares de cuenta oficial' },
+  { id: 'EUR', label: 'EUR (€ BCV)', symbol: '€', desc: 'Euros oficiales a tasa BCV' },
+  { id: 'USDT', label: 'USDT', symbol: '₮', desc: 'Criptomoneda Tether USDT' },
+];
 
 export const SettingsPage: React.FC = () => {
   const [currentView, setCurrentView] = useState<SettingsView>('menu');
   const { user, displayName, avatarUrl, signOut } = useAuth();
   const navigate = useNavigate();
+  const { mainCurrency, setMainCurrency } = useCurrencyPreference();
+  const [currencyExpanded, setCurrencyExpanded] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
 
   const handleSignOut = async () => {
     await signOut();
@@ -164,31 +181,105 @@ export const SettingsPage: React.FC = () => {
           Preferencias
         </h3>
         <div className="soft-card" style={{ padding: 0, overflow: 'hidden' }}>
-          <button 
-            style={{
-              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '1.25rem 1.25rem', background: 'transparent', border: 'none', 
-              borderBottom: '1px solid var(--surface-muted)', cursor: 'pointer',
-              textAlign: 'left', transition: 'background 0.2s'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-hover)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', color: 'var(--text-primary)', fontWeight: 600 }}>
-              <div style={{ 
-                width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(16, 185, 129, 0.05) 100%)', 
-                color: '#10B981', borderRadius: '12px'
-              }}>
-                <Globe size={18} />
+          <div>
+            <button 
+              type="button"
+              onClick={() => setCurrencyExpanded(!currencyExpanded)}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '1.25rem 1.25rem', background: 'transparent', border: 'none', 
+                borderBottom: currencyExpanded ? 'none' : '1px solid var(--surface-muted)', cursor: 'pointer',
+                textAlign: 'left', transition: 'background 0.2s'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-hover)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', color: 'var(--text-primary)', fontWeight: 600 }}>
+                <div style={{ 
+                  width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(16, 185, 129, 0.05) 100%)', 
+                  color: '#10B981', borderRadius: '12px'
+                }}>
+                  <Globe size={18} />
+                </div>
+                <div>
+                  <div style={{ lineHeight: 1.2 }}>Moneda Principal</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', fontWeight: 400, marginTop: '2px' }}>
+                    Conversión por defecto de toda la app
+                  </div>
+                </div>
               </div>
-              Moneda Principal
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', fontWeight: 500 }}>USD</span>
-              <ChevronRight size={20} color="var(--text-tertiary)" />
-            </div>
-          </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ 
+                  fontSize: '0.85rem', 
+                  color: 'var(--brand-primary, #6366F1)', 
+                  fontWeight: 600,
+                  background: 'rgba(99, 102, 241, 0.1)',
+                  padding: '0.2rem 0.55rem',
+                  borderRadius: '8px'
+                }}>
+                  {mainCurrency}
+                </span>
+                {currencyExpanded ? <ChevronDown size={20} color="var(--text-tertiary)" /> : <ChevronRight size={20} color="var(--text-tertiary)" />}
+              </div>
+            </button>
+
+            {currencyExpanded && (
+              <div style={{
+                padding: '0.75rem 1.25rem 1.25rem 1.25rem',
+                borderBottom: '1px solid var(--surface-muted)',
+                background: 'var(--surface-subtle, rgba(0, 0, 0, 0.02))',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+                gap: '0.6rem',
+                animation: 'fadeIn 0.15s ease'
+              }}>
+                {MAIN_CURRENCY_OPTIONS.map((opt) => {
+                  const isSelected = mainCurrency === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        setMainCurrency(opt.id);
+                        showToast(`Moneda principal: ${opt.label}`);
+                      }}
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'flex-start',
+                        padding: '0.75rem 0.85rem',
+                        borderRadius: '12px',
+                        border: isSelected ? '1.5px solid var(--brand-primary, #6366F1)' : '1px solid var(--border-color, rgba(255,255,255,0.08))',
+                        background: isSelected ? 'rgba(99, 102, 241, 0.12)' : 'var(--surface-card, rgba(255,255,255,0.03))',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'transform 150ms ease-out, background 150ms ease-out, border-color 150ms ease-out, box-shadow 150ms ease-out',
+                        boxShadow: isSelected ? '0 4px 12px rgba(99, 102, 241, 0.15)' : 'none',
+                      }}
+                      onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+                      onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: '0.25rem' }}>
+                        <span style={{ 
+                          fontSize: '0.9rem', 
+                          fontWeight: 700, 
+                          color: isSelected ? 'var(--brand-primary, #6366F1)' : 'var(--text-primary)' 
+                        }}>
+                          {opt.label}
+                        </span>
+                        {isSelected && <Check size={14} color="var(--brand-primary, #6366F1)" />}
+                      </div>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', lineHeight: 1.25 }}>
+                        {opt.desc}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
           <button 
             style={{
@@ -308,6 +399,30 @@ export const SettingsPage: React.FC = () => {
         {currentView === 'categories' && <CategoryManager onCategoriesChanged={() => {}} />}
         {currentView === 'notifications' && <NotificationSettings />}
       </div>
+
+      {toastMessage && (
+        <div style={{
+          position: 'fixed',
+          bottom: '2rem',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'var(--surface-card, #1E293B)',
+          color: 'var(--text-primary, #F8FAFC)',
+          padding: '0.75rem 1.5rem',
+          borderRadius: '12px',
+          boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1)',
+          zIndex: 9999,
+          fontSize: '0.9rem',
+          fontWeight: 600,
+          animation: 'toastSlideUp 0.3s ease',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem'
+        }}>
+          <Check size={16} color="#10B981" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
     </div>
   );
 };

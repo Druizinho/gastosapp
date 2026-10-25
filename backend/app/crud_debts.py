@@ -20,6 +20,9 @@ def _debt_url(debt_type: Optional[str]) -> str:
 
 
 async def get_debts(db: AsyncSession, user_id: UUID, debt_type: Optional[str] = None, is_settled: Optional[bool] = None):
+    from .crud import ensure_categories_and_debts_schema
+    await ensure_categories_and_debts_schema()
+
     query = select(models.Debt).filter(models.Debt.user_id == user_id)
     if debt_type:
         query = query.filter(models.Debt.type == debt_type)

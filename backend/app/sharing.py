@@ -610,8 +610,26 @@ def sum_children_in_currency(children: List[Any], target_currency: str, amount_a
             continue
         if ch.currency == target_currency:
             total += Decimal(str(raw_val))
-        elif target_currency in ("USD_BCV", "USD_CASH") and getattr(ch, "amount_usd", None) is not None:
+        elif target_currency == "USD_BCV" and getattr(ch, "amount_usd", None) is not None:
             total += Decimal(str(ch.amount_usd))
+        elif target_currency == "USD_CASH":
+            # Si el pago es en USD_CASH, ya hizo match arriba (1:1).
+            # Para pagos en otra moneda (BS, EUR, etc.), convertir usando la tasa efectivo de referencia
+            if getattr(ch, "amount_bs", None) is not None and Decimal(str(ch.amount_bs)) > 0:
+                amount_bs = Decimal(str(ch.amount_bs))
+                r_usd = Decimal(str(ch.rate_usd_bs)) if getattr(ch, "rate_usd_bs", None) else Decimal("0")
+                r_eur = Decimal(str(ch.rate_eur_bs)) if getattr(ch, "rate_eur_bs", None) else Decimal("0")
+                r_usdt = Decimal(str(ch.rate_usdt_bs)) if getattr(ch, "rate_usdt_bs", None) else Decimal("0")
+                valid_rates = [r for r in (r_usd, r_eur, r_usdt) if r > 0]
+                cash_rate = max(valid_rates) if valid_rates else (r_usd if r_usd > 0 else Decimal("0"))
+                if cash_rate > 0:
+                    total += (amount_bs / cash_rate)
+                elif getattr(ch, "amount_usd", None) is not None:
+                    total += Decimal(str(ch.amount_usd))
+            elif getattr(ch, "amount_usd", None) is not None:
+                total += Decimal(str(ch.amount_usd))
+            else:
+                total += Decimal(str(raw_val))
         elif target_currency == "BS" and getattr(ch, "amount_bs", None) is not None:
             total += Decimal(str(ch.amount_bs))
         elif target_currency == "EUR_BCV" and getattr(ch, "amount_eur", None) is not None:

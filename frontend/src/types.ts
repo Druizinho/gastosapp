@@ -1,4 +1,5 @@
 export type CurrencyType = 'USD_BCV' | 'EUR_BCV' | 'BS' | 'USDT' | 'USD_CASH';
+export type MainCurrencyPreference = 'USD' | 'BS' | 'EUR' | 'USDT';
 
 export interface CurrencyOption {
   value: CurrencyType;
@@ -108,6 +109,7 @@ export interface Category {
   debt_count?: number;
   saving_count?: number;
   budget_count?: number;
+  income_count?: number;
 }
 
 export interface CategoryCreate {
@@ -381,6 +383,7 @@ export interface EstimatedIncome {
   name: string;
   expected_amount: number;
   currency: CurrencyType;
+  category?: string | null;
   payment_day: number | null;
   is_active: boolean;
   notes: string | null;
@@ -393,6 +396,7 @@ export interface EstimatedIncomeCreate {
   name: string;
   expected_amount: number;
   currency?: CurrencyType;
+  category?: string | null;
   payment_day?: number | null;
   is_active?: boolean;
   notes?: string;
@@ -402,6 +406,7 @@ export interface EstimatedIncomeUpdate {
   name?: string;
   expected_amount?: number;
   currency?: CurrencyType;
+  category?: string | null;
   payment_day?: number | null;
   is_active?: boolean;
   notes?: string;
@@ -544,6 +549,7 @@ export interface SavingDeposit {
   goal_id: string;
   amount: number;
   currency: CurrencyType;
+  category?: string | null;
   deposit_date: string;
   note: string | null;
   create_expense: boolean;
@@ -566,6 +572,7 @@ export interface SavingDeposit {
 export interface SavingDepositCreate {
   amount: number;
   currency?: CurrencyType;
+  category?: string | null;
   deposit_date?: string;
   note?: string;
   manual_rate?: number;
@@ -575,9 +582,11 @@ export interface SavingDepositCreate {
 export interface SavingDepositUpdate {
   amount?: number;
   currency?: CurrencyType;
+  category?: string | null;
   deposit_date?: string;
   note?: string | null;
   manual_rate?: number;
+  register_as_expense?: boolean;
 }
 
 export interface SavingGoal {

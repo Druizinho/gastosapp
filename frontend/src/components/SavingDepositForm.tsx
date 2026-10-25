@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
-import type { SavingDeposit, SavingDepositCreate, SavingDepositUpdate, CurrencyType } from '../types';
+import type { SavingDeposit, SavingDepositCreate, SavingDepositUpdate, CurrencyType, Category } from '../types';
 import { CURRENCY_OPTIONS } from '../types';
+import { getCategories } from '../api';
+import CategorySelect from './CategorySelect';
 
 interface SavingDepositFormProps {
   initialData?: SavingDeposit;
@@ -11,6 +13,7 @@ interface SavingDepositFormProps {
   goalCurrentSaved: number;
   goalColor?: string;
   goalType?: 'saving' | 'project';
+  goalCategory?: string | null;
   onSubmit: (data: SavingDepositCreate | SavingDepositUpdate) => void;
   onCancel: () => void;
   loading: boolean;
@@ -37,6 +40,7 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
   goalCurrentSaved,
   goalColor = '#10B981',
   goalType = 'saving',
+  goalCategory,
   onSubmit,
   onCancel,
   loading,
@@ -47,6 +51,16 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
   const targetNum = hasTarget ? Number(goalTargetAmount) : 0;
   const remaining = hasTarget ? Math.max(targetNum - goalCurrentSaved, 0) : null;
 
+  const [categories, setCategories] = useState<Category[]>([]);
+
+  useEffect(() => {
+    getCategories()
+      .then(setCategories)
+      .catch(err => console.error('Error fetching categories in SavingDepositForm:', err));
+  }, []);
+
+  const defaultCategory = initialData?.category || goalCategory || (isProject ? 'Proyectos' : 'Ahorro');
+
   const [formData, setFormData] = useState<SavingDepositCreate>({
     amount: (initialData ? initialData.amount : '') as any,
     currency: (initialData?.currency || goalCurrency) as CurrencyType,
@@ -54,6 +68,7 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
     note: initialData?.note || '',
     manual_rate: '' as any,
     register_as_expense: isProject,
+    category: defaultCategory,
   });
 
   useEffect(() => {
@@ -64,15 +79,17 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
         deposit_date: initialData.deposit_date,
         note: initialData.note || '',
         manual_rate: '' as any,
-        register_as_expense: false,
+        register_as_expense: Boolean(initialData.create_expense || initialData.expense_id),
+        category: initialData.category || goalCategory || (isProject ? 'Proyectos' : 'Ahorro'),
       });
     } else {
       setFormData(prev => ({
         ...prev,
         register_as_expense: isProject,
+        category: prev.category || goalCategory || (isProject ? 'Proyectos' : 'Ahorro'),
       }));
     }
-  }, [initialData, isProject]);
+  }, [initialData, isProject, goalCategory]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -93,6 +110,8 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
     } else {
       delete submitData.manual_rate;
     }
+    submitData.category = formData.category || (isProject ? 'Proyectos' : 'Ahorro');
+    submitData.register_as_expense = formData.register_as_expense;
     if (isEditing) {
       delete submitData.register_as_expense;
     }
@@ -303,11 +322,23 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
                   </span>
                   <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4, display: 'block', marginTop: '0.2rem' }}>
                     {isProject
-                      ? 'Descuenta este pago en tus gastos del Dashboard con la categoría del proyecto para reflejar la salida de dinero real.'
-                      : 'Descuenta este aporte de tu presupuesto general registrándolo en la categoría "Ahorro".'}
+                      ? 'Descuenta este pago en tus gastos del Dashboard en la categoría seleccionada (por defecto "Proyectos") para reflejar la salida de dinero real.'
+                      : 'Descuenta este aporte en tus gastos del Dashboard en la categoría seleccionada (por defecto "Ahorro").'}
                   </span>
                 </div>
               </label>
+
+              {Boolean(formData.register_as_expense) && (
+                <div style={{ paddingTop: '0.75rem' }}>
+                  <CategorySelect
+                    label="Categoría del gasto"
+                    value={formData.category || (isProject ? 'Proyectos' : 'Ahorro')}
+                    onChange={(val) => setFormData(prev => ({ ...prev, category: val || (isProject ? 'Proyectos' : 'Ahorro') }))}
+                    categories={categories}
+                    onCategoryCreated={(cat) => setCategories(prev => [...prev, cat])}
+                  />
+                </div>
+              )}
             </div>
           )}
 

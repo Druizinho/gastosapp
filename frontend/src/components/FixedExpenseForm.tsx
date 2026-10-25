@@ -16,7 +16,7 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
   const [name, setName] = useState<string>(initialData?.name || '');
   const [amount, setAmount] = useState<string>(initialData?.amount.toString() || '');
   const [currency, setCurrency] = useState<CurrencyType>(initialData?.currency || 'BS');
-  const [category, setCategory] = useState<string>(initialData?.category || '');
+  const [category, setCategory] = useState<string>(initialData?.category ?? (!initialData ? 'Gastos Fijos' : ''));
   const [paymentDay, setPaymentDay] = useState<string>(initialData?.payment_day?.toString() || '');
   const [notes, setNotes] = useState<string>(initialData?.notes || '');
   const [manualRate, setManualRate] = useState<string>('');
@@ -38,12 +38,15 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
       setPaymentDay(initialData.payment_day?.toString() || '');
       setNotes(initialData.notes || '');
 
+      // Cargar la tasa histórica solo para divisas estándar (no inicializar rate_usd_bs para USD_CASH)
       if (initialData.currency === 'EUR_BCV' && initialData.rate_eur_bs) {
         setManualRate(initialData.rate_eur_bs.toString());
       } else if (initialData.currency === 'USDT' && initialData.rate_usdt_bs) {
         setManualRate(initialData.rate_usdt_bs.toString());
-      } else if (initialData.rate_usd_bs) {
+      } else if (initialData.currency === 'USD_BCV' && initialData.rate_usd_bs) {
         setManualRate(initialData.rate_usd_bs.toString());
+      } else {
+        setManualRate('');
       }
     }
   }, [initialData]);
@@ -93,6 +96,7 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
       if (!initialData) {
         setName('');
         setAmount('');
+        setCategory('Gastos Fijos');
         setNotes('');
         setPaymentDay('');
         setIsSharedChecked(false);

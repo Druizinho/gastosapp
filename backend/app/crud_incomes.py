@@ -12,6 +12,8 @@ from decimal import Decimal
 
 async def create_estimated_income(db: AsyncSession, income: schemas.EstimatedIncomeCreate, user_id: UUID):
     data = income.model_dump()
+    if not data.get("category"):
+        data["category"] = "Ingresos"
     db_income = models.EstimatedIncome(**data, user_id=user_id)
     db.add(db_income)
     await db.commit()
@@ -19,6 +21,9 @@ async def create_estimated_income(db: AsyncSession, income: schemas.EstimatedInc
 
 
 async def get_estimated_incomes(db: AsyncSession, user_id: UUID, active_only: bool = False):
+    from .crud import ensure_categories_and_debts_schema
+    await ensure_categories_and_debts_schema()
+
     query = (
         select(models.EstimatedIncome)
         .options(selectinload(models.EstimatedIncome.checks))

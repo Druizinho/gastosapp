@@ -14,7 +14,7 @@ import './index.css';
 const ToolsHub = lazy(() => import('./components/ToolsHub').then(m => ({ default: m.ToolsHub })));
 const FixedExpenses = lazy(() => import('./components/FixedExpenses'));
 const DebtList = lazy(() => import('./components/DebtList'));
-const EstimatedIncomeList = lazy(() => import('./components/EstimatedIncomeList.tsx'));
+const EstimatedIncomeList = lazy(() => import('./components/EstimatedIncomeList'));
 const SavingGoals = lazy(() => import('./components/SavingGoals'));
 const Budgets = lazy(() => import('./components/Budgets'));
 const RatesPage = lazy(() => import('./components/RatesPage').then(m => ({ default: m.RatesPage })));

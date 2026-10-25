@@ -33,6 +33,8 @@ import {
 } from '../api';
 import { resolveCategoryVisuals } from '../utils/categoryVisuals';
 import { useCategories } from '../context/CategoriesContext';
+import { useCurrencyPreference } from '../context/CurrencyPreferenceContext';
+import ListCard from './ListCard';
 import ConfirmModal from './ConfirmModal';
 
 interface BudgetsProps {
@@ -299,7 +301,16 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
   const [isConfirmingBudget, setIsConfirmingBudget] = useState<boolean>(false);
 
   // Currency cycling for hero card (usd, bs, eur, usdt)
-  const [displayCurrency, setDisplayCurrency] = useState<DisplayCurrency>('usd');
+  const { mainCurrency } = useCurrencyPreference();
+  const [displayCurrency, setDisplayCurrency] = useState<DisplayCurrency>(() =>
+    mainCurrency ? (mainCurrency.toLowerCase() as DisplayCurrency) : 'usd'
+  );
+
+  useEffect(() => {
+    if (mainCurrency) {
+      setDisplayCurrency(mainCurrency.toLowerCase() as DisplayCurrency);
+    }
+  }, [mainCurrency]);
 
   // Modals state
   const [budgetModal, setBudgetModal] = useState<{
@@ -872,181 +883,144 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                 const catNames = b.category_limits.map((c) => c.category_name).slice(0, 3).join(', ');
                 const hasMore = b.category_limits.length > 3 ? ` +${b.category_limits.length - 3}` : '';
 
-                return (
+                const subtitle = (
                   <div
-                    key={b.id}
-                    className="soft-card"
-                    onClick={() => setSelectedBudgetId(b.id)}
                     style={{
-                      padding: '1.15rem 1.25rem',
-                      borderLeft: `4px solid ${statusColor}`,
-                      cursor: 'pointer',
-                      transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      marginTop: '0.2rem',
                     }}
                   >
-                    <div
+                    <span
                       style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'flex-start',
-                        marginBottom: '0.5rem',
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        color: 'var(--text-secondary)',
+                        background: 'var(--surface-muted)',
+                        padding: '0.15rem 0.45rem',
+                        borderRadius: 'var(--radius-full)',
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0, flex: 1 }}>
-                        <div
-                          style={{
-                            width: '38px',
-                            height: '38px',
-                            borderRadius: '10px',
-                            background: 'var(--surface-muted)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: 'var(--text-primary)',
-                            flexShrink: 0,
-                          }}
-                        >
-                          <Layers size={20} />
-                        </div>
-                        <div style={{ minWidth: 0 }}>
-                          <div
-                            style={{
-                              fontSize: '1rem',
-                              fontWeight: 700,
-                              color: 'var(--text-primary)',
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                            }}
-                          >
-                            {b.name}
-                          </div>
-                          <div
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '0.4rem',
-                              marginTop: '0.2rem',
-                            }}
-                          >
-                            <span
-                              style={{
-                                fontSize: '0.7rem',
-                                fontWeight: 600,
-                                color: 'var(--text-secondary)',
-                                background: 'var(--surface-muted)',
-                                padding: '0.15rem 0.45rem',
-                                borderRadius: 'var(--radius-full)',
-                              }}
-                            >
-                              {b.categories_count} categorías
-                            </span>
-                            {catNames && (
-                              <span style={{ fontSize: '0.725rem', color: 'var(--text-tertiary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                {catNames}{hasMore}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Right Amount Column */}
-                      <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '0.5rem' }}>
-                        <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                          {currSym} {formatAmount(b.total_spent_budget_currency)}
-                          {b.effective_global_limit && b.effective_global_limit > 0 ? (
-                            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
-                              {' '}/ {currSym} {formatAmount(b.effective_global_limit)}
-                            </span>
-                          ) : null}
-                        </div>
-                        {b.currency !== 'BS' && (
-                          <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
-                            ≈ Bs. {formatAmount(b.total_spent_bs)}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Progress bar */}
-                    {b.effective_global_limit && b.effective_global_limit > 0 && (
-                      <div style={{ marginTop: '0.6rem' }}>
-                        <TrafficLightProgressBar
-                          percentage={b.global_spent_percentage}
-                          trafficLight={b.global_traffic_light}
-                          height={8}
-                        />
-                      </div>
-                    )}
-
-                    {/* Actions and Footer Row */}
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        marginTop: '0.6rem',
-                        paddingTop: '0.45rem',
-                        borderTop: '1px solid var(--border-color)',
-                      }}
-                    >
-                      <span style={{ fontSize: '0.75rem', fontWeight: 600, color: statusColor }}>
-                        {b.effective_global_limit && b.effective_global_limit > 0
-                          ? `${Math.round(b.global_spent_percentage)}% consumido`
-                          : 'Sin límites asignados'}
+                      {b.categories_count} categorías
+                    </span>
+                    {catNames && (
+                      <span
+                        style={{
+                          fontSize: '0.725rem',
+                          color: 'var(--text-tertiary)',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        {catNames}
+                        {hasMore}
                       </span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenBudgetModal(b);
-                          }}
-                          title="Editar grupo"
-                          style={{
-                            width: '32px',
-                            height: '32px',
-                            borderRadius: 'var(--radius-full)',
-                            background: 'var(--surface-muted)',
-                            border: 'none',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                            color: 'var(--text-secondary)',
-                            transition: 'all 0.15s ease',
-                          }}
-                        >
-                          <Edit3 size={14} />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setConfirmDeleteBudget({
-                              isOpen: true,
-                              budgetId: b.id,
-                              budgetName: b.name,
-                            });
-                          }}
-                          title="Eliminar grupo"
-                          style={{
-                            width: '32px',
-                            height: '32px',
-                            borderRadius: 'var(--radius-full)',
-                            background: 'var(--surface-muted)',
-                            border: 'none',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                            color: 'var(--expense-color)',
-                            transition: 'all 0.15s ease',
-                          }}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </div>
+                    )}
                   </div>
+                );
+
+                const badges = (
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: statusColor }}>
+                    {b.effective_global_limit && b.effective_global_limit > 0
+                      ? `${Math.round(b.global_spent_percentage)}% consumido`
+                      : 'Sin límites asignados'}
+                  </span>
+                );
+
+                const primaryAmount = (
+                  <span>
+                    {currSym} {formatAmount(b.total_spent_budget_currency)}
+                    {b.effective_global_limit && b.effective_global_limit > 0 ? (
+                      <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
+                        {' '}/ {currSym} {formatAmount(b.effective_global_limit)}
+                      </span>
+                    ) : null}
+                  </span>
+                );
+
+                const secondaryAmount = b.currency !== 'BS' ? `≈ Bs. ${formatAmount(b.total_spent_bs)}` : undefined;
+
+                const quickAction = (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenBudgetModal(b);
+                      }}
+                      title="Editar grupo"
+                      style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: 'var(--radius-full)',
+                        background: 'var(--surface-muted)',
+                        border: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        color: 'var(--text-secondary)',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <Edit3 size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setConfirmDeleteBudget({
+                          isOpen: true,
+                          budgetId: b.id,
+                          budgetName: b.name,
+                        });
+                      }}
+                      title="Eliminar grupo"
+                      style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: 'var(--radius-full)',
+                        background: 'var(--surface-muted)',
+                        border: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        color: 'var(--expense-color)',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                );
+
+                return (
+                  <ListCard
+                    key={b.id}
+                    statusColor={statusColor}
+                    icon={<Layers size={20} />}
+                    iconBg="var(--surface-muted)"
+                    iconColor="var(--text-primary)"
+                    title={b.name}
+                    subtitle={subtitle}
+                    badges={badges}
+                    progress={
+                      b.effective_global_limit && b.effective_global_limit > 0
+                        ? {
+                            value: b.total_spent_budget_currency,
+                            max: b.effective_global_limit,
+                            color: statusColor,
+                          }
+                        : undefined
+                    }
+                    primaryAmount={primaryAmount}
+                    secondaryAmount={secondaryAmount}
+                    quickAction={quickAction}
+                    onClick={() => setSelectedBudgetId(b.id)}
+                  />
                 );
               })}
             </div>
@@ -1390,320 +1364,161 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                   const isYellow = cl.traffic_light === 'yellow';
                   const statusColor = isRed ? '#EF4444' : isYellow ? '#F59E0B' : '#10B981';
 
-                  return (
-                    <div
-                      key={catName}
-                      className="soft-card"
-                      style={{
-                        padding: '1rem 1.25rem',
-                        borderLeft: `4px solid ${statusColor}`,
-                        transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-                      }}
-                    >
-                      <div
+                  const title = (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <span
                         style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'flex-start',
-                          marginBottom: '0.5rem',
+                          fontSize: '0.95rem',
+                          fontWeight: 600,
+                          color: 'var(--text-primary)',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
                         }}
                       >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0, flex: 1 }}>
-                          <div
+                        {catName}
+                      </span>
+                      {!selectedBudget.is_primary && (
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.2rem',
+                            fontSize: '0.65rem',
+                            fontWeight: 600,
+                            color: 'var(--text-tertiary)',
+                            background: 'var(--surface-muted)',
+                            padding: '0.1rem 0.35rem',
+                            borderRadius: 'var(--radius-full)',
+                            flexShrink: 0,
+                          }}
+                          title="Límite heredado del Presupuesto Principal"
+                        >
+                          <Lock size={10} /> Heredado
+                        </span>
+                      )}
+                    </div>
+                  );
+
+                  const subtitle = (
+                    <div
+                      style={{
+                        fontSize: '0.75rem',
+                        color: cl.remaining_amount < 0 ? '#EF4444' : 'var(--text-tertiary)',
+                        fontWeight: cl.remaining_amount < 0 ? 600 : 400,
+                        marginTop: '0.15rem',
+                      }}
+                    >
+                      {cl.remaining_amount < 0
+                        ? `Excedido por ${currSym} ${formatAmount(Math.abs(cl.remaining_amount))}`
+                        : `Disponible: ${currSym} ${formatAmount(cl.remaining_amount)}`}
+                    </div>
+                  );
+
+                  const badges = (
+                    <span style={{ fontSize: '0.75rem', fontWeight: 600, color: statusColor }}>
+                      {Math.round(cl.spent_percentage)}% consumido
+                    </span>
+                  );
+
+                  const primaryAmount = `${currSym} ${formatAmount(cl.spent_amount)} / ${formatAmount(cl.limit_amount)}`;
+
+                  const secondaryAmount =
+                    cl.currency !== 'BS'
+                      ? `≈ Bs. ${formatAmount(cl.spent_bs)} / ${formatAmount(cl.limit_bs)}`
+                      : `≈ $ ${formatAmount(cl.spent_usd)} / ${formatAmount(cl.limit_usd)}`;
+
+                  const quickAction = (
+                    <div style={{ display: 'flex', gap: '0.35rem' }}>
+                      {selectedBudget.is_primary ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenCategoryLimitModal(catName);
+                            }}
+                            title="Editar límite"
                             style={{
-                              width: '36px',
-                              height: '36px',
-                              borderRadius: '10px',
+                              width: '30px',
+                              height: '30px',
+                              borderRadius: 'var(--radius-full)',
                               background: 'var(--surface-muted)',
+                              border: 'none',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
-                              color: 'var(--text-primary)',
-                              flexShrink: 0,
+                              cursor: 'pointer',
+                              color: 'var(--text-secondary)',
+                              transition: 'all 0.15s ease',
                             }}
                           >
-                            {renderCategoryIcon(catName)}
-                          </div>
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                              <span
-                                style={{
-                                  fontSize: '0.95rem',
-                                  fontWeight: 600,
-                                  color: 'var(--text-primary)',
-                                  whiteSpace: 'nowrap',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                }}
-                              >
-                                {catName}
-                              </span>
-                              {!selectedBudget.is_primary && (
-                                <span
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '0.2rem',
-                                    fontSize: '0.65rem',
-                                    fontWeight: 600,
-                                    color: 'var(--text-tertiary)',
-                                    background: 'var(--surface-muted)',
-                                    padding: '0.1rem 0.35rem',
-                                    borderRadius: 'var(--radius-full)',
-                                    flexShrink: 0,
-                                  }}
-                                  title="Límite heredado del Presupuesto Principal"
-                                >
-                                  <Lock size={10} /> Heredado
-                                </span>
-                              )}
-                            </div>
-                            <div
-                              style={{
-                                fontSize: '0.75rem',
-                                color: cl.remaining_amount < 0 ? '#EF4444' : 'var(--text-tertiary)',
-                                fontWeight: cl.remaining_amount < 0 ? 600 : 400,
-                                marginTop: '0.15rem',
-                              }}
-                            >
-                              {cl.remaining_amount < 0
-                                ? `Excedido por ${currSym} ${formatAmount(Math.abs(cl.remaining_amount))}`
-                                : `Disponible: ${currSym} ${formatAmount(cl.remaining_amount)}`}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '0.5rem' }}>
-                          <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                            {currSym} {formatAmount(cl.spent_amount)} / {formatAmount(cl.limit_amount)}
-                          </div>
-                          {cl.currency !== 'BS' && (
-                            <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
-                              ≈ Bs. {formatAmount(cl.spent_bs)} / {formatAmount(cl.limit_bs)}
-                            </div>
-                          )}
-                          {cl.currency !== 'USD_BCV' && cl.currency !== 'USD_CASH' && (
-                            <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
-                              ≈ $ {formatAmount(cl.spent_usd)} / {formatAmount(cl.limit_usd)}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* 8px Progress Bar */}
-                      <div style={{ marginTop: '0.5rem' }}>
-                        <div
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            marginBottom: '0.35rem',
-                          }}
-                        >
-                          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: statusColor }}>
-                            {Math.round(cl.spent_percentage)}% consumido
-                          </span>
-                          <div style={{ display: 'flex', gap: '0.35rem' }}>
-                            {selectedBudget.is_primary ? (
-                              <>
-                                <button
-                                  onClick={() => handleOpenCategoryLimitModal(catName)}
-                                  title="Editar límite"
-                                  style={{
-                                    width: '30px',
-                                    height: '30px',
-                                    borderRadius: 'var(--radius-full)',
-                                    background: 'var(--surface-muted)',
-                                    border: 'none',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    cursor: 'pointer',
-                                    color: 'var(--text-secondary)',
-                                    transition: 'all 0.15s ease',
-                                  }}
-                                >
-                                  <Edit3 size={13} />
-                                </button>
-                                <button
-                                  onClick={() =>
-                                    setConfirmDeleteCategoryLimit({
-                                      isOpen: true,
-                                      budgetId: selectedBudget.id,
-                                      categoryName: catName,
-                                    })
-                                  }
-                                  title="Restablecer límite a 0"
-                                  style={{
-                                    width: '30px',
-                                    height: '30px',
-                                    borderRadius: 'var(--radius-full)',
-                                    background: 'var(--surface-muted)',
-                                    border: 'none',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    cursor: 'pointer',
-                                    color: 'var(--text-tertiary)',
-                                    transition: 'all 0.15s ease',
-                                  }}
-                                >
-                                  <RotateCcw size={13} />
-                                </button>
-                              </>
-                            ) : (
-                              <>
-                                <button
-                                  onClick={() => handleOpenCategoryLimitModal(catName)}
-                                  title="Ajustar límite en el Presupuesto Principal"
-                                  style={{
-                                    padding: '0.2rem 0.5rem',
-                                    borderRadius: '6px',
-                                    background: 'var(--surface-muted)',
-                                    border: '1px solid var(--border-color)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '0.25rem',
-                                    cursor: 'pointer',
-                                    color: 'var(--text-secondary)',
-                                    fontSize: '0.7rem',
-                                    fontWeight: 600,
-                                  }}
-                                >
-                                  <Edit3 size={11} />
-                                  Ajustar en Principal
-                                </button>
-                                <button
-                                  onClick={() =>
-                                    setConfirmDeleteCategoryLimit({
-                                      isOpen: true,
-                                      budgetId: selectedBudget.id,
-                                      categoryName: catName,
-                                    })
-                                  }
-                                  title="Quitar categoría de este grupo"
-                                  style={{
-                                    width: '30px',
-                                    height: '30px',
-                                    borderRadius: 'var(--radius-full)',
-                                    background: 'var(--surface-muted)',
-                                    border: 'none',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    cursor: 'pointer',
-                                    color: 'var(--expense-color)',
-                                    transition: 'all 0.15s ease',
-                                  }}
-                                >
-                                  <Trash2 size={13} />
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </div>
-
-                        <TrafficLightProgressBar
-                          percentage={cl.spent_percentage}
-                          trafficLight={cl.traffic_light}
-                          height={8}
-                        />
-                      </div>
-                    </div>
-                  );
-                } else {
-                  // Category without limit (limit_amount === 0) -> "⚠️ Falta ingresar límite"
-                  return (
-                    <div
-                      key={catName}
-                      className="soft-card"
-                      style={{
-                        padding: '0.85rem 1.15rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: '0.75rem',
-                        background: 'var(--surface-color)',
-                        borderLeft: '4px solid var(--border-color)',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0, flex: 1 }}>
-                        <div
-                          style={{
-                            width: '36px',
-                            height: '36px',
-                            borderRadius: '10px',
-                            background: 'var(--surface-muted)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: 'var(--text-primary)',
-                            flexShrink: 0,
-                          }}
-                        >
-                          {renderCategoryIcon(catName)}
-                        </div>
-                        <div style={{ minWidth: 0 }}>
-                          <div
-                            style={{
-                              fontSize: '0.9rem',
-                              fontWeight: 600,
-                              color: 'var(--text-primary)',
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                            }}
-                          >
-                            {catName}
-                          </div>
-                          <div
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '0.25rem',
-                              fontSize: '0.7rem',
-                              fontWeight: 600,
-                              color: '#B45309',
-                              marginTop: '0.15rem',
-                            }}
-                          >
-                            ⚠️ Falta ingresar límite
-                          </div>
-                          {cl.spent_usd > 0 && (
-                            <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginTop: '0.1rem' }}>
-                              Gastado: $ {formatAmount(cl.spent_usd)}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0 }}>
-                        <button
-                          onClick={() => handleOpenCategoryLimitModal(catName)}
-                          className="btn btn-secondary"
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.35rem',
-                            padding: '0.4rem 0.75rem',
-                            fontSize: '0.75rem',
-                            fontWeight: 600,
-                            borderRadius: 'var(--radius-full)',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          <Plus size={14} />
-                          {selectedBudget.is_primary ? 'Definir límite' : 'Ajustar en Principal'}
-                        </button>
-                        {!selectedBudget.is_primary && (
+                            <Edit3 size={13} />
+                          </button>
                           <button
-                            onClick={() =>
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
                               setConfirmDeleteCategoryLimit({
                                 isOpen: true,
                                 budgetId: selectedBudget.id,
                                 categoryName: catName,
-                              })
-                            }
+                              });
+                            }}
+                            title="Restablecer límite a 0"
+                            style={{
+                              width: '30px',
+                              height: '30px',
+                              borderRadius: 'var(--radius-full)',
+                              background: 'var(--surface-muted)',
+                              border: 'none',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              cursor: 'pointer',
+                              color: 'var(--text-tertiary)',
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            <RotateCcw size={13} />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenCategoryLimitModal(catName);
+                            }}
+                            title="Ajustar límite en el Presupuesto Principal"
+                            style={{
+                              padding: '0.2rem 0.5rem',
+                              borderRadius: '6px',
+                              background: 'var(--surface-muted)',
+                              border: '1px solid var(--border-color)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              cursor: 'pointer',
+                              color: 'var(--text-secondary)',
+                              fontSize: '0.7rem',
+                              fontWeight: 600,
+                            }}
+                          >
+                            <Edit3 size={11} />
+                            Ajustar en Principal
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setConfirmDeleteCategoryLimit({
+                                isOpen: true,
+                                budgetId: selectedBudget.id,
+                                categoryName: catName,
+                              });
+                            }}
                             title="Quitar categoría de este grupo"
                             style={{
                               width: '30px',
@@ -1721,9 +1536,122 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                           >
                             <Trash2 size={13} />
                           </button>
-                        )}
-                      </div>
+                        </>
+                      )}
                     </div>
+                  );
+
+                  return (
+                    <ListCard
+                      key={catName}
+                      statusColor={statusColor}
+                      icon={renderCategoryIcon(catName)}
+                      iconBg="var(--surface-muted)"
+                      iconColor="var(--text-primary)"
+                      title={title}
+                      subtitle={subtitle}
+                      badges={badges}
+                      progress={{
+                        value: cl.spent_amount,
+                        max: cl.limit_amount,
+                        color: statusColor,
+                      }}
+                      primaryAmount={primaryAmount}
+                      secondaryAmount={secondaryAmount}
+                      quickAction={quickAction}
+                    />
+                  );
+                } else {
+                  // Category without limit (limit_amount === 0) -> "⚠️ Falta ingresar límite"
+                  const subtitle = (
+                    <div>
+                      <div
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.25rem',
+                          fontSize: '0.7rem',
+                          fontWeight: 600,
+                          color: '#B45309',
+                          marginTop: '0.15rem',
+                        }}
+                      >
+                        ⚠️ Falta ingresar límite
+                      </div>
+                      {cl.spent_usd > 0 && (
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginTop: '0.1rem' }}>
+                          Gastado: $ {formatAmount(cl.spent_usd)}
+                        </div>
+                      )}
+                    </div>
+                  );
+
+                  const quickAction = (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenCategoryLimitModal(catName);
+                        }}
+                        className="btn btn-secondary"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.35rem',
+                          padding: '0.4rem 0.75rem',
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          borderRadius: 'var(--radius-full)',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        <Plus size={14} />
+                        {selectedBudget.is_primary ? 'Definir límite' : 'Ajustar en Principal'}
+                      </button>
+                      {!selectedBudget.is_primary && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmDeleteCategoryLimit({
+                              isOpen: true,
+                              budgetId: selectedBudget.id,
+                              categoryName: catName,
+                            });
+                          }}
+                          title="Quitar categoría de este grupo"
+                          style={{
+                            width: '30px',
+                            height: '30px',
+                            borderRadius: 'var(--radius-full)',
+                            background: 'var(--surface-muted)',
+                            border: 'none',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            color: 'var(--expense-color)',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
+                    </div>
+                  );
+
+                  return (
+                    <ListCard
+                      key={catName}
+                      statusColor="var(--border-color)"
+                      icon={renderCategoryIcon(catName)}
+                      iconBg="var(--surface-muted)"
+                      iconColor="var(--text-primary)"
+                      title={catName}
+                      subtitle={subtitle}
+                      quickAction={quickAction}
+                    />
                   );
                 }
               })

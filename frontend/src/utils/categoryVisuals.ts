@@ -8,7 +8,8 @@ import {
   Dumbbell, Scissors, Wrench, Smile, Star, Heart,
   Camera, Globe, Map, Key, Umbrella, Truck, Watch,
   Wifi, Zap, Palette, ScissorsSquare, PiggyBank,
-  PawPrint, Stethoscope, Ticket, Wine, Receipt
+  PawPrint, Stethoscope, Ticket, Wine, Receipt,
+  FolderKanban, Wallet, HelpCircle, Hammer, ShoppingBag, Sparkles
 } from 'lucide-react';
 
 export const CATEGORY_COLORS: { label: string; value: string }[] = [
@@ -34,10 +35,31 @@ export const ICON_MAP: Record<string, React.FC<any>> = {
   Dumbbell, Scissors, Wrench, Smile, Star, Heart,
   Camera, Globe, Map, Key, Umbrella, Truck, Watch,
   Wifi, Zap, Palette, ScissorsSquare, PiggyBank,
-  PawPrint, Stethoscope, Ticket, Wine, Receipt, Package
+  PawPrint, Stethoscope, Ticket, Wine, Receipt, Package,
+  FolderKanban, Wallet, HelpCircle, Hammer, ShoppingBag, Sparkles
 };
 
 export const DEFAULT_ICONS = Object.keys(ICON_MAP);
+
+const KEBAB_TO_PASCAL: Record<string, string> = {
+  'piggy-bank': 'PiggyBank',
+  'shopping-bag': 'ShoppingBag',
+  'wrench': 'Wrench',
+  'car': 'Car',
+  'home': 'Home',
+  'sparkles': 'Sparkles',
+  'credit-card': 'CreditCard',
+  'folder-kanban': 'FolderKanban',
+  'wallet': 'Wallet',
+  'help-circle': 'HelpCircle',
+  'hammer': 'Hammer',
+  'receipt': 'Receipt',
+  'shopping-cart': 'ShoppingCart',
+  'heart-pulse': 'HeartPulse',
+  'gamepad-2': 'Gamepad2',
+  'graduation-cap': 'GraduationCap',
+  'paw-print': 'PawPrint',
+};
 
 const NAME_TO_ICON: Record<string, string> = {
   'alimentación': 'Utensils',
@@ -79,6 +101,10 @@ const NAME_TO_ICON: Record<string, string> = {
   'prestamo': 'CreditCard',
   'ahorro': 'PiggyBank',
   'ahorros': 'PiggyBank',
+  'proyectos': 'FolderKanban',
+  'proyecto': 'FolderKanban',
+  'ingresos': 'Wallet',
+  'ingreso': 'Wallet',
   'sin categoría': 'Package',
   'sin categoria': 'Package',
   'other': 'Package',
@@ -118,6 +144,10 @@ const NAME_TO_COLOR: Record<string, string> = {
   'prestamo': '#F97316',
   'ahorro': '#22C55E',
   'ahorros': '#22C55E',
+  'proyectos': '#3B82F6',
+  'proyecto': '#3B82F6',
+  'ingresos': '#10B981',
+  'ingreso': '#10B981',
   'sin categoría': '#64748B',
   'sin categoria': '#64748B',
 };
@@ -132,6 +162,13 @@ export function getDefaultColorForName(name?: string): string {
   if (!name) return '#6366F1';
   const clean = name.trim().toLowerCase();
   return NAME_TO_COLOR[clean] || '#6366F1';
+}
+
+export function getCategoryIconComponent(iconName?: string | null): React.FC<any> {
+  if (!iconName) return Package;
+  const clean = iconName.trim();
+  const normalized = KEBAB_TO_PASCAL[clean.toLowerCase()] || clean;
+  return ICON_MAP[normalized] || Package;
 }
 
 export interface CategoryVisuals {
@@ -149,11 +186,19 @@ export function resolveCategoryVisuals(cat?: Category | null, fallbackName?: str
 
   // 1. Resolve Icon Name
   let iconName = 'Package';
-  if (cat?.icon && ICON_MAP[cat.icon]) {
-    iconName = cat.icon;
-  } else if (!isColorHex && cat?.color && ICON_MAP[cat.color]) {
+  if (cat?.icon) {
+    const clean = cat.icon.trim();
+    const normalized = KEBAB_TO_PASCAL[clean.toLowerCase()] || clean;
+    if (ICON_MAP[normalized]) {
+      iconName = normalized;
+    }
+  } else if (!isColorHex && cat?.color) {
     // Backward compatibility: color holds the legacy icon name
-    iconName = cat.color;
+    const clean = cat.color.trim();
+    const normalized = KEBAB_TO_PASCAL[clean.toLowerCase()] || clean;
+    if (ICON_MAP[normalized]) {
+      iconName = normalized;
+    }
   } else if (cat?.name) {
     iconName = getDefaultIconForName(cat.name);
   } else if (fallbackName) {
@@ -170,7 +215,7 @@ export function resolveCategoryVisuals(cat?: Category | null, fallbackName?: str
     hexColor = getDefaultColorForName(fallbackName);
   }
 
-  const IconComponent = ICON_MAP[iconName] || Package;
+  const IconComponent = getCategoryIconComponent(iconName);
 
   return {
     IconComponent,

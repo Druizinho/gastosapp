@@ -1,33 +1,46 @@
 import React, { useState, useEffect } from 'react';
 
-import { createEstimatedIncome, updateEstimatedIncome } from '../api';
-import type { EstimatedIncome, EstimatedIncomeCreate, EstimatedIncomeUpdate, CurrencyType } from '../types';
+import { createEstimatedIncome, updateEstimatedIncome, getCategories } from '../api';
+import type { EstimatedIncome, EstimatedIncomeCreate, EstimatedIncomeUpdate, CurrencyType, Category } from '../types';
 import { CURRENCY_OPTIONS } from '../types';
+import CategorySelect from './CategorySelect';
 
 interface EstimatedIncomeFormProps {
-  income: EstimatedIncome | null;
+  income?: EstimatedIncome | null;
+  initialData?: EstimatedIncome | null;
   onClose: () => void;
   onSaved: () => void;
 }
 
-const EstimatedIncomeForm: React.FC<EstimatedIncomeFormProps> = ({ income, onClose, onSaved }) => {
+const EstimatedIncomeForm: React.FC<EstimatedIncomeFormProps> = ({ income, initialData, onClose, onSaved }) => {
+  const targetIncome = income || initialData;
   const [name, setName] = useState('');
   const [expectedAmount, setExpectedAmount] = useState('');
   const [currency, setCurrency] = useState<CurrencyType>('USD_CASH');
+  const [category, setCategory] = useState<string>(targetIncome?.category || 'Ingresos');
+  const [categories, setCategories] = useState<Category[]>([]);
   const [paymentDay, setPaymentDay] = useState('');
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (income) {
-      setName(income.name);
-      setExpectedAmount(income.expected_amount.toString());
-      setCurrency(income.currency);
-      setPaymentDay(income.payment_day ? income.payment_day.toString() : '');
-      setNotes(income.notes || '');
+    getCategories()
+      .then(setCategories)
+      .catch((err) => console.error('Error fetching categories in EstimatedIncomeForm:', err));
+  }, []);
+
+  useEffect(() => {
+    const current = income || initialData;
+    if (current) {
+      setName(current.name);
+      setExpectedAmount(current.expected_amount.toString());
+      setCurrency(current.currency);
+      setCategory(current.category || 'Ingresos');
+      setPaymentDay(current.payment_day ? current.payment_day.toString() : '');
+      setNotes(current.notes || '');
     }
-  }, [income]);
+  }, [income, initialData]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,20 +63,23 @@ const EstimatedIncomeForm: React.FC<EstimatedIncomeFormProps> = ({ income, onClo
 
     setIsSubmitting(true);
     try {
-      if (income) {
+      const current = income || initialData;
+      if (current) {
         const updateData: EstimatedIncomeUpdate = {
           name,
           expected_amount: amountNum,
           currency,
+          category: category || 'Ingresos',
           payment_day: dayNum,
           notes: notes || undefined,
         };
-        await updateEstimatedIncome(income.id, updateData);
+        await updateEstimatedIncome(current.id, updateData);
       } else {
         const createData: EstimatedIncomeCreate = {
           name,
           expected_amount: amountNum,
           currency,
+          category: category || 'Ingresos',
           payment_day: dayNum,
           notes: notes || undefined,
         };
@@ -81,7 +97,7 @@ const EstimatedIncomeForm: React.FC<EstimatedIncomeFormProps> = ({ income, onClo
   return (
     <div className="modal-backdrop">
       <div className="expense-form-container">
-        <h2>{income ? 'Editar Ingreso Estimado' : 'Nuevo Ingreso Estimado'}</h2>
+        <h2>{targetIncome ? 'Editar Ingreso Estimado' : 'Nuevo Ingreso Estimado'}</h2>
 
         {error && <div className="error-message">{error}</div>}
 
@@ -124,19 +140,30 @@ const EstimatedIncomeForm: React.FC<EstimatedIncomeFormProps> = ({ income, onClo
             </div>
           </div>
 
-          <div className="form-group">
-            <label style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>Día estimado de pago</span>
-              <span className="form-hint-inline">(Opcional)</span>
-            </label>
-            <input
-              type="number"
-              value={paymentDay}
-              onChange={(e) => setPaymentDay(e.target.value)}
-              placeholder="1-31"
-              min="1"
-              max="31"
-            />
+          <div className="form-group row">
+            <div className="form-group half">
+              <CategorySelect
+                label="Categoría"
+                value={category}
+                onChange={(val) => setCategory(val || 'Ingresos')}
+                categories={categories}
+                onCategoryCreated={(cat) => setCategories(prev => [...prev, cat])}
+              />
+            </div>
+            <div className="form-group half">
+              <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Día estimado de pago</span>
+                <span className="form-hint-inline">(Opcional)</span>
+              </label>
+              <input
+                type="number"
+                value={paymentDay}
+                onChange={(e) => setPaymentDay(e.target.value)}
+                placeholder="1-31"
+                min="1"
+                max="31"
+              />
+            </div>
           </div>
 
           <div className="form-group">
@@ -177,4 +204,4 @@ const EstimatedIncomeForm: React.FC<EstimatedIncomeFormProps> = ({ income, onClo
 };
 
 export default EstimatedIncomeForm;
-// Force IDE refresh
+

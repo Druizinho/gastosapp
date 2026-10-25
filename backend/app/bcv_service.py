@@ -102,7 +102,7 @@ def convert_amount(amount: Decimal, currency: str, rates: dict, manual_rate: Dec
     
     # Si se provee tasa manual, aplica a la tasa primaria de la divisa
     if manual_rate and manual_rate > 0:
-        if currency in ('USD_BCV', 'BS', 'USD_CASH'):
+        if currency in ('USD_BCV', 'BS'):
             usd_bs = manual_rate
         elif currency == 'EUR_BCV':
             eur_bs = manual_rate
@@ -133,23 +133,37 @@ def convert_amount(amount: Decimal, currency: str, rates: dict, manual_rate: Dec
             if usd_bs and usd_bs > 0: amount_usd = amount_bs / usd_bs
             if eur_bs and eur_bs > 0: amount_eur = amount_bs / eur_bs
     elif currency == 'USD_CASH':
-        # Dólar en efectivo: el valor nominal en USD siempre es el monto original
-        amount_usd = amount
-        # Para bolívares, se utiliza la tasa de mercado paralelo (USDT P2P) o BCV en su defecto
-        cash_rate = usdt_bs if (usdt_bs and usdt_bs > 0) else usd_bs
-        if manual_rate and manual_rate > 0:
-            cash_rate = manual_rate
+        d_amount = Decimal(str(amount)) if amount is not None else Decimal("0")
+        d_usd = Decimal(str(usd_bs)) if usd_bs and usd_bs > 0 else Decimal("0")
+        d_eur = Decimal(str(eur_bs)) if eur_bs and eur_bs > 0 else Decimal("0")
+        d_usdt = Decimal(str(usdt_bs)) if usdt_bs and usdt_bs > 0 else Decimal("0")
 
-        if cash_rate and cash_rate > 0:
-            amount_bs = amount * cash_rate
-            if eur_bs and eur_bs > 0: amount_eur = amount_bs / eur_bs
-            if usdt_bs and usdt_bs > 0: amount_usdt = amount_bs / usdt_bs
+        valid_rates = [r for r in (d_usd, d_eur, d_usdt) if r > 0]
+        highest_rate = max(valid_rates) if valid_rates else Decimal("0")
+
+        cash_rate = Decimal(str(manual_rate)) if (manual_rate is not None and Decimal(str(manual_rate)) > 0) else highest_rate
+
+        if cash_rate > 0:
+            amount_bs = d_amount * cash_rate
+            amount_usd = (amount_bs / d_usd) if d_usd > 0 else d_amount
+            amount_eur = (amount_bs / d_eur) if d_eur > 0 else Decimal("0")
+            amount_usdt = (amount_bs / d_usdt) if d_usdt > 0 else Decimal("0")
+        else:
+            amount_bs = Decimal("0")
+            amount_usd = d_amount
+            amount_eur = Decimal("0")
+            amount_usdt = Decimal("0")
+
+    def _round4(val):
+        if val is None:
+            return None
+        return round(Decimal(str(val)), 4)
 
     return {
-        "amount_usd": amount_usd,
-        "amount_bs": amount_bs,
-        "amount_eur": amount_eur,
-        "amount_usdt": amount_usdt,
+        "amount_usd": _round4(amount_usd),
+        "amount_bs": _round4(amount_bs),
+        "amount_eur": _round4(amount_eur),
+        "amount_usdt": _round4(amount_usdt),
         "rate_usd_bs": usd_bs,
         "rate_eur_bs": eur_bs,
         "rate_usdt_bs": usdt_bs
