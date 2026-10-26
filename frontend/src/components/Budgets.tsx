@@ -26,13 +26,14 @@ import type {
 } from '../types';
 import {
   getMonthlyBudget,
+  getCachedMonthlyBudget,
   confirmMonthlyBudget,
   createMonthlyBudget,
   updateMonthlyBudgetById,
   deleteMonthlyBudgetById,
   upsertCategoryLimitByBudgetId,
   deleteCategoryLimitByBudgetId,
-  getPanasOverview,
+  getConnections,
   removeShareMember
 } from '../api';
 import { supabase } from '../supabaseClient';
@@ -45,6 +46,7 @@ import { MemberAvatars } from './panas';
 import { PageHeader } from './ui/PageHeader';
 import { SummaryHeroCard, type SummaryMetricItem } from './ui/SummaryHeroCard';
 import { SegmentedTabs } from './ui/SegmentedTabs';
+import { useToast } from './ui/Toast';
 
 interface BudgetsProps {
   onBack?: () => void;
@@ -251,6 +253,7 @@ export const BudgetHeroCard: React.FC<BudgetHeroCardProps> = ({
 
 export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
   const navigate = useNavigate();
+  const toast = useToast();
 
   // Current viewed month (YYYY-MM)
   const [currentMonthYear, setCurrentMonthYear] = useState<string>(() => {
@@ -266,7 +269,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
   // Sub-budget tab filter: all | own | shared
   const [subBudgetTab, setSubBudgetTab] = useState<SubBudgetTab>('all');
 
-  const { categories: allCategories, refreshCategories } = useCategories();
+  const { categories: allCategories } = useCategories();
 
   // Data states
   const [budgetResponse, setBudgetResponse] = useState<MonthlyBudgetResponse | null>(null);
@@ -331,6 +334,8 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
     categoryName: '',
   });
 
+  const [leaveSharedBudgetConfirm, setLeaveSharedBudgetConfirm] = useState<SingleBudgetOut | null>(null);
+
   // Short month label for navigator pill
   const shortMonthLabel = useMemo(() => {
     const shortMonths = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
@@ -393,16 +398,22 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
 
   const [isLeavingShare, setIsLeavingShare] = useState(false);
 
-  const handleLeaveSharedBudget = async () => {
-    if (!selectedBudget?.share_id) return;
-    if (!confirm(`¿Estás seguro de salir de "${selectedBudget.name}"? Dejarás de ver este presupuesto compartido.`)) {
-      return;
-    }
+  const handleLeaveSharedBudget = (budget?: SingleBudgetOut | unknown) => {
+    const target = (budget && typeof budget === 'object' && 'id' in (budget as any))
+      ? (budget as SingleBudgetOut)
+      : selectedBudget;
+    if (!target?.share_id) return;
+    setLeaveSharedBudgetConfirm(target);
+  };
+
+  const handleConfirmLeaveSharedBudget = async () => {
+    const target = leaveSharedBudgetConfirm || selectedBudget;
+    if (!target?.share_id) return;
     setIsLeavingShare(true);
     try {
-      let myUserId = selectedBudget.shared_members?.find((m) => m.is_me)?.user_id;
+      let myUserId = target.shared_members?.find((m) => m.is_me)?.user_id;
       if (!myUserId) {
-        myUserId = selectedBudget.shared_members?.find((m) => m.role === 'member')?.user_id;
+        myUserId = target.shared_members?.find((m) => m.role === 'member')?.user_id;
       }
       if (!myUserId) {
         const { data: { user } } = await supabase.auth.getUser();
@@ -411,25 +422,31 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
       if (!myUserId) {
         throw new Error('No se pudo identificar tu ID de usuario');
       }
-      await removeShareMember(selectedBudget.share_id, myUserId);
-      setSelectedBudgetId(null);
+      await removeShareMember(target.share_id, myUserId);
+      toast.success(`Has salido de "${target.name}"`);
+      if (selectedBudgetId === target.id) {
+        setSelectedBudgetId(null);
+      }
+      setLeaveSharedBudgetConfirm(null);
       await fetchData();
     } catch (err: any) {
       console.error('Error al salir del presupuesto compartido:', err);
-      alert(err?.response?.data?.detail || 'Error al salir del presupuesto compartido');
+      toast.error(err?.response?.data?.detail || 'Error al salir del presupuesto compartido');
     } finally {
       setIsLeavingShare(false);
     }
   };
 
-  // Fetch all budget and helper data
+  // Fetch budget data
   const fetchData = async () => {
-    setIsLoading(true);
+    const cached = getCachedMonthlyBudget(currentMonthYear);
+    if (cached) {
+      setBudgetResponse(cached);
+    } else {
+      setIsLoading(true);
+    }
     try {
-      const [bRes] = await Promise.all([
-        getMonthlyBudget(currentMonthYear),
-        refreshCategories(),
-      ]);
+      const bRes = await getMonthlyBudget(currentMonthYear);
       setBudgetResponse(bRes);
     } catch (error) {
       console.error('Error fetching budget data:', error);
@@ -444,13 +461,21 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
 
   // Load panas once when Budgets mounts so modals render instantly with no layout shift
   useEffect(() => {
-    getPanasOverview()
-      .then((res) => {
-        if (res && res.panas) {
-          setPanas(res.panas.map((p) => ({ partner_id: p.partner_id, partner_name: p.partner_name })));
+    let isMounted = true;
+    getConnections()
+      .then((conns) => {
+        if (isMounted) {
+          const accepted = (conns || [])
+            .filter((c) => c.status === 'accepted' && c.partner_id)
+            .map((c) => ({ partner_id: c.partner_id!, partner_name: c.partner_name || 'Pana' }));
+          setPanas(accepted);
         }
       })
-      .catch((err) => console.error('Error fetching panas overview in Budgets:', err));
+      .catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const handleBack = () => {
@@ -478,7 +503,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
       setBudgetResponse(res);
     } catch (error) {
       console.error('Error confirming budget:', error);
-      alert('Error al confirmar presupuesto del mes');
+      toast.error('Error al confirmar presupuesto del mes');
     } finally {
       setIsConfirmingBudget(false);
     }
@@ -547,7 +572,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
     if (!targetBudgetForLimit) return;
     const amountNum = parseFloat(categoryModal.limitAmount);
     if (isNaN(amountNum) || amountNum < 0) {
-      alert('Ingresa un monto límite válido mayor o igual a 0');
+      toast.warning('Ingresa un monto límite válido mayor o igual a 0');
       return;
     }
 
@@ -561,7 +586,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
       setCategoryModal((prev) => ({ ...prev, isOpen: false }));
     } catch (error: any) {
       console.error('Error saving category limit:', error);
-      alert(error?.response?.data?.detail || 'Error al guardar límite de categoría');
+      toast.error(error?.response?.data?.detail || 'Error al guardar límite de categoría');
     }
   };
 
@@ -576,7 +601,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
       setConfirmDeleteBudget({ isOpen: false, budgetId: '', budgetName: '' });
     } catch (error) {
       console.error('Error deleting budget:', error);
-      alert('Error al eliminar presupuesto');
+      toast.error('Error al eliminar presupuesto');
     }
   };
 
@@ -591,7 +616,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
       setConfirmDeleteCategoryLimit({ isOpen: false, budgetId: '', categoryName: '' });
     } catch (error) {
       console.error('Error deleting category limit:', error);
-      alert('Error al eliminar límite de categoría');
+      toast.error('Error al eliminar límite de categoría');
     }
   };
 
@@ -654,7 +679,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
         selectedBudget.share_id ? (
           <button
             type="button"
-            onClick={handleLeaveSharedBudget}
+            onClick={() => handleLeaveSharedBudget(selectedBudget)}
             disabled={isLeavingShare}
             title="Salir del presupuesto compartido"
             style={{
@@ -833,18 +858,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
               <button
                 onClick={handleManageCategories}
                 disabled={isLoading}
-                className="btn btn-secondary"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.35rem',
-                  padding: '0.35rem 0.75rem',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  borderRadius: 'var(--radius-full)',
-                  cursor: isLoading ? 'not-allowed' : 'pointer',
-                  opacity: isLoading ? 0.7 : 1,
-                }}
+                className="app-btn app-btn-sm app-btn-secondary"
               >
                 <SlidersHorizontal size={13} />
                 Gestionar Categorías y Límites
@@ -874,16 +888,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
             </div>
             <button
               onClick={() => handleOpenBudgetModal(null)}
-              className="btn btn-primary"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.35rem',
-                fontSize: '0.75rem',
-                padding: '0.45rem 0.85rem',
-                borderRadius: 'var(--radius-full)',
-                fontWeight: 600,
-              }}
+              className="app-btn app-btn-sm app-btn-primary"
             >
               <Plus size={15} />
               Nuevo grupo
@@ -1425,16 +1430,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
             {!selectedBudget.is_primary && !selectedBudget.is_read_only && (
               <button
                 onClick={() => handleOpenBudgetModal(selectedBudget)}
-                className="btn btn-secondary"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.35rem',
-                  fontSize: '0.75rem',
-                  padding: '0.4rem 0.75rem',
-                  borderRadius: '8px',
-                  fontWeight: 600,
-                }}
+                className="app-btn app-btn-sm app-btn-secondary"
               >
                 <SlidersHorizontal size={13} />
                 Gestionar categorías
@@ -1462,15 +1458,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                 {!selectedBudget.is_read_only && (
                   <button
                     onClick={() => handleOpenBudgetModal(selectedBudget)}
-                    className="btn btn-primary"
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '0.4rem',
-                      fontSize: '0.8rem',
-                      padding: '0.5rem 1rem',
-                      borderRadius: '8px',
-                    }}
+                    className="app-btn app-btn-sm app-btn-primary"
                   >
                     <Plus size={14} />
                     Elegir categorías
@@ -1670,6 +1658,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                       primaryAmount={primaryAmount}
                       secondaryAmount={secondaryAmount}
                       quickAction={quickAction}
+                      onClick={selectedBudget.is_read_only ? undefined : () => handleOpenCategoryLimitModal(catName)}
                     />
                   );
                 } else {
@@ -1705,17 +1694,8 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                           e.stopPropagation();
                           handleOpenCategoryLimitModal(catName);
                         }}
-                        className="btn btn-secondary"
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.35rem',
-                          padding: '0.4rem 0.75rem',
-                          fontSize: '0.75rem',
-                          fontWeight: 600,
-                          borderRadius: 'var(--radius-full)',
-                          whiteSpace: 'nowrap',
-                        }}
+                        className="app-btn app-btn-sm app-btn-secondary"
+                        style={{ whiteSpace: 'nowrap' }}
                       >
                         <Plus size={14} />
                         {selectedBudget.is_primary ? 'Definir límite' : 'Ajustar en Principal'}
@@ -1762,6 +1742,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                       title={catName}
                       subtitle={subtitle}
                       quickAction={quickAction}
+                      onClick={selectedBudget.is_read_only ? undefined : () => handleOpenCategoryLimitModal(catName)}
                     />
                   );
                 }
@@ -1909,13 +1890,15 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                 <button
                   type="button"
                   onClick={() => setCategoryModal((prev) => ({ ...prev, isOpen: false }))}
-                  className="btn-cancel"
+                  className="app-btn app-btn-secondary"
+                  style={{ flex: 1 }}
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="btn-submit"
+                  className="app-btn app-btn-primary"
+                  style={{ flex: 1 }}
                 >
                   Guardar Límite
                 </button>
@@ -1946,6 +1929,15 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
         onConfirm={handleDeleteCategoryLimit}
         onCancel={() => setConfirmDeleteCategoryLimit({ isOpen: false, budgetId: '', categoryName: '' })}
       />
+
+      {/* ConfirmLeave Shared Budget Modal */}
+      <ConfirmModal
+        isOpen={!!leaveSharedBudgetConfirm}
+        title="¿Salir del presupuesto compartido?"
+        message={`¿Estás seguro de salir de "${leaveSharedBudgetConfirm?.name || ''}"? Dejarás de ver este presupuesto compartido.`}
+        onConfirm={handleConfirmLeaveSharedBudget}
+        onCancel={() => setLeaveSharedBudgetConfirm(null)}
+      />
     </div>
   );
 };
@@ -1973,6 +1965,7 @@ const BudgetFormModal: React.FC<BudgetFormModalProps> = ({
   onClose,
   onSaved,
 }) => {
+  const toast = useToast();
   const isEdit = Boolean(budgetToEdit);
   const isPrimary = Boolean(budgetToEdit?.is_primary);
   const [name, setName] = useState<string>(budgetToEdit?.name || '');
@@ -2019,13 +2012,14 @@ const BudgetFormModal: React.FC<BudgetFormModalProps> = ({
   // Fallback fetch only if panas prop wasn't provided or empty
   useEffect(() => {
     if (isOpen && !isPrimary && (!panas || panas.length === 0)) {
-      getPanasOverview()
-        .then((res) => {
-          if (res && res.panas) {
-            setFallbackPanas(res.panas.map((p) => ({ id: p.partner_id, name: p.partner_name })));
-          }
+      getConnections()
+        .then((conns) => {
+          const accepted = (conns || [])
+            .filter((c) => c.status === 'accepted' && c.partner_id)
+            .map((c) => ({ id: c.partner_id!, name: c.partner_name || 'Pana' }));
+          setFallbackPanas(accepted);
         })
-        .catch((err) => console.error('Error fetching panas overview in BudgetFormModal:', err));
+        .catch((err) => console.error('Error fetching connections in BudgetFormModal:', err));
     }
   }, [isOpen, isPrimary, panas]);
 
@@ -2068,7 +2062,7 @@ const BudgetFormModal: React.FC<BudgetFormModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
-      alert('Ingresa un nombre');
+      toast.warning('Ingresa un nombre');
       return;
     }
     setIsSubmitting(true);
@@ -2095,7 +2089,7 @@ const BudgetFormModal: React.FC<BudgetFormModalProps> = ({
       }
     } catch (error: any) {
       console.error('Error saving budget:', error);
-      alert(error?.response?.data?.detail || 'Error al guardar el presupuesto');
+      toast.error(error?.response?.data?.detail || 'Error al guardar el presupuesto');
     } finally {
       setIsSubmitting(false);
     }
@@ -2376,7 +2370,8 @@ const BudgetFormModal: React.FC<BudgetFormModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="btn-cancel"
+              className="app-btn app-btn-secondary"
+              style={{ flex: 1 }}
               disabled={isSubmitting}
             >
               Cancelar
@@ -2384,7 +2379,8 @@ const BudgetFormModal: React.FC<BudgetFormModalProps> = ({
             <button
               type="submit"
               disabled={isSubmitting}
-              className="btn-submit"
+              className="app-btn app-btn-primary"
+              style={{ flex: 1 }}
             >
               {isSubmitting ? 'Guardando...' : isEdit ? 'Guardar Cambios' : 'Crear Grupo'}
             </button>

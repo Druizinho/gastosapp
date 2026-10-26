@@ -1633,11 +1633,6 @@ body {
   margin: 0 auto 1.5rem auto;
 }
 
-@keyframes toastSlideUp {
-  from { opacity: 0; transform: translate(-50%, 20px); }
-  to { opacity: 1; transform: translate(-50%, 0); }
-}
-
 /* =============================================
    NOTIFICATIONS
    ============================================= */
@@ -2342,3 +2337,211 @@ body {
   grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: 0.75rem;
 }
+
+/* =============================================
+   DESIGN SYSTEM CORE: BUTTON SYSTEM
+   ============================================= */
+
+.app-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-family: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.25;
+  min-height: 44px;
+  padding: 0.625rem 1.25rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  transition: transform 150ms cubic-bezier(0.2, 0, 0, 1),
+              background-color var(--transition-fast),
+              border-color var(--transition-fast),
+              color var(--transition-fast),
+              box-shadow var(--transition-fast);
+}
+
+.app-btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.app-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Button Sizing */
+.app-btn-sm {
+  min-height: 36px;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.8125rem;
+  gap: 0.35rem;
+}
+
+.app-btn-md {
+  min-height: 44px;
+  padding: 0.625rem 1.25rem;
+  font-size: 0.9375rem;
+}
+
+.app-btn-lg {
+  min-height: 48px;
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+}
+
+/* Button Variants */
+.app-btn-primary,
+.app-btn-accent {
+  background: var(--accent-color);
+  color: var(--text-inverse);
+  border-color: var(--accent-color);
+}
+
+.app-btn-primary:hover:not(:disabled),
+.app-btn-accent:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.app-btn-secondary {
+  background: var(--surface-muted);
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+
+.app-btn-secondary:hover:not(:disabled) {
+  background: var(--accent-light);
+  border-color: var(--text-tertiary);
+}
+
+.app-btn-danger {
+  background: var(--expense-bg);
+  color: var(--expense-color);
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+.app-btn-danger:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.app-btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  border-color: transparent;
+}
+
+.app-btn-ghost:hover:not(:disabled) {
+  background: var(--surface-muted);
+  color: var(--text-primary);
+}
+
+/* Backward-compatible button aliases */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 150ms ease, background-color var(--transition-fast);
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.btn.btn-primary {
+  background: var(--accent-color);
+  color: var(--text-inverse);
+}
+
+.btn.btn-secondary {
+  background: var(--surface-muted);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+/* =============================================
+   DESIGN SYSTEM CORE: TOAST NOTIFICATIONS
+   ============================================= */
+
+.toast-container {
+  position: fixed;
+  bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  pointer-events: none;
+  width: calc(100% - 2rem);
+  max-width: 420px;
+}
+
+.toast-item {
+  pointer-events: auto;
+  padding: 0.65rem 1.25rem;
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-xl);
+  font-size: 0.875rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--text-primary);
+  color: #FFFFFF;
+  animation: toastSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes toastSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* =============================================
+   DESIGN SYSTEM CORE: ATTRIBUTION BADGES
+   ============================================= */
+
+.attribution-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: var(--radius-full);
+  padding: 0.15rem 0.55rem;
+  line-height: 1.2;
+}
+
+.attribution-badge--self {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10B981;
+}
+
+.attribution-badge--partner {
+  background: rgba(59, 130, 246, 0.12);
+  color: #3B82F6;
+}
+
+.attribution-badge--shared {
+  background: rgba(139, 92, 246, 0.12);
+  color: #8B5CF6;
+}
+

@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useNavigate }
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { CategoriesProvider } from './context/CategoriesContext';
 import { NotificationProvider } from './context/NotificationContext';
+import { ToastProvider } from './components/ui/Toast';
 import { Auth, ResetPassword } from './components/Auth';
 import Dashboard from './components/Dashboard';
 import { BottomNav } from './components/BottomNav';
@@ -99,10 +100,12 @@ function App() {
     <AuthProvider>
       <CategoriesProvider>
         <NotificationProvider>
-          <Router>
-            <AppRoutes />
-            <InstallPWA />
-          </Router>
+          <ToastProvider>
+            <Router>
+              <AppRoutes />
+              <InstallPWA />
+            </Router>
+          </ToastProvider>
         </NotificationProvider>
       </CategoriesProvider>
     </AuthProvider>

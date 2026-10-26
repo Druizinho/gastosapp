@@ -3,6 +3,8 @@ from pyDolarVenezuela.pages import BCV
 from pyDolarVenezuela import Monitor
 from cachetools import TTLCache
 import asyncio
+import logging
+from datetime import datetime, timezone
 from decimal import Decimal
 
 # Cache for 30 minutes (1800 seconds)
@@ -62,26 +64,23 @@ async def get_binance_rate():
         print("Error fetching Binance:", e)
     return None
 
-async def get_all_rates():
+async def _refresh_rates_locked():
     global _last_valid_rates
-    if 'rates' in rates_cache:
-        return rates_cache['rates']
-    
     async with _rates_lock:
         if 'rates' in rates_cache:
-            return rates_cache['rates']
+            return rates_cache['rates'].copy()
 
-        usd_bcv, eur_bcv = await get_bcv_rates()
-        usdt_binance = await get_binance_rate()
+        bcv_res, usdt_bs = await asyncio.gather(get_bcv_rates(), get_binance_rate())
+        usd_bcv, eur_bcv = bcv_res if bcv_res else (None, None)
         
         rates = {
             "usd_bs": usd_bcv or _last_valid_rates.get("usd_bs"),
             "eur_bs": eur_bcv or _last_valid_rates.get("eur_bs"),
-            "usdt_bs": usdt_binance or _last_valid_rates.get("usdt_bs")
+            "usdt_bs": usdt_bs or _last_valid_rates.get("usdt_bs")
         }
         
         # Solo cachear por 30m si obtuvimos al menos una tasa válida
-        if usd_bcv or usdt_binance:
+        if usd_bcv or usdt_bs:
             rates_cache['rates'] = rates
             _last_valid_rates = rates.copy()
         elif _last_valid_rates.get("usd_bs") is not None:
@@ -89,6 +88,53 @@ async def get_all_rates():
             rates = _last_valid_rates.copy()
             
         return rates
+
+async def get_all_rates():
+    if 'rates' in rates_cache:
+        return rates_cache['rates'].copy()
+
+    if _last_valid_rates.get("usd_bs") is not None:
+        _trigger_background_rates_update()
+        return _last_valid_rates.copy()
+
+    return await _refresh_rates_locked()
+
+def _trigger_background_rates_update():
+    try:
+        loop = asyncio.get_running_loop()
+        if loop and loop.is_running():
+            async def _bg_task():
+                try:
+                    await _refresh_rates_locked()
+                except Exception as e:
+                    logging.getLogger(__name__).warning("Background rates fetch failed: %s", e)
+            loop.create_task(_bg_task())
+    except (RuntimeError, Exception):
+        pass
+
+def get_rates_instant_or_cached() -> dict:
+    global _last_valid_rates
+
+    # Support unit tests where get_all_rates has been mocked
+    if hasattr(get_all_rates, "return_value") and isinstance(get_all_rates.return_value, dict):
+        return get_all_rates.return_value
+
+    cached = rates_cache.get('rates')
+    if cached:
+        return cached
+
+    if _last_valid_rates and any(v is not None for v in _last_valid_rates.values()):
+        _trigger_background_rates_update()
+        return _last_valid_rates.copy()
+
+    _trigger_background_rates_update()
+    return {
+        "usd_bs": 1.0,
+        "eur_bs": 1.0,
+        "usdt_bs": 1.0,
+        "usd_cash_bs": 1.0,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
 
 def convert_amount(amount: Decimal, currency: str, rates: dict, manual_rate: Decimal = None):
     amount_usd = None

@@ -40,6 +40,8 @@ import { SummaryHeroCard } from './ui/SummaryHeroCard';
 import { SegmentedTabs } from './ui/SegmentedTabs';
 import { EmptyState } from './ui/EmptyState';
 import { CurrencyBreakdownCard } from './ui/CurrencyBreakdownCard';
+import { useToast } from './ui/Toast';
+import { AttributionBadge } from './ui/AttributionBadge';
 import ListCard from './ListCard';
 import ListCardBottomSheet from './ListCardBottomSheet';
 
@@ -62,13 +64,8 @@ const FixedExpenses: React.FC = () => {
   const [selectedExpenseForSheet, setSelectedExpenseForSheet] = useState<FixedExpense | null>(null);
   const [leaveExpenseModal, setLeaveExpenseModal] = useState<{ isOpen: boolean; expense: FixedExpense | null }>({ isOpen: false, expense: null });
   const [leaveExpenseLoading, setLeaveExpenseLoading] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const { user } = useAuth();
-
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3000);
-  };
+  const toast = useToast();
 
   const handleConfirmLeaveExpense = async () => {
     const expense = leaveExpenseModal.expense;
@@ -97,13 +94,13 @@ const FixedExpenses: React.FC = () => {
       }
 
       await removeShareMember(shareId, myUserId);
-      showToast('Te has desvinculado del gasto fijo compartido');
+      toast.success('Te has desvinculado del gasto fijo compartido');
       setExpenses((prev) => prev.filter((e) => e.id !== expense.id));
       setSelectedExpenseForSheet(null);
       setLeaveExpenseModal({ isOpen: false, expense: null });
     } catch (err: any) {
       console.error('Error al desvincularse del gasto fijo:', err);
-      showToast(err?.response?.data?.detail || err?.message || 'Error al desvincularse del gasto fijo');
+      toast.error(err?.response?.data?.detail || err?.message || 'Error al desvincularse del gasto fijo');
     } finally {
       setLeaveExpenseLoading(false);
     }
@@ -460,6 +457,13 @@ const FixedExpenses: React.FC = () => {
             Pagado
           </span>
         )}
+        {isPaid && check?.paid_by_name && (
+          <AttributionBadge
+            name={check.paid_by_name}
+            isMe={check.can_edit !== false}
+            icon="user"
+          />
+        )}
       </>
     );
 
@@ -799,6 +803,7 @@ const FixedExpenses: React.FC = () => {
           onSelfLeave={() => {
             setActiveShareModalItem(null);
             fetchData();
+            toast.success('Has salido del gasto fijo compartido');
           }}
         />
       )}
@@ -974,8 +979,12 @@ const FixedExpenses: React.FC = () => {
                     <span>Pagado el {check.paid_date}</span>
                   </div>
                   {check.paid_by_name && (
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-                      Por {check.paid_by_name}
+                    <div style={{ marginTop: '0.35rem' }}>
+                      <AttributionBadge
+                        name={check.paid_by_name}
+                        isMe={check.can_edit !== false}
+                        icon="user"
+                      />
                     </div>
                   )}
                 </div>
@@ -994,30 +1003,6 @@ const FixedExpenses: React.FC = () => {
           currency={leaveExpenseModal.expense.currency}
           loading={leaveExpenseLoading}
         />
-      )}
-
-      {toastMessage && (
-        <div style={{
-          position: 'fixed',
-          bottom: '5rem',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          backgroundColor: '#10B981',
-          color: '#ffffff',
-          padding: '0.6rem 1.2rem',
-          borderRadius: '9999px',
-          boxShadow: 'var(--shadow-lg)',
-          zIndex: 9999,
-          fontSize: '0.875rem',
-          fontWeight: 500,
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.5rem',
-          animation: 'fadeIn 0.2s ease-in-out'
-        }}>
-          <CheckCircle2 size={16} />
-          {toastMessage}
-        </div>
       )}
     </div>
   );

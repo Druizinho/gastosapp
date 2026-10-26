@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { getExpenses, getSummaryRange, createExpense, updateExpense, deleteExpense, getMonthlyBudget } from '../api';
+import { getExpenses, getSummaryRange, createExpense, updateExpense, deleteExpense, getMonthlyBudget, getCachedMonthlyBudget } from '../api';
 import type { Expense, RangeSummaryResponse, ExpenseCreate, ExpenseUpdate, DateFilter, DatePreset, MonthlyBudgetResponse } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useCategories } from '../context/CategoriesContext';
@@ -14,7 +14,7 @@ import { NotificationBell } from './NotificationBell';
 
 const Dashboard: React.FC = () => {
   const { displayName, avatarUrl } = useAuth();
-  const { categories, refreshCategories } = useCategories();
+  const { categories } = useCategories();
   const [searchParams, setSearchParams] = useSearchParams();
   
   // Initialize filter from URL or default
@@ -82,21 +82,25 @@ const Dashboard: React.FC = () => {
         return;
       }
 
-      const fetchPromises: [Promise<any>, Promise<any>, Promise<any>, Promise<any>?] = [
-        getExpenses(resolved.from, resolved.to),
-        getSummaryRange(resolved.from, resolved.to),
-        refreshCategories(),
-      ];
-
       if (dateFilter.preset === 'month') {
         const monthYear = resolved.from ? resolved.from.slice(0, 7) : new Date().toISOString().slice(0, 7);
-        fetchPromises.push(getMonthlyBudget(monthYear).catch(() => null));
+        const cachedBudget = getCachedMonthlyBudget(monthYear);
+        if (cachedBudget) {
+          setMonthlyBudget(cachedBudget);
+        }
+        getMonthlyBudget(monthYear)
+          .then((b) => setMonthlyBudget(b))
+          .catch((err) => console.error('Error fetching monthly budget:', err));
+      } else {
+        setMonthlyBudget(null);
       }
 
-      const [expensesData, summaryData, _cats, budgetData] = await Promise.all(fetchPromises);
+      const [expensesData, summaryData] = await Promise.all([
+        getExpenses(resolved.from, resolved.to),
+        getSummaryRange(resolved.from, resolved.to),
+      ]);
       setExpenses(expensesData);
       setSummary(summaryData);
-      setMonthlyBudget(budgetData || null);
     } catch (error) {
       console.error('Error fetching data:', error);
       setLoadError(true);

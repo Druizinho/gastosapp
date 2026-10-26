@@ -62,6 +62,8 @@ import { SummaryHeroCard } from './ui/SummaryHeroCard';
 import { SegmentedTabs } from './ui/SegmentedTabs';
 import { EmptyState } from './ui/EmptyState';
 import { CurrencyBreakdownCard } from './ui/CurrencyBreakdownCard';
+import { useToast } from './ui/Toast';
+import { AttributionBadge } from './ui/AttributionBadge';
 
 const currencyLabels: Record<string, string> = {
   'USD_BCV': '$',
@@ -95,11 +97,11 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
   const { categories } = useCategories();
   const { mainCurrency, setMainCurrency } = useCurrencyPreference();
   const { user } = useAuth();
+  const toast = useToast();
 
   const [debts, setDebts] = useState<Debt[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [filterSettled, setFilterSettled] = useState(false);
   const [rates, setRates] = useState<ExchangeRates | null>(null);
 
@@ -148,7 +150,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
       }
 
       await removeShareMember(shareId, myUserId);
-      showToast('Te has desvinculado de la deuda compartida');
+      toast.success('Te has desvinculado de la deuda compartida');
       setDebts((prev) => prev.filter((d) => d.id !== debt.id));
       if (selectedDebt && selectedDebt.id === debt.id) {
         setSelectedDebt(null);
@@ -157,7 +159,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
       setLeaveDebtModal({ isOpen: false, debt: null });
     } catch (err: any) {
       console.error('Error al desvincularse de la deuda:', err);
-      showToast(err?.response?.data?.detail || err?.message || 'Error al desvincularse de la deuda');
+      toast.error(err?.response?.data?.detail || err?.message || 'Error al desvincularse de la deuda');
     } finally {
       setLeaveDebtLoading(false);
     }
@@ -173,12 +175,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
       setSelectedDebt((prev) => (prev ? { ...prev, category: newCategory } : null));
     }
     await fetchDebts();
-    showToast('Categoría actualizada exitosamente');
-  };
-
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3000);
+    toast.success('Categoría actualizada exitosamente');
   };
 
   const handleTabChange = (tab: 'all' | 'owed' | 'receivable') => {
@@ -238,11 +235,11 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
       }
 
       await fetchDebts();
-      showToast('Guardado exitosamente');
+      toast.success('Guardado exitosamente');
     } catch (error: any) {
       console.error('Error saving debt:', error);
       const detail = error?.response?.data?.detail;
-      showToast(typeof detail === 'string' ? detail : 'Error al guardar la deuda');
+      toast.error(typeof detail === 'string' ? detail : 'Error al guardar la deuda');
     } finally {
       setSubmitting(false);
     }
@@ -267,16 +264,16 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
       await fetchDebts();
 
       if (editingPayment) {
-        showToast('Abono actualizado');
+        toast.success('Abono actualizado');
       } else if (updatedDebt.is_settled) {
-        showToast('🎉 ¡Deuda completamente pagada!');
+        toast.success('🎉 ¡Deuda completamente pagada!');
       } else {
-        showToast('Abono registrado');
+        toast.success('Abono registrado');
       }
     } catch (error: any) {
       console.error('Error saving payment:', error);
       const detail = error?.response?.data?.detail;
-      showToast(typeof detail === 'string' ? detail : 'Error al guardar el abono');
+      toast.error(typeof detail === 'string' ? detail : 'Error al guardar el abono');
     } finally {
       setSubmitting(false);
     }
@@ -289,11 +286,11 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
       if (selectedDebt?.id === id) setSelectedDebt(null);
       if (selectedDebtForSheet?.id === id) setSelectedDebtForSheet(null);
       await fetchDebts();
-      showToast('Deuda eliminada');
+      toast.success('Deuda eliminada');
     } catch (error: any) {
       console.error('Error deleting debt:', error);
       const detail = error?.response?.data?.detail;
-      showToast(typeof detail === 'string' ? detail : 'Error al eliminar la deuda');
+      toast.error(typeof detail === 'string' ? detail : 'Error al eliminar la deuda');
     } finally {
       setSubmitting(false);
       setConfirmDelete({ isOpen: false });
@@ -306,11 +303,11 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
       const updatedDebt = await deleteDebtPayment(paymentId);
       setSelectedDebt(updatedDebt);
       await fetchDebts();
-      showToast('Abono eliminado');
+      toast.success('Abono eliminado');
     } catch (error: any) {
       console.error('Error deleting payment:', error);
       const detail = error?.response?.data?.detail;
-      showToast(typeof detail === 'string' ? detail : 'Error al eliminar el abono');
+      toast.error(typeof detail === 'string' ? detail : 'Error al eliminar el abono');
     } finally {
       setSubmitting(false);
       setConfirmDelete({ isOpen: false });
@@ -849,19 +846,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
                     </span>
 
                     {payment.paid_by_name && (
-                      <span style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '0.25rem',
-                        fontSize: '0.7rem',
-                        color: '#3B82F6',
-                        background: 'rgba(59, 130, 246, 0.12)',
-                        padding: '0.12rem 0.5rem',
-                        borderRadius: 'var(--radius-full)',
-                        fontWeight: 600
-                      }}>
-                        ✨ {payment.paid_by_name}
-                      </span>
+                      <AttributionBadge name={payment.paid_by_name} isMe={false} icon="user" />
                     )}
 
                     {(payment.create_expense || payment.expense_id) && (
@@ -1012,26 +997,6 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
           />
         )}
 
-        {toastMessage && (
-          <div style={{
-            position: 'fixed',
-            bottom: '80px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            background: 'var(--text-primary)',
-            color: 'var(--surface-color)',
-            padding: '0.75rem 1.5rem',
-            borderRadius: 'var(--radius-full)',
-            fontSize: '0.9rem',
-            fontWeight: 600,
-            boxShadow: 'var(--shadow-lg)',
-            zIndex: 1000,
-            animation: 'toastSlideUp 0.3s ease'
-          }}>
-            {toastMessage}
-          </div>
-        )}
-
         {/* Modal: Personalizar Categoría Local */}
         {localCategoryModal.isOpen && localCategoryModal.debt && (
           <LocalCategoryModal
@@ -1071,7 +1036,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
               setActiveShareModalItem(null);
               setSelectedDebt(null);
               fetchDebts();
-              showToast('Has salido de la deuda compartida');
+              toast.success('Has salido de la deuda compartida');
             }}
           />
         )}
@@ -1612,26 +1577,6 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
         />
       )}
 
-      {toastMessage && (
-        <div style={{
-          position: 'fixed',
-          bottom: '80px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          background: 'var(--text-primary)',
-          color: 'var(--surface-color)',
-          padding: '0.75rem 1.5rem',
-          borderRadius: 'var(--radius-full)',
-          fontSize: '0.9rem',
-          fontWeight: 600,
-          boxShadow: 'var(--shadow-lg)',
-          zIndex: 1000,
-          animation: 'toastSlideUp 0.3s ease'
-        }}>
-          {toastMessage}
-        </div>
-      )}
-
       {/* Modal: Personalizar Categoría Local */}
       {localCategoryModal.isOpen && localCategoryModal.debt && (
         <LocalCategoryModal
@@ -1670,7 +1615,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
           onSelfLeave={() => {
             setActiveShareModalItem(null);
             fetchDebts();
-            showToast('Has salido de la deuda compartida');
+            toast.success('Has salido de la deuda compartida');
           }}
         />
       )}

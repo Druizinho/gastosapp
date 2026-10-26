@@ -59,6 +59,8 @@ import { SummaryHeroCard } from './ui/SummaryHeroCard';
 import { SegmentedTabs } from './ui/SegmentedTabs';
 import { EmptyState } from './ui/EmptyState';
 import { CurrencyBreakdownCard } from './ui/CurrencyBreakdownCard';
+import { useToast } from './ui/Toast';
+import { AttributionBadge } from './ui/AttributionBadge';
 
 interface SavingGoalsProps {
   onBack?: () => void;
@@ -87,12 +89,12 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
   const { categories } = useCategories();
   const { mainCurrency, setMainCurrency } = useCurrencyPreference();
   const { user } = useAuth();
+  const toast = useToast();
 
   const [goals, setGoals] = useState<SavingGoal[]>([]);
   const [rates, setRates] = useState<ExchangeRates | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const [typeTab, setTypeTab] = useState<'all' | 'projects' | 'savings'>('all');
   const [statusTab, setStatusTab] = useState<'active' | 'completed' | 'all'>('active');
@@ -141,7 +143,7 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
       }
 
       await removeShareMember(shareId, myUserId);
-      showToast('Te has desvinculado del fondo/proyecto compartido');
+      toast.success('Te has desvinculado del fondo/proyecto compartido');
       setGoals((prev) => prev.filter((g) => g.id !== goal.id));
       if (selectedGoal && selectedGoal.id === goal.id) {
         setSelectedGoal(null);
@@ -149,7 +151,7 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
       setLeaveGoalModal({ isOpen: false, goal: null });
     } catch (err: any) {
       console.error('Error al desvincularse de la meta:', err);
-      showToast(err?.response?.data?.detail || err?.message || 'Error al desvincularse');
+      toast.error(err?.response?.data?.detail || err?.message || 'Error al desvincularse');
     } finally {
       setLeaveGoalLoading(false);
     }
@@ -164,7 +166,7 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
     if (selectedGoal && selectedGoal.id === goalId) {
       setSelectedGoal((prev) => (prev ? { ...prev, category: newCategory } : null));
     }
-    showToast('Categoría actualizada exitosamente');
+    toast.success('Categoría actualizada exitosamente');
   };
 
   const [confirmDelete, setConfirmDelete] = useState<{
@@ -174,11 +176,6 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
     title?: string;
     message?: string;
   }>({ isOpen: false });
-
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3000);
-  };
 
   const fetchData = async () => {
     try {
@@ -195,7 +192,7 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
       });
     } catch (error) {
       console.error('Error fetching saving goals:', error);
-      showToast('Error al cargar fondos de ahorro');
+      toast.error('Error al cargar fondos de ahorro');
     } finally {
       setLoading(false);
     }
@@ -271,13 +268,13 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
       setSelectedGoal(updated);
       await fetchData();
       if (newStatus) {
-        showToast(goal.type === 'project' ? '🎉 ¡Proyecto finalizado con éxito!' : '🎉 ¡Meta marcada como completada!');
+        toast.success(goal.type === 'project' ? '🎉 ¡Proyecto finalizado con éxito!' : '🎉 ¡Meta marcada como completada!');
       } else {
-        showToast(goal.type === 'project' ? 'Proyecto reabierto para nuevos registros' : 'Fondo reabierto');
+        toast.info(goal.type === 'project' ? 'Proyecto reabierto para nuevos registros' : 'Fondo reabierto');
       }
     } catch (error: any) {
       console.error('Error toggling goal status:', error);
-      showToast('Error al actualizar estado');
+      toast.error('Error al actualizar estado');
     } finally {
       setSubmitting(false);
     }
@@ -290,10 +287,10 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
       let saved: SavingGoal;
       if (editingGoal) {
         saved = await updateSavingGoal(editingGoal.id, data as SavingGoalUpdate);
-        showToast(isProj ? 'Proyecto actualizado exitosamente' : 'Fondo actualizado exitosamente');
+        toast.success(isProj ? 'Proyecto actualizado exitosamente' : 'Fondo actualizado exitosamente');
       } else {
         saved = await createSavingGoal(data as SavingGoalCreate);
-        showToast(isProj ? '¡Proyecto creado con éxito! 🛠️' : '¡Fondo de ahorro creado! 🐷');
+        toast.success(isProj ? '¡Proyecto creado con éxito! 🛠️' : '¡Fondo de ahorro creado! 🐷');
       }
       setShowGoalForm(false);
       setEditingGoal(undefined);
@@ -304,7 +301,7 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
     } catch (error: any) {
       console.error('Error saving goal:', error);
       const detail = error?.response?.data?.detail;
-      showToast(typeof detail === 'string' ? detail : 'Error al guardar');
+      toast.error(typeof detail === 'string' ? detail : 'Error al guardar');
     } finally {
       setSubmitting(false);
     }
@@ -330,16 +327,16 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
       await fetchData();
 
       if (editingDeposit) {
-        showToast(isProj ? 'Pago actualizado correctamente' : 'Aporte actualizado correctamente');
+        toast.success(isProj ? 'Pago actualizado correctamente' : 'Aporte actualizado correctamente');
       } else if (updated.is_completed) {
-        showToast(isProj ? '🎉 ¡Proyecto completado!' : '🎉 ¡Felicidades! Fondo completado al 100%');
+        toast.success(isProj ? '🎉 ¡Proyecto completado!' : '🎉 ¡Felicidades! Fondo completado al 100%');
       } else {
-        showToast(isProj ? 'Pago registrado correctamente' : 'Aporte registrado correctamente');
+        toast.success(isProj ? 'Pago registrado correctamente' : 'Aporte registrado correctamente');
       }
     } catch (error: any) {
       console.error('Error saving deposit:', error);
       const detail = error?.response?.data?.detail;
-      showToast(typeof detail === 'string' ? detail : 'Error al guardar');
+      toast.error(typeof detail === 'string' ? detail : 'Error al guardar');
     } finally {
       setSubmitting(false);
     }
@@ -353,10 +350,10 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
         setSelectedGoal(null);
       }
       await fetchData();
-      showToast('Eliminado exitosamente');
+      toast.success('Eliminado exitosamente');
     } catch (error) {
       console.error('Error deleting goal:', error);
-      showToast('Error al eliminar');
+      toast.error('Error al eliminar');
     } finally {
       setSubmitting(false);
       setConfirmDelete({ isOpen: false });
@@ -371,10 +368,10 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
       const updated = await deleteSavingDeposit(depositId);
       setSelectedGoal(updated);
       await fetchData();
-      showToast(isProj ? 'Pago eliminado' : 'Aporte eliminado');
+      toast.success(isProj ? 'Pago eliminado' : 'Aporte eliminado');
     } catch (error) {
       console.error('Error deleting deposit:', error);
-      showToast('Error al eliminar');
+      toast.error('Error al eliminar');
     } finally {
       setSubmitting(false);
       setConfirmDelete({ isOpen: false });
@@ -1124,20 +1121,12 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
                       </span>
 
                       {selectedGoal.is_shared && (
-                        <span style={{
-                          fontSize: '0.7rem',
-                          fontWeight: 600,
-                          padding: '0.12rem 0.5rem',
-                          borderRadius: 'var(--radius-full)',
-                          background: !isMeDeposit ? 'rgba(59, 130, 246, 0.12)' : 'rgba(16, 185, 129, 0.12)',
-                          color: !isMeDeposit ? '#3B82F6' : '#10B981',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '0.25rem'
-                        }}>
-                          <Users size={10} />
-                          {!isMeDeposit ? `${isProject ? 'Pago' : 'Aporte'} de ${d.paid_by_name}` : `${isProject ? 'Pago' : 'Aporte'} tuyo`}
-                        </span>
+                        <AttributionBadge
+                          name={d.paid_by_name || undefined}
+                          isMe={isMeDeposit}
+                          label={isMeDeposit ? 'Aporte tuyo' : undefined}
+                          icon={isMeDeposit ? 'user' : 'users'}
+                        />
                       )}
 
                       {(d.create_expense || d.expense_id) && (
@@ -1278,7 +1267,7 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
               setActiveShareModalItem(null);
               setSelectedGoal(null);
               fetchData();
-              showToast('Has salido del fondo compartido');
+              toast.success('Has salido del fondo compartido');
             }}
           />
         )}
@@ -1347,27 +1336,6 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
             currentCategory={localCategoryModal.goal.category}
             onCategoryUpdated={handleCategoryUpdated}
           />
-        )}
-
-      {/* Toast Notification */}
-        {toastMessage && (
-          <div style={{
-            position: 'fixed',
-            bottom: '80px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            background: 'var(--text-primary)',
-            color: 'var(--surface-color)',
-            padding: '0.75rem 1.5rem',
-            borderRadius: 'var(--radius-full)',
-            boxShadow: 'var(--shadow-lg)',
-            zIndex: 1000,
-            fontSize: '0.9rem',
-            fontWeight: 600,
-            animation: 'toastSlideUp 0.3s ease'
-          }}>
-            {toastMessage}
-          </div>
         )}
       </div>
     );
@@ -1803,7 +1771,7 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
           onSelfLeave={() => {
             setActiveShareModalItem(null);
             fetchData();
-            showToast('Has salido del fondo compartido');
+            toast.success('Has salido del fondo compartido');
           }}
         />
       )}
@@ -1830,27 +1798,6 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
           currentCategory={localCategoryModal.goal.category}
           onCategoryUpdated={handleCategoryUpdated}
         />
-      )}
-
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div style={{
-          position: 'fixed',
-          bottom: '80px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          background: 'var(--text-primary)',
-          color: 'var(--surface-color)',
-          padding: '0.75rem 1.5rem',
-          borderRadius: 'var(--radius-full)',
-          boxShadow: 'var(--shadow-lg)',
-          zIndex: 1000,
-          fontSize: '0.9rem',
-          fontWeight: 600,
-          animation: 'toastSlideUp 0.3s ease'
-        }}>
-          {toastMessage}
-        </div>
       )}
     </div>
   );

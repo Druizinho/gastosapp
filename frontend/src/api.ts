@@ -93,16 +93,19 @@ export const getSummaryRange = async (from: string, to: string): Promise<RangeSu
 
 export const createExpense = async (expense: ExpenseCreate): Promise<Expense> => {
   const response = await api.post('/expenses/', expense);
+  invalidateMonthlyBudgetCache();
   return response.data;
 };
 
 export const updateExpense = async (id: string, expense: ExpenseUpdate): Promise<Expense> => {
   const response = await api.put(`/expenses/${id}`, expense);
+  invalidateMonthlyBudgetCache();
   return response.data;
 };
 
 export const deleteExpense = async (id: string): Promise<void> => {
   await api.delete(`/expenses/${id}`);
+  invalidateMonthlyBudgetCache();
 };
 
 export const getCategories = async (): Promise<Category[]> => {
@@ -290,27 +293,53 @@ export const markNotificationsAsRead = async (): Promise<void> => {
 };
 
 // Connections
+let connectionsCache: Connection[] | null = null;
+let inFlightConnections: Promise<Connection[]> | null = null;
+
 export const getConnections = async (): Promise<Connection[]> => {
-  const response = await api.get('/connections/');
-  return response.data;
+  if (connectionsCache !== null) {
+    return Promise.resolve(connectionsCache);
+  }
+  if (inFlightConnections !== null) {
+    return inFlightConnections;
+  }
+
+  inFlightConnections = api.get('/connections/')
+    .then((response) => {
+      connectionsCache = response.data;
+      return response.data;
+    })
+    .finally(() => {
+      inFlightConnections = null;
+    });
+
+  return inFlightConnections;
 };
 
 export const requestConnection = async (email: string): Promise<Connection> => {
   const response = await api.post('/connections/request', { email });
+  connectionsCache = null;
+  inFlightConnections = null;
   return response.data;
 };
 
 export const acceptConnection = async (connectionId: string): Promise<Connection> => {
   const response = await api.put(`/connections/${connectionId}/accept`);
+  connectionsCache = null;
+  inFlightConnections = null;
   return response.data;
 };
 
 export const rejectConnection = async (connectionId: string): Promise<void> => {
   await api.put(`/connections/${connectionId}/reject`);
+  connectionsCache = null;
+  inFlightConnections = null;
 };
 
 export const deleteConnection = async (connectionId: string): Promise<void> => {
   await api.delete(`/connections/${connectionId}`);
+  connectionsCache = null;
+  inFlightConnections = null;
 };
 
 export const getPanasOverview = async (): Promise<PanasGlobalOverview> => {
@@ -400,6 +429,8 @@ export const updateEntityLocalCategory = async (
 
 export const requestConnectionByUserId = async (targetUserId: string): Promise<Connection> => {
   const response = await api.post(`/connections/request-by-user/${targetUserId}`);
+  connectionsCache = null;
+  inFlightConnections = null;
   return response.data;
 };
 
@@ -418,6 +449,37 @@ export const updateSavingDeposit = async (depositId: string, depositUpdate: Savi
   return response.data;
 };
 
+// Monthly Budget Cache
+const monthlyBudgetCache = new Map<string, MonthlyBudgetResponse>();
+const inFlightMonthlyBudget = new Map<string, Promise<MonthlyBudgetResponse>>();
+
+export const getCachedMonthlyBudget = (monthYear: string): MonthlyBudgetResponse | undefined => {
+  return monthlyBudgetCache.get(monthYear);
+};
+
+export const invalidateMonthlyBudgetCache = (monthYear?: string): void => {
+  if (monthYear) {
+    monthlyBudgetCache.delete(monthYear);
+    inFlightMonthlyBudget.delete(monthYear);
+  } else {
+    monthlyBudgetCache.clear();
+    inFlightMonthlyBudget.clear();
+  }
+};
+
+export const clearApiCache = (): void => {
+  monthlyBudgetCache.clear();
+  inFlightMonthlyBudget.clear();
+  connectionsCache = null;
+  inFlightConnections = null;
+};
+
+supabase.auth.onAuthStateChange((event) => {
+  if (event === 'SIGNED_OUT') {
+    clearApiCache();
+  }
+});
+
 // Budgets
 export const getBudgetCategories = async (): Promise<string[]> => {
   const response = await api.get('/budgets/categories');
@@ -425,57 +487,80 @@ export const getBudgetCategories = async (): Promise<string[]> => {
 };
 
 export const getMonthlyBudget = async (monthYear: string): Promise<MonthlyBudgetResponse> => {
-  const response = await api.get(`/budgets/monthly/${monthYear}`);
-  return response.data;
+  if (inFlightMonthlyBudget.has(monthYear)) {
+    return inFlightMonthlyBudget.get(monthYear)!;
+  }
+
+  const promise = api.get<MonthlyBudgetResponse>(`/budgets/monthly/${monthYear}`)
+    .then((response) => {
+      monthlyBudgetCache.set(response.data.month_year || monthYear, response.data);
+      return response.data;
+    })
+    .finally(() => {
+      inFlightMonthlyBudget.delete(monthYear);
+    });
+
+  inFlightMonthlyBudget.set(monthYear, promise);
+  return promise;
 };
 
 export const upsertMonthlyBudget = async (monthYear: string, payload: MonthlyBudgetUpsert): Promise<MonthlyBudgetResponse> => {
   const response = await api.put(`/budgets/monthly/${monthYear}`, payload);
+  monthlyBudgetCache.set(response.data.month_year || monthYear, response.data);
   return response.data;
 };
 
 export const confirmMonthlyBudget = async (monthYear: string): Promise<MonthlyBudgetResponse> => {
   const response = await api.post(`/budgets/monthly/${monthYear}/confirm`);
+  monthlyBudgetCache.set(response.data.month_year || monthYear, response.data);
   return response.data;
 };
 
 export const upsertBudgetCategoryLimit = async (monthYear: string, item: BudgetCategoryLimitInput): Promise<MonthlyBudgetResponse> => {
   const response = await api.put(`/budgets/monthly/${monthYear}/category`, item);
+  monthlyBudgetCache.set(response.data.month_year || monthYear, response.data);
   return response.data;
 };
 
 export const deleteBudgetCategoryLimit = async (monthYear: string, categoryName: string): Promise<MonthlyBudgetResponse> => {
   const response = await api.delete(`/budgets/monthly/${monthYear}/category/${encodeURIComponent(categoryName)}`);
+  monthlyBudgetCache.set(response.data.month_year || monthYear, response.data);
   return response.data;
 };
 
 export const createMonthlyBudget = async (monthYear: string, payload: MonthlyBudgetCreate): Promise<MonthlyBudgetResponse> => {
   const response = await api.post(`/budgets/monthly/${monthYear}`, payload);
+  monthlyBudgetCache.set(response.data.month_year || monthYear, response.data);
   return response.data;
 };
 
 export const updateMonthlyBudgetById = async (budgetId: string, payload: MonthlyBudgetUpdate): Promise<MonthlyBudgetResponse> => {
   const response = await api.put(`/budgets/${budgetId}`, payload);
+  monthlyBudgetCache.set(response.data.month_year, response.data);
   return response.data;
 };
 
 export const setPrimaryMonthlyBudget = async (budgetId: string): Promise<MonthlyBudgetResponse> => {
   const response = await api.post(`/budgets/${budgetId}/primary`);
+  monthlyBudgetCache.set(response.data.month_year, response.data);
   return response.data;
 };
 
 export const deleteMonthlyBudgetById = async (budgetId: string): Promise<MonthlyBudgetResponse> => {
   const response = await api.delete(`/budgets/${budgetId}`);
+  monthlyBudgetCache.set(response.data.month_year, response.data);
   return response.data;
 };
 
 export const upsertCategoryLimitByBudgetId = async (budgetId: string, item: BudgetCategoryLimitInput): Promise<MonthlyBudgetResponse> => {
   const response = await api.put(`/budgets/${budgetId}/category`, item);
+  monthlyBudgetCache.set(response.data.month_year, response.data);
   return response.data;
 };
 
 export const deleteCategoryLimitByBudgetId = async (budgetId: string, categoryName: string): Promise<MonthlyBudgetResponse> => {
   const response = await api.delete(`/budgets/${budgetId}/category/${encodeURIComponent(categoryName)}`);
+  monthlyBudgetCache.set(response.data.month_year, response.data);
   return response.data;
 };
 

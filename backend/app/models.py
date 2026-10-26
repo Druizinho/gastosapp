@@ -1,6 +1,6 @@
 import uuid
 from datetime import date, datetime
-from sqlalchemy import Column, String, Numeric, Date, DateTime, Boolean, UniqueConstraint, ForeignKey
+from sqlalchemy import Column, String, Numeric, Date, DateTime, Boolean, UniqueConstraint, ForeignKey, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
@@ -41,6 +41,10 @@ class Category(Base):
 
 class Expense(Base):
     __tablename__ = "expenses"
+
+    __table_args__ = (
+        Index("ix_expenses_user_id_date", "user_id", "date"),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     amount = Column(Numeric(12, 4), nullable=False)
@@ -367,7 +371,7 @@ class MonthlyBudget(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     category_limits = relationship("BudgetCategoryLimit", back_populates="budget", cascade="all, delete-orphan", lazy="selectin")
-    linked_income = relationship("EstimatedIncome", foreign_keys=[linked_income_id], lazy="selectin")
+    linked_income = relationship("EstimatedIncome", foreign_keys=[linked_income_id], lazy="noload")
 
     __table_args__ = (
         UniqueConstraint('user_id', 'month_year', 'name', name='_user_month_budget_name_uc'),
