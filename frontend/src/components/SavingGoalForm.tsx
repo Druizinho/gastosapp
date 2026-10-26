@@ -28,14 +28,19 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
   loading,
 }) => {
   const isEditing = !!initialData;
+  const isReadOnlyMember = Boolean(initialData?.is_shared && initialData?.my_role === 'member');
   const [goalType, setGoalType] = useState<'saving' | 'project'>(initialData?.type || 'saving');
 
   // Categories & Panas connections
   const [categories, setCategories] = useState<Category[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
-  const [isSharedChecked, setIsSharedChecked] = useState(false);
-  const [selectedPartnerIds, setSelectedPartnerIds] = useState<string[]>([]);
-  const [adminPartnerIds, setAdminPartnerIds] = useState<string[]>([]);
+  const [isSharedChecked, setIsSharedChecked] = useState(() => Boolean(initialData?.is_shared));
+  const [selectedPartnerIds, setSelectedPartnerIds] = useState<string[]>(() =>
+    (initialData?.shared_members || []).filter(m => (m as any).role !== 'owner' && !m.is_owner).map(m => String(m.user_id))
+  );
+  const [adminPartnerIds, setAdminPartnerIds] = useState<string[]>(() =>
+    (initialData?.shared_members || []).filter(m => m.role === 'admin').map(m => String(m.user_id))
+  );
   const [showManualRate, setShowManualRate] = useState(false);
 
   const initialCategory = initialData?.category || (initialData?.type === 'project' ? 'Proyectos' : 'Ahorro');
@@ -59,13 +64,15 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
       .then(setCategories)
       .catch((err) => console.error('Error fetching categories:', err));
 
-    getConnections()
-      .then((data) => {
-        const accepted = data.filter(c => c.status === 'accepted');
-        setConnections(accepted);
-      })
-      .catch((err) => console.error('Error fetching connections:', err));
-  }, []);
+    if (!isReadOnlyMember) {
+      (getConnections as any)(true)
+        .then((data: Connection[]) => {
+          const accepted = data.filter(c => c.status === 'accepted');
+          setConnections(accepted);
+        })
+        .catch((err: any) => console.error('Error fetching connections:', err));
+    }
+  }, [isReadOnlyMember]);
 
   useEffect(() => {
     if (initialData) {
@@ -83,7 +90,13 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
         is_active: initialData.is_active,
         manual_rate: '' as any,
       });
-      setIsSharedChecked(!!initialData.is_shared);
+      setIsSharedChecked(Boolean(initialData.is_shared));
+      setSelectedPartnerIds(
+        (initialData.shared_members || []).filter(m => (m as any).role !== 'owner' && !m.is_owner).map(m => String(m.user_id))
+      );
+      setAdminPartnerIds(
+        (initialData.shared_members || []).filter(m => m.role === 'admin').map(m => String(m.user_id))
+      );
       if (initialData.rate_usd_bs || initialData.rate_eur_bs || initialData.rate_usdt_bs) {
         setShowManualRate(true);
       }
@@ -129,14 +142,20 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
       delete submitData.manual_rate;
     }
 
-    if (!initialData?.is_shared && isSharedChecked && selectedPartnerIds.length > 0) {
-      submitData.shared_with_ids = selectedPartnerIds;
-      submitData.admin_ids = adminPartnerIds;
-      submitData.shared_with = selectedPartnerIds[0];
-    } else {
-      submitData.shared_with = null;
-      submitData.shared_with_ids = [];
-      submitData.admin_ids = [];
+    if (!isReadOnlyMember) {
+      if (isSharedChecked) {
+        submitData.shared_with_ids = selectedPartnerIds;
+        submitData.admin_ids = adminPartnerIds;
+        submitData.shared_with = selectedPartnerIds.length > 0 ? selectedPartnerIds[0] : null;
+      } else if (initialData?.is_shared && !isSharedChecked) {
+        submitData.shared_with_ids = [];
+        submitData.admin_ids = [];
+        submitData.shared_with = null;
+      } else {
+        submitData.shared_with = null;
+        submitData.shared_with_ids = [];
+        submitData.admin_ids = [];
+      }
     }
 
     onSubmit(submitData);
@@ -346,8 +365,8 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
             />
           </div>
 
-          {/* Compartir con un Pana (si aún no está compartido) */}
-          {!initialData?.is_shared && (
+          {/* Compartir con un Pana */}
+          {!isReadOnlyMember && (
             <div style={{
               background: 'var(--surface-muted)',
               padding: '0.65rem 0.85rem',

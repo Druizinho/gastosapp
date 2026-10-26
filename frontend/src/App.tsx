@@ -9,6 +9,7 @@ import Dashboard from './components/Dashboard';
 import { BottomNav } from './components/BottomNav';
 import { InstallPWA } from './components/InstallPWA';
 import { RouteErrorBoundary } from './components/ErrorBoundary';
+import { SkeletonHeroCard, SkeletonList } from './components/ui/Skeleton';
 import './index.css';
 
 // Lazy loading de vistas y herramientas pesadas para optimizar el bundle inicial
@@ -26,7 +27,12 @@ const ProtectedRoute = ({ children }: { children?: React.ReactNode }) => {
   const { session, loading } = useAuth();
   
   if (loading) {
-    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: 'white' }}>Cargando...</div>;
+    return (
+      <div style={{ maxWidth: '800px', margin: '0 auto', padding: '16px' }}>
+        <SkeletonHeroCard />
+        <SkeletonList count={4} />
+      </div>
+    );
   }
   
   if (!session) {
@@ -41,7 +47,14 @@ const AppLayout = () => {
     <div className="app-container">
       <main className="main-content">
         <RouteErrorBoundary>
-          <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh', color: '#9CA3AF' }}>Cargando...</div>}>
+          <Suspense
+            fallback={
+              <div style={{ maxWidth: '800px', margin: '0 auto', padding: '16px' }}>
+                <SkeletonHeroCard />
+                <SkeletonList count={4} />
+              </div>
+            }
+          >
             <Outlet />
           </Suspense>
         </RouteErrorBoundary>

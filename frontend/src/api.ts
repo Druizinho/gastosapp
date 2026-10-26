@@ -91,6 +91,24 @@ export const getSummaryRange = async (from: string, to: string): Promise<RangeSu
   return response.data;
 };
 
+// Monthly Budget Cache
+const monthlyBudgetCache = new Map<string, MonthlyBudgetResponse>();
+const inFlightMonthlyBudget = new Map<string, Promise<MonthlyBudgetResponse>>();
+
+export const getCachedMonthlyBudget = (monthYear: string): MonthlyBudgetResponse | undefined => {
+  return monthlyBudgetCache.get(monthYear);
+};
+
+export const invalidateMonthlyBudgetCache = (monthYear?: string): void => {
+  if (monthYear) {
+    monthlyBudgetCache.delete(monthYear);
+    inFlightMonthlyBudget.delete(monthYear);
+  } else {
+    monthlyBudgetCache.clear();
+    inFlightMonthlyBudget.clear();
+  }
+};
+
 export const createExpense = async (expense: ExpenseCreate): Promise<Expense> => {
   const response = await api.post('/expenses/', expense);
   invalidateMonthlyBudgetCache();
@@ -177,15 +195,18 @@ export const updateFixedExpense = async (id: string, expense: FixedExpenseUpdate
 
 export const deleteFixedExpense = async (id: string, month_year?: string): Promise<void> => {
   await api.delete(`/fixed-expenses/${id}`, { params: month_year ? { month_year } : {} });
+  invalidateMonthlyBudgetCache();
 };
 
 export const checkFixedExpense = async (id: string, data: FixedExpenseCheckCreate): Promise<FixedExpenseCheck> => {
   const response = await api.post(`/fixed-expenses/${id}/checks`, data);
+  invalidateMonthlyBudgetCache();
   return response.data;
 };
 
 export const uncheckFixedExpense = async (id: string, monthYear: string): Promise<void> => {
   await api.delete(`/fixed-expenses/${id}/checks/${monthYear}`);
+  invalidateMonthlyBudgetCache();
 };
 
 // Legacy — kept for backward compat
@@ -220,15 +241,18 @@ export const updateDebt = async (id: string, debt: DebtUpdate): Promise<Debt> =>
 
 export const deleteDebt = async (id: string): Promise<void> => {
   await api.delete(`/debts/${id}`);
+  invalidateMonthlyBudgetCache();
 };
 
 export const addDebtPayment = async (debtId: string, payment: DebtPaymentCreate): Promise<Debt> => {
   const response = await api.post(`/debts/${debtId}/payments`, payment);
+  invalidateMonthlyBudgetCache();
   return response.data;
 };
 
 export const deleteDebtPayment = async (paymentId: string): Promise<Debt> => {
   const response = await api.delete(`/debts/payments/${paymentId}`);
+  invalidateMonthlyBudgetCache();
   return response.data;
 };
 
@@ -296,6 +320,11 @@ export const markNotificationsAsRead = async (): Promise<void> => {
 let connectionsCache: Connection[] | null = null;
 let inFlightConnections: Promise<Connection[]> | null = null;
 
+export const invalidateConnectionsCache = (): void => {
+  connectionsCache = null;
+  inFlightConnections = null;
+};
+
 export const getConnections = async (): Promise<Connection[]> => {
   if (connectionsCache !== null) {
     return Promise.resolve(connectionsCache);
@@ -318,28 +347,28 @@ export const getConnections = async (): Promise<Connection[]> => {
 
 export const requestConnection = async (email: string): Promise<Connection> => {
   const response = await api.post('/connections/request', { email });
-  connectionsCache = null;
-  inFlightConnections = null;
+  invalidateConnectionsCache();
   return response.data;
 };
 
 export const acceptConnection = async (connectionId: string): Promise<Connection> => {
   const response = await api.put(`/connections/${connectionId}/accept`);
-  connectionsCache = null;
-  inFlightConnections = null;
+  invalidateConnectionsCache();
   return response.data;
 };
 
 export const rejectConnection = async (connectionId: string): Promise<void> => {
   await api.put(`/connections/${connectionId}/reject`);
-  connectionsCache = null;
-  inFlightConnections = null;
+  invalidateConnectionsCache();
 };
 
 export const deleteConnection = async (connectionId: string): Promise<void> => {
   await api.delete(`/connections/${connectionId}`);
-  connectionsCache = null;
-  inFlightConnections = null;
+  invalidateConnectionsCache();
+};
+
+export const cancelConnection = async (connectionId: string): Promise<void> => {
+  return deleteConnection(connectionId);
 };
 
 export const getPanasOverview = async (): Promise<PanasGlobalOverview> => {
@@ -383,15 +412,18 @@ export const updateSavingGoal = async (id: string, goal: SavingGoalUpdate): Prom
 
 export const deleteSavingGoal = async (id: string): Promise<void> => {
   await api.delete(`/savings/${id}`);
+  invalidateMonthlyBudgetCache();
 };
 
 export const addSavingDeposit = async (goalId: string, deposit: SavingDepositCreate): Promise<SavingGoal> => {
   const response = await api.post(`/savings/${goalId}/deposits`, deposit);
+  invalidateMonthlyBudgetCache();
   return response.data;
 };
 
 export const deleteSavingDeposit = async (depositId: string): Promise<SavingGoal> => {
   const response = await api.delete(`/savings/deposits/${depositId}`);
+  invalidateMonthlyBudgetCache();
   return response.data;
 };
 
@@ -403,6 +435,8 @@ export const getShareByEntity = async (entityId: string): Promise<ShareInfoOut> 
 
 export const addShareMembers = async (shareId: string, userIds: string[], adminIds: string[] = []): Promise<ShareInfoOut> => {
   const response = await api.post(`/shares/${shareId}/members`, { user_ids: userIds, admin_ids: adminIds });
+  invalidateMonthlyBudgetCache();
+  invalidateConnectionsCache();
   return response.data;
 };
 
@@ -411,8 +445,10 @@ export const updateShareMemberRole = async (shareId: string, targetUserId: strin
   return response.data;
 };
 
-export const removeShareMember = async (shareId: string, targetUserId: string): Promise<{ message: string; voluntary: boolean }> => {
+export const removeShareMember = async (shareId: string, targetUserId: string): Promise<{ message: string; voluntary: boolean; share_deleted?: boolean }> => {
   const response = await api.delete(`/shares/${shareId}/members/${targetUserId}`);
+  invalidateMonthlyBudgetCache();
+  invalidateConnectionsCache();
   return response.data;
 };
 
@@ -424,54 +460,37 @@ export const updateEntityLocalCategory = async (
     `/shares/by-entity/${entityId}/category`,
     { category }
   );
+  invalidateMonthlyBudgetCache();
   return response.data;
 };
 
 export const requestConnectionByUserId = async (targetUserId: string): Promise<Connection> => {
   const response = await api.post(`/connections/request-by-user/${targetUserId}`);
-  connectionsCache = null;
-  inFlightConnections = null;
+  invalidateConnectionsCache();
   return response.data;
 };
 
 export const updateDebtPayment = async (paymentId: string, paymentUpdate: DebtPaymentUpdate): Promise<Debt> => {
   const response = await api.put(`/debts/payments/${paymentId}`, paymentUpdate);
+  invalidateMonthlyBudgetCache();
   return response.data;
 };
 
 export const updateFixedExpenseCheck = async (checkId: string, checkUpdate: FixedExpenseCheckUpdate): Promise<FixedExpenseCheck> => {
   const response = await api.put(`/fixed-expenses/checks/${checkId}`, checkUpdate);
+  invalidateMonthlyBudgetCache();
   return response.data;
 };
 
 export const updateSavingDeposit = async (depositId: string, depositUpdate: SavingDepositUpdate): Promise<SavingGoal> => {
   const response = await api.put(`/savings/deposits/${depositId}`, depositUpdate);
+  invalidateMonthlyBudgetCache();
   return response.data;
 };
 
-// Monthly Budget Cache
-const monthlyBudgetCache = new Map<string, MonthlyBudgetResponse>();
-const inFlightMonthlyBudget = new Map<string, Promise<MonthlyBudgetResponse>>();
-
-export const getCachedMonthlyBudget = (monthYear: string): MonthlyBudgetResponse | undefined => {
-  return monthlyBudgetCache.get(monthYear);
-};
-
-export const invalidateMonthlyBudgetCache = (monthYear?: string): void => {
-  if (monthYear) {
-    monthlyBudgetCache.delete(monthYear);
-    inFlightMonthlyBudget.delete(monthYear);
-  } else {
-    monthlyBudgetCache.clear();
-    inFlightMonthlyBudget.clear();
-  }
-};
-
 export const clearApiCache = (): void => {
-  monthlyBudgetCache.clear();
-  inFlightMonthlyBudget.clear();
-  connectionsCache = null;
-  inFlightConnections = null;
+  invalidateMonthlyBudgetCache();
+  invalidateConnectionsCache();
 };
 
 supabase.auth.onAuthStateChange((event) => {

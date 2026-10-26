@@ -3,6 +3,7 @@ import { RefreshCw, Calculator, ChevronDown } from 'lucide-react';
 import { getRates } from '../api';
 import type { ExchangeRates } from '../types';
 import { PageHeader } from './ui/PageHeader';
+import { SkeletonList } from './ui/Skeleton';
 
 const formatRate = (val: number | null | undefined) => {
   if (val === null || val === undefined) return '—';
@@ -133,8 +134,8 @@ export const RatesPage: React.FC = () => {
       />
 
       {loading && !rates ? (
-        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-tertiary)' }}>
-          Cargando tasas...
+        <div style={{ padding: '12px 0' }}>
+          <SkeletonList count={4} />
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>

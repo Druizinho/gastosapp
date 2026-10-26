@@ -31,6 +31,7 @@ import { SegmentedTabs, type TabItem } from './ui/SegmentedTabs';
 import { EmptyState } from './ui/EmptyState';
 import { ListCard } from './ListCard';
 import { ShareSubBudgetModal } from './ShareSubBudgetModal';
+import { Skeleton, SkeletonList } from './ui/Skeleton';
 
 export type PanaTab = 'expenses' | 'debts' | 'savings' | 'budgets';
 
@@ -39,13 +40,15 @@ interface PanaDetailModalProps {
   partnerId: string | null;
   onClose: () => void;
   onConnectionDeleted: () => void;
+  onUpdated?: () => void;
 }
 
 export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
   isOpen,
   partnerId,
   onClose,
-  onConnectionDeleted
+  onConnectionDeleted,
+  onUpdated
 }) => {
   const navigate = useNavigate();
   const [detail, setDetail] = useState<PanaDetail | null>(null);
@@ -58,10 +61,12 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
   const now = new Date();
   const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-  const fetchDetails = async () => {
+  const fetchDetails = async (silent = false) => {
     if (!partnerId) return;
     try {
-      setLoading(true);
+      if (!silent && !detail) {
+        setLoading(true);
+      }
       setError(null);
       const data = await getPanaDetails(partnerId);
       setDetail(data);
@@ -83,21 +88,13 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleToggleCheck = async (expenseId: string, isPaid: boolean, amount: number, currency: string) => {
+  const handleUncheckFixedExpense = async (expenseId: string) => {
     try {
       setActionLoading(expenseId);
       setError(null);
-      if (isPaid) {
-        await uncheckFixedExpense(expenseId, currentMonthStr);
-      } else {
-        await checkFixedExpense(expenseId, {
-          month_year: currentMonthStr,
-          paid_amount: amount,
-          currency: currency as CurrencyType,
-          create_expense: false
-        });
-      }
-      await fetchDetails();
+      await uncheckFixedExpense(expenseId, currentMonthStr);
+      await fetchDetails(true);
+      onUpdated?.();
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Error al actualizar el estado del gasto');
     } finally {
@@ -105,7 +102,34 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
     }
   };
 
-  const handleUnshareSubBudget = async (b: SharedSubBudgetBrief) => {
+  const handleCheckSubmit = async (expenseId: string, amount: number, currency: string) => {
+    try {
+      setActionLoading(expenseId);
+      setError(null);
+      await checkFixedExpense(expenseId, {
+        month_year: currentMonthStr,
+        paid_amount: amount,
+        currency: currency as CurrencyType,
+        create_expense: false
+      });
+      await fetchDetails(true);
+      onUpdated?.();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Error al actualizar el estado del gasto');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleToggleCheck = async (expenseId: string, isPaid: boolean, amount: number, currency: string) => {
+    if (isPaid) {
+      await handleUncheckFixedExpense(expenseId);
+    } else {
+      await handleCheckSubmit(expenseId, amount, currency);
+    }
+  };
+
+  const handleLeaveOrUnshare = async (b: SharedSubBudgetBrief) => {
     if (!detail || !partnerId) return;
     if (!confirm(`¿Dejar de compartir "${b.name}" con ${detail.partner_name}?`)) return;
 
@@ -134,7 +158,8 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
         await updateMonthlyBudgetById(b.id, { shared_with_ids: remainingIds });
       }
 
-      await fetchDetails();
+      await fetchDetails(true);
+      onUpdated?.();
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Error al dejar de compartir el subpresupuesto');
     } finally {
@@ -149,6 +174,7 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
       setLoading(true);
       await deleteConnection(detail.connection_id);
       onConnectionDeleted();
+      onUpdated?.();
       onClose();
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Error al eliminar la conexión');
@@ -241,7 +267,7 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
                   <h2 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
-                    {detail?.partner_name || 'Cargando...'}
+                    {detail?.partner_name || <Skeleton width={140} height={22} borderRadius={6} />}
                   </h2>
                   {detail && (
                     <span style={{
@@ -318,8 +344,8 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
           {/* Scrollable Content */}
           <div style={{ flex: 1, overflowY: 'auto', paddingRight: '0.25rem', marginBottom: '1rem' }}>
             {loading ? (
-              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '180px' }}>
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+              <div style={{ padding: '12px' }}>
+                <SkeletonList count={3} />
               </div>
             ) : activeTab === 'expenses' ? (
               /* TAB: GASTOS FIJOS */
@@ -908,7 +934,7 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
                               <button
                                 type="button"
                                 disabled={actionLoading === b.id}
-                                onClick={() => handleUnshareSubBudget(b)}
+                                onClick={() => handleLeaveOrUnshare(b)}
                                 title="Dejar de compartir este subpresupuesto con tu pana"
                                 style={{
                                   padding: '0.25rem 0.6rem',

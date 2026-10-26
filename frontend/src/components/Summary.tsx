@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { RangeSummaryResponse, DateFilter, Category, MonthlyBudgetResponse } from '../types';
 import { Eye, EyeOff, Coins, PieChart } from 'lucide-react';
+import { SkeletonHeroCard } from './ui/Skeleton';
 import { resolveCategoryVisuals } from '../utils/categoryVisuals';
 import { useCurrencyPreference } from '../context/CurrencyPreferenceContext';
 import {
@@ -36,7 +37,7 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [],
     localStorage.setItem(BALANCE_VISIBLE_KEY, String(balanceVisible));
   }, [balanceVisible]);
 
-  if (!summary) return <div style={{ height: '200px', animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite' }} />;
+  if (!summary) return <SkeletonHeroCard />;
 
   const currentConfig = CURRENCY_CONFIGS[mainCurrency] || CURRENCY_CONFIGS.USD;
 

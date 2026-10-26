@@ -13,6 +13,10 @@ interface FixedExpenseFormProps {
 }
 
 const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubmit, onCancel }) => {
+  const isEditing = !!initialData;
+  const isSharedExpense = isEditing && !!initialData?.is_shared;
+  const isReadOnlyMember = isSharedExpense && initialData?.my_role === 'member';
+
   const [name, setName] = useState<string>(initialData?.name || '');
   const [amount, setAmount] = useState<string>(initialData?.amount.toString() || '');
   const [currency, setCurrency] = useState<CurrencyType>(initialData?.currency || 'BS');
@@ -22,9 +26,13 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
   const [manualRate, setManualRate] = useState<string>('');
 
   const [connections, setConnections] = useState<Connection[]>([]);
-  const [isSharedChecked, setIsSharedChecked] = useState(false);
-  const [selectedPartnerIds, setSelectedPartnerIds] = useState<string[]>([]);
-  const [adminPartnerIds, setAdminPartnerIds] = useState<string[]>([]);
+  const [isSharedChecked, setIsSharedChecked] = useState(() => Boolean(initialData?.is_shared));
+  const [selectedPartnerIds, setSelectedPartnerIds] = useState<string[]>(() =>
+    (initialData?.shared_members || []).filter(m => (m as any).role !== 'owner' && !m.is_owner).map(m => String(m.user_id))
+  );
+  const [adminPartnerIds, setAdminPartnerIds] = useState<string[]>(() =>
+    (initialData?.shared_members || []).filter(m => m.role === 'admin').map(m => String(m.user_id))
+  );
 
   const [rates, setRates] = useState<ExchangeRates | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -37,6 +45,13 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
       setCategory(initialData.category || '');
       setPaymentDay(initialData.payment_day?.toString() || '');
       setNotes(initialData.notes || '');
+      setIsSharedChecked(Boolean(initialData.is_shared));
+      setSelectedPartnerIds(
+        (initialData.shared_members || []).filter(m => (m as any).role !== 'owner' && !m.is_owner).map(m => String(m.user_id))
+      );
+      setAdminPartnerIds(
+        (initialData.shared_members || []).filter(m => m.role === 'admin').map(m => String(m.user_id))
+      );
 
       // Cargar la tasa histórica solo para divisas estándar (no inicializar rate_usd_bs para USD_CASH)
       if (initialData.currency === 'EUR_BCV' && initialData.rate_eur_bs) {
@@ -52,15 +67,15 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
   }, [initialData]);
 
   useEffect(() => {
-    if (!initialData?.is_shared) {
-      getConnections()
-        .then(data => {
+    if (!isReadOnlyMember) {
+      (getConnections as any)(true)
+        .then((data: Connection[]) => {
           const accepted = data.filter(c => c.status === 'accepted');
           setConnections(accepted);
         })
-        .catch(err => console.error('Error fetching connections:', err));
+        .catch((err: any) => console.error('Error fetching connections:', err));
     }
-  }, [initialData]);
+  }, [isReadOnlyMember]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -80,8 +95,7 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
 
     setIsSubmitting(true);
     try {
-      const isShared = !initialData?.is_shared && isSharedChecked && selectedPartnerIds.length > 0;
-      await onSubmit({
+      const submitData: FixedExpenseCreate | FixedExpenseUpdate = {
         name,
         amount: parseFloat(amount.replace(',', '.')),
         currency,
@@ -89,10 +103,25 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
         payment_day: paymentDay ? parseInt(paymentDay) : null,
         notes: notes || undefined,
         manual_rate: manualRate ? parseFloat(manualRate.replace(',', '.')) : undefined,
-        shared_with: isShared ? selectedPartnerIds[0] : null,
-        shared_with_ids: isShared ? selectedPartnerIds : [],
-        admin_ids: isShared ? adminPartnerIds : [],
-      });
+      };
+
+      if (!isReadOnlyMember) {
+        if (isSharedChecked) {
+          submitData.shared_with_ids = selectedPartnerIds;
+          submitData.admin_ids = adminPartnerIds;
+          submitData.shared_with = selectedPartnerIds.length > 0 ? selectedPartnerIds[0] : null;
+        } else if (initialData?.is_shared && !isSharedChecked) {
+          submitData.shared_with_ids = [];
+          submitData.admin_ids = [];
+          submitData.shared_with = null;
+        } else {
+          submitData.shared_with = null;
+          submitData.shared_with_ids = [];
+          submitData.admin_ids = [];
+        }
+      }
+
+      await onSubmit(submitData);
       if (!initialData) {
         setName('');
         setAmount('');
@@ -233,7 +262,7 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
             />
           </div>
 
-          {!initialData?.is_shared && (
+          {!isReadOnlyMember && (
             <div style={{
               background: 'var(--surface-muted)',
               padding: '0.875rem 1rem',

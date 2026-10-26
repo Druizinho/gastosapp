@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Plus,
   PiggyBank,
@@ -61,6 +61,7 @@ import { EmptyState } from './ui/EmptyState';
 import { CurrencyBreakdownCard } from './ui/CurrencyBreakdownCard';
 import { useToast } from './ui/Toast';
 import { AttributionBadge } from './ui/AttributionBadge';
+import { SkeletonList } from './ui/Skeleton';
 
 interface SavingGoalsProps {
   onBack?: () => void;
@@ -157,7 +158,7 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
     }
   };
 
-  const handleCategoryUpdated = (newCategory: string) => {
+  const handleCategoryUpdated = async (newCategory: string) => {
     if (!localCategoryModal.goal) return;
     const goalId = localCategoryModal.goal.id;
     setGoals((prev) =>
@@ -166,6 +167,7 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
     if (selectedGoal && selectedGoal.id === goalId) {
       setSelectedGoal((prev) => (prev ? { ...prev, category: newCategory } : null));
     }
+    await fetchData(true);
     toast.success('Categoría actualizada exitosamente');
   };
 
@@ -177,30 +179,27 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
     message?: string;
   }>({ isOpen: false });
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const [goalsData, ratesData] = await Promise.all([
         getSavingGoals(),
         getRates()
       ]);
       setGoals(goalsData);
       setRates(ratesData);
-      setSelectedGoal(prev => {
-        if (!prev) return null;
-        return goalsData.find(g => g.id === prev.id) || null;
-      });
+      setSelectedGoal(prev => prev ? (goalsData.find(g => g.id === prev.id) || prev) : null);
     } catch (error) {
       console.error('Error fetching saving goals:', error);
       toast.error('Error al cargar fondos de ahorro');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  };
+  }, [toast]);
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
 
   // Convert amount between currencies using rates helper
   const convertAmount = (amount: number, fromCurrency: string) => {
@@ -265,8 +264,9 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
       setSubmitting(true);
       const newStatus = !goal.is_completed;
       const updated = await updateSavingGoal(goal.id, { is_completed: newStatus });
+      setGoals(prev => prev.map(g => g.id === updated.id ? updated : g));
       setSelectedGoal(updated);
-      await fetchData();
+      await fetchData(true);
       if (newStatus) {
         toast.success(goal.type === 'project' ? '🎉 ¡Proyecto finalizado con éxito!' : '🎉 ¡Meta marcada como completada!');
       } else {
@@ -294,10 +294,17 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
       }
       setShowGoalForm(false);
       setEditingGoal(undefined);
-      if (selectedGoal && editingGoal && selectedGoal.id === editingGoal.id) {
-        setSelectedGoal(saved);
-      }
-      await fetchData();
+
+      setGoals(prev => {
+        const exists = prev.some(g => g.id === saved.id);
+        if (exists) {
+          return prev.map(g => g.id === saved.id ? saved : g);
+        }
+        return [saved, ...prev];
+      });
+      setSelectedGoal(prev => (prev?.id === saved.id ? saved : prev));
+
+      await fetchData(true);
     } catch (error: any) {
       console.error('Error saving goal:', error);
       const detail = error?.response?.data?.detail;
@@ -319,12 +326,11 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
       } else {
         updated = await addSavingDeposit(goalToDeposit.id, data as SavingDepositCreate);
       }
-      if (selectedGoal && selectedGoal.id === goalToDeposit.id) {
-        setSelectedGoal(updated);
-      }
+      setGoals(prev => prev.map(g => g.id === updated.id ? updated : g));
+      setSelectedGoal(updated);
       setDepositGoal(null);
       setEditingDeposit(undefined);
-      await fetchData();
+      await fetchData(true);
 
       if (editingDeposit) {
         toast.success(isProj ? 'Pago actualizado correctamente' : 'Aporte actualizado correctamente');
@@ -346,10 +352,11 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
     try {
       setSubmitting(true);
       await deleteSavingGoal(goalId);
+      setGoals(prev => prev.filter(g => g.id !== goalId));
       if (selectedGoal?.id === goalId) {
         setSelectedGoal(null);
       }
-      await fetchData();
+      await fetchData(true);
       toast.success('Eliminado exitosamente');
     } catch (error) {
       console.error('Error deleting goal:', error);
@@ -366,8 +373,9 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
       setSubmitting(true);
       const isProj = selectedGoal.type === 'project';
       const updated = await deleteSavingDeposit(depositId);
+      setGoals(prev => prev.map(g => g.id === updated.id ? updated : g));
       setSelectedGoal(updated);
-      await fetchData();
+      await fetchData(true);
       toast.success(isProj ? 'Pago eliminado' : 'Aporte eliminado');
     } catch (error) {
       console.error('Error deleting deposit:', error);
@@ -1262,11 +1270,11 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
             entityType="saving_goal"
             entityName={activeShareModalItem.name}
             onClose={() => setActiveShareModalItem(null)}
-            onUpdated={fetchData}
+            onUpdated={() => fetchData(true)}
             onSelfLeave={() => {
               setActiveShareModalItem(null);
               setSelectedGoal(null);
-              fetchData();
+              fetchData(true);
               toast.success('Has salido del fondo compartido');
             }}
           />
@@ -1425,6 +1433,7 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
 
       {/* Summary Card */}
       <SummaryHeroCard
+        isLoading={loading}
         eyebrow={heroEyebrow}
         badgeText={heroBadgeText}
         badgeIcon={heroBadgeIcon}
@@ -1473,9 +1482,7 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
 
       {/* Goals List */}
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-secondary)' }}>
-          Cargando registros...
-        </div>
+        <div style={{ padding: '8px 0' }}><SkeletonList count={4} /></div>
       ) : filteredGoals.length === 0 ? (
         <EmptyState
           icon={typeTab === 'projects' ? <FolderKanban size={28} /> : <PiggyBank size={28} />}
@@ -1767,10 +1774,10 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
           entityType="saving_goal"
           entityName={activeShareModalItem.name}
           onClose={() => setActiveShareModalItem(null)}
-          onUpdated={fetchData}
+          onUpdated={() => fetchData(true)}
           onSelfLeave={() => {
             setActiveShareModalItem(null);
-            fetchData();
+            fetchData(true);
             toast.success('Has salido del fondo compartido');
           }}
         />

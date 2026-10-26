@@ -3,6 +3,7 @@ import { getProfile, updateProfile } from '../api';
 import { Check, Loader2, AlertCircle, Lock } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../supabaseClient';
+import { Skeleton, SkeletonCircle } from './ui/Skeleton';
 
 const AVATAR_SEEDS = [
   'felix', 'milo', 'charlie', 'coco', 'leo', 
@@ -108,8 +109,15 @@ const ProfileManager: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
-        <Loader2 className="animate-spin text-tertiary" size={24} />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <div className="soft-card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.25rem', padding: '1.5rem' }}>
+          <SkeletonCircle size={64} />
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <Skeleton height={42} borderRadius={12} />
+            <Skeleton height={42} borderRadius={12} />
+            <Skeleton height={42} borderRadius={12} />
+          </div>
+        </div>
       </div>
     );
   }

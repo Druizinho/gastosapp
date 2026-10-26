@@ -53,6 +53,7 @@ async def get_debt(db: AsyncSession, debt_id: UUID, user_id: UUID):
             )
         )
         .options(selectinload(models.Debt.payments))
+        .execution_options(populate_existing=True)
     )
     debt = result.scalars().first()
     if debt:
@@ -121,7 +122,20 @@ async def update_debt(db: AsyncSession, debt_id: UUID, debt: schemas.DebtUpdate,
     membership = await sharing.get_membership(db, debt_id, user_id)
 
     if membership:
-        share, member = membership
+        if isinstance(membership, (tuple, list)):
+            share, member = membership
+            mem_role = getattr(member, 'role', None)
+            mem_share_id = getattr(share, 'id', None)
+        else:
+            share = getattr(membership, 'share', None)
+            member = membership
+            mem_role = getattr(membership, 'role', None)
+            mem_share_id = getattr(membership, 'share_id', None)
+
+        if shared_with_ids is not None and (mem_role in ("owner", "admin") or (share and share.owner_id == user_id)):
+            share_obj = (await db.get(models.Share, mem_share_id)) if mem_share_id else share
+            if share_obj:
+                await sharing.sync_share_members(db, share_obj, user_id, db_debt, shared_with_ids, admin_ids=admin_ids)
 
         if 'category' in update_data:
             new_cat = update_data.pop('category')
@@ -190,6 +204,9 @@ async def update_debt(db: AsyncSession, debt_id: UUID, debt: schemas.DebtUpdate,
                 )
 
     await db.commit()
+    _exp = db.expire_all()
+    if hasattr(_exp, "__await__"):
+        await _exp
     return await get_debt(db, debt_id, user_id)
 
 
@@ -344,6 +361,9 @@ async def add_debt_payment(db: AsyncSession, debt_id: UUID, user_id: UUID, payme
             )
 
     await db.commit()
+    _exp = db.expire_all()
+    if hasattr(_exp, "__await__"):
+        await _exp
     if should_create_expense:
         pay_date = data.get("payment_date") or date.today()
         await check_and_notify_budget_thresholds(db, user_id, pay_date, allow_notify=True)
@@ -404,6 +424,7 @@ async def update_debt_payment(
 
         if not (update_dict or register_as_expense is not None or manual_rate is not None):
             await db.commit()
+            db.expire_all()
             return await get_debt(db, payment.debt_id, user_id)
 
     if membership:
@@ -495,6 +516,9 @@ async def update_debt_payment(
     await sharing.recompute_settlement(db, "debt", [payment.debt_id])
 
     await db.commit()
+    _exp = db.expire_all()
+    if hasattr(_exp, "__await__"):
+        await _exp
     if target_create_expense:
         pay_date = payment.payment_date or date.today()
         await check_and_notify_budget_thresholds(db, user_id, pay_date, allow_notify=True)
@@ -565,4 +589,7 @@ async def delete_debt_payment(db: AsyncSession, payment_id: UUID, user_id: UUID)
         await sharing.recompute_settlement(db, "debt", [debt_id])
 
     await db.commit()
+    _exp = db.expire_all()
+    if hasattr(_exp, "__await__"):
+        await _exp
     return await get_debt(db, debt_id, user_id)

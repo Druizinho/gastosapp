@@ -194,6 +194,6 @@ async def remove_share_member(
             url="/dashboard"
         )
 
-    await sharing.remove_member(db, share, target_user_id)
+    share_deleted = await sharing.remove_member(db, share, target_user_id)
     await db.commit()
-    return {"message": "Miembro removido exitosamente", "voluntary": is_voluntary}
+    return {"message": "Miembro removido exitosamente", "voluntary": is_voluntary, "share_deleted": bool(share_deleted)}

@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useNotifications } from '../context/NotificationContext';
+import { SkeletonList } from './ui/Skeleton';
 import { 
   Bell, 
   CreditCard, 
@@ -106,10 +107,14 @@ const formatDate = (dateStr: string) => {
 export const NotificationSheet = ({ isOpen, onClose }: NotificationSheetProps) => {
   const navigate = useNavigate();
   const { notifications, markAsRead, fetchNotifications } = useNotifications();
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
-      fetchNotifications();
+      setLoading(true);
+      fetchNotifications().finally(() => {
+        setLoading(false);
+      });
     } else {
       markAsRead();
     }
@@ -137,8 +142,13 @@ export const NotificationSheet = ({ isOpen, onClose }: NotificationSheetProps) =
           <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>Notificaciones</h2>
         </div>
         
-        <div style={{ overflowY: 'auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {notifications.length === 0 ? (
+        <div 
+          className="fade-in-content"
+          style={{ overflowY: 'auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}
+        >
+          {loading ? (
+            <SkeletonList count={3} />
+          ) : notifications.length === 0 ? (
             <div style={{ padding: '3rem 1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', color: 'var(--text-tertiary)', gap: '1rem' }}>
               <Bell size={40} style={{ opacity: 0.5 }} />
               <p>No tienes notificaciones</p>

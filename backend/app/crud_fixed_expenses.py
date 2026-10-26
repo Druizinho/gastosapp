@@ -53,6 +53,9 @@ async def create_fixed_expense(db: AsyncSession, expense: schemas.FixedExpenseCr
         )
 
     await db.commit()
+    _exp = db.expire_all()
+    if hasattr(_exp, "__await__"):
+        await _exp
     await db.refresh(db_expense)
     return await get_fixed_expense(db, db_expense.id, user_id)
 
@@ -90,6 +93,7 @@ async def get_fixed_expense(db: AsyncSession, expense_id: UUID, user_id: UUID):
                 models.FixedExpense.id.in_(sharing.shared_entity_ids_subquery(user_id, "fixed_expense"))
             )
         )
+        .execution_options(populate_existing=True)
     )
     fe = result.scalars().first()
     if fe:
@@ -114,7 +118,16 @@ async def update_fixed_expense(db: AsyncSession, expense_id: UUID, expense: sche
     membership = await sharing.get_membership(db, expense_id, user_id)
 
     if membership:
-        share, member = membership
+        if isinstance(membership, (tuple, list)):
+            share, member = membership
+            mem_role = getattr(member, 'role', None)
+            mem_share_id = getattr(share, 'id', getattr(member, 'share_id', None))
+        else:
+            share = getattr(membership, 'share', None)
+            member = membership
+            mem_role = getattr(membership, 'role', None)
+            mem_share_id = getattr(membership, 'share_id', None)
+
         if 'category' in update_data:
             new_cat = update_data.pop('category')
             member.local_category = new_cat
@@ -127,6 +140,11 @@ async def update_fixed_expense(db: AsyncSession, expense_id: UUID, expense: sche
             for key, value in changing_fields.items():
                 setattr(db_expense, key, value)
             await db.flush()
+
+        if shared_with_ids is not None and (mem_role in ("owner", "admin") or (share and share.owner_id == user_id)):
+            share_obj = (await db.get(models.Share, mem_share_id)) if mem_share_id else share
+            if share_obj:
+                await sharing.sync_share_members(db, share_obj, user_id, db_expense, shared_with_ids, admin_ids=admin_ids)
     else:
         for key, value in update_data.items():
             setattr(db_expense, key, value)
@@ -160,6 +178,9 @@ async def update_fixed_expense(db: AsyncSession, expense_id: UUID, expense: sche
                 )
     
     await db.commit()
+    _exp = db.expire_all()
+    if hasattr(_exp, "__await__"):
+        await _exp
     return await get_fixed_expense(db, expense_id, user_id)
 
 
@@ -369,6 +390,9 @@ async def check_fixed_expense(
         )
 
     await db.commit()
+    _exp = db.expire_all()
+    if hasattr(_exp, "__await__"):
+        await _exp
     await db.refresh(db_check)
     return db_check
 
@@ -436,6 +460,9 @@ async def update_fixed_expense_check(
                     setattr(linked_exp, key, update_dict[key])
 
     await db.commit()
+    _exp = db.expire_all()
+    if hasattr(_exp, "__await__"):
+        await _exp
     await db.refresh(check)
     return check
 
@@ -475,6 +502,9 @@ async def uncheck_fixed_expense(db: AsyncSession, fixed_expense_id: UUID, month_
         fe_item.last_paid_month = None
 
     await db.commit()
+    _exp = db.expire_all()
+    if hasattr(_exp, "__await__"):
+        await _exp
     return True, expense_id
 
 

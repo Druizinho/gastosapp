@@ -26,9 +26,13 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
   const isReadOnlyMember = isSharedDebt && initialData?.my_role === 'member';
 
   const [connections, setConnections] = useState<Connection[]>([]);
-  const [isSharedChecked, setIsSharedChecked] = useState(false);
-  const [selectedPartnerIds, setSelectedPartnerIds] = useState<string[]>([]);
-  const [adminPartnerIds, setAdminPartnerIds] = useState<string[]>([]);
+  const [isSharedChecked, setIsSharedChecked] = useState(() => Boolean(initialData?.is_shared));
+  const [selectedPartnerIds, setSelectedPartnerIds] = useState<string[]>(() =>
+    (initialData?.shared_members || []).filter(m => (m as any).role !== 'owner' && !m.is_owner).map(m => String(m.user_id))
+  );
+  const [adminPartnerIds, setAdminPartnerIds] = useState<string[]>(() =>
+    (initialData?.shared_members || []).filter(m => m.role === 'admin').map(m => String(m.user_id))
+  );
 
   const [formData, setFormData] = useState<DebtCreate>({
     type,
@@ -47,14 +51,13 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
   });
 
   useEffect(() => {
-    if (!initialData?.is_shared) {
-      // Load connections for sharing if debt is not already shared
-      getConnections()
-        .then(data => {
+    if (!isReadOnlyMember) {
+      (getConnections as any)(true)
+        .then((data: Connection[]) => {
           const accepted = data.filter(c => c.status === 'accepted');
           setConnections(accepted);
         })
-        .catch(err => console.error('Error fetching connections:', err));
+        .catch((err: any) => console.error('Error fetching connections:', err));
     }
 
     if (initialData) {
@@ -65,8 +68,15 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
         notes: initialData.notes || '',
         shared_with: null
       });
+      setIsSharedChecked(Boolean(initialData.is_shared));
+      setSelectedPartnerIds(
+        (initialData.shared_members || []).filter(m => (m as any).role !== 'owner' && !m.is_owner).map(m => String(m.user_id))
+      );
+      setAdminPartnerIds(
+        (initialData.shared_members || []).filter(m => m.role === 'admin').map(m => String(m.user_id))
+      );
     }
-  }, [initialData]);
+  }, [initialData, isReadOnlyMember]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -83,14 +93,20 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
     submitData.total_amount = Number(submitData.total_amount);
     submitData.category = submitData.category || 'Sin Categoría';
     if (!submitData.due_date) submitData.due_date = null;
-    if (isSharedChecked && selectedPartnerIds.length > 0) {
-      submitData.shared_with_ids = selectedPartnerIds;
-      submitData.admin_ids = adminPartnerIds;
-      submitData.shared_with = selectedPartnerIds[0];
-    } else {
-      submitData.shared_with = null;
-      submitData.shared_with_ids = [];
-      submitData.admin_ids = [];
+    if (!isReadOnlyMember) {
+      if (isSharedChecked) {
+        submitData.shared_with_ids = selectedPartnerIds;
+        submitData.admin_ids = adminPartnerIds;
+        submitData.shared_with = selectedPartnerIds.length > 0 ? selectedPartnerIds[0] : null;
+      } else if (initialData?.is_shared && !isSharedChecked) {
+        submitData.shared_with_ids = [];
+        submitData.admin_ids = [];
+        submitData.shared_with = null;
+      } else {
+        submitData.shared_with = null;
+        submitData.shared_with_ids = [];
+        submitData.admin_ids = [];
+      }
     }
     onSubmit(submitData);
   };
@@ -214,7 +230,7 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
             </div>
           </div>
 
-          {!isSharedDebt && (
+          {!isReadOnlyMember && (
             <div className="form-group" style={{
               background: 'var(--surface-muted, rgba(0,0,0,0.03))',
               padding: '0.875rem 1rem',

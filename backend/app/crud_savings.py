@@ -52,6 +52,7 @@ async def get_saving_goal(db: AsyncSession, goal_id: UUID, user_id: UUID) -> Opt
             )
         )
         .options(selectinload(models.SavingGoal.deposits))
+        .execution_options(populate_existing=True)
     )
     goal = result.scalars().first()
     if not goal:
@@ -165,10 +166,24 @@ async def update_saving_goal(
     if extra_data:
         update_data.update(extra_data)
 
+    # Check if this goal is currently shared
     membership = await sharing.get_membership(db, goal_id, user_id)
 
     if membership:
-        share, member = membership
+        if isinstance(membership, (tuple, list)):
+            share, member = membership
+            mem_role = getattr(member, 'role', None)
+            mem_share_id = getattr(share, 'id', None)
+        else:
+            share = getattr(membership, 'share', None)
+            member = membership
+            mem_role = getattr(membership, 'role', None)
+            mem_share_id = getattr(membership, 'share_id', None)
+
+        if shared_with_ids is not None and (mem_role in ("owner", "admin") or (share and share.owner_id == user_id)):
+            share_obj = (await db.get(models.Share, mem_share_id)) if mem_share_id else share
+            if share_obj:
+                await sharing.sync_share_members(db, share_obj, user_id, db_goal, shared_with_ids, admin_ids=admin_ids)
 
         if 'category' in update_data:
             new_cat = update_data.pop('category')
@@ -238,6 +253,9 @@ async def update_saving_goal(
                 )
 
     await db.commit()
+    _exp = db.expire_all()
+    if hasattr(_exp, "__await__"):
+        await _exp
     return await get_saving_goal(db, goal_id, user_id)
 
 
@@ -425,6 +443,9 @@ async def add_saving_deposit(
             )
 
     await db.commit()
+    _exp = db.expire_all()
+    if hasattr(_exp, "__await__"):
+        await _exp
     if register_as_expense:
         dep_date = data["deposit_date"]
         await check_and_notify_budget_thresholds(db, user_id, dep_date, allow_notify=True)
@@ -482,6 +503,9 @@ async def update_saving_deposit(
 
         if not (update_dict or register_as_expense is not None or manual_rate is not None):
             await db.commit()
+            _exp = db.expire_all()
+            if hasattr(_exp, "__await__"):
+                await _exp
             return await get_saving_goal(db, goal_id, user_id)
 
     if membership:
@@ -579,6 +603,9 @@ async def update_saving_deposit(
     dep_date = deposit.deposit_date
 
     await db.commit()
+    _exp = db.expire_all()
+    if hasattr(_exp, "__await__"):
+        await _exp
     if had_expense:
         await check_and_notify_budget_thresholds(db, user_id, dep_date, allow_notify=True)
     return await get_saving_goal(db, deposit.goal_id, user_id)
@@ -667,6 +694,9 @@ async def delete_saving_deposit(db: AsyncSession, deposit_id: UUID, user_id: UUI
     dep_date = deposit.deposit_date
 
     await db.commit()
+    _exp = db.expire_all()
+    if hasattr(_exp, "__await__"):
+        await _exp
     if deposit.goal:
         db.expire(deposit.goal, ['deposits'])
     if had_expense:

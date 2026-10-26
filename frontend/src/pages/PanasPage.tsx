@@ -20,7 +20,8 @@ import {
   getPanasOverview, 
   acceptConnection, 
   rejectConnection, 
-  deleteConnection 
+  deleteConnection,
+  invalidateConnectionsCache,
 } from '../api';
 import type { Connection, PanasGlobalOverview, PanaSummary } from '../types';
 import { InvitePanaModal } from '../components/InvitePanaModal';
@@ -30,6 +31,7 @@ import { SummaryHeroCard } from '../components/ui/SummaryHeroCard';
 import { SegmentedTabs } from '../components/ui/SegmentedTabs';
 import { EmptyState } from '../components/ui/EmptyState';
 import { ListCard } from '../components/ListCard';
+import { SkeletonHeroCard, SkeletonList } from '../components/ui/Skeleton';
 
 export const PanasPage: React.FC = () => {
   const navigate = useNavigate();
@@ -46,9 +48,11 @@ export const PanasPage: React.FC = () => {
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [selectedPartnerId, setSelectedPartnerId] = useState<string | null>(null);
 
-  const fetchData = async () => {
+  const fetchData = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent && connections.length === 0 && (!overview || (overview as any).length === 0 || overview.panas.length === 0)) {
+        setLoading(true);
+      }
       setError(null);
       const [connectionsData, overviewData] = await Promise.all([
         getConnections(),
@@ -70,7 +74,8 @@ export const PanasPage: React.FC = () => {
   const handleAccept = async (id: string) => {
     try {
       await acceptConnection(id);
-      await fetchData();
+      invalidateConnectionsCache();
+      await fetchData(true);
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Error al aceptar la solicitud');
     }
@@ -80,17 +85,19 @@ export const PanasPage: React.FC = () => {
     if (!confirm('¿Rechazar esta solicitud de conexión?')) return;
     try {
       await rejectConnection(id);
-      await fetchData();
+      invalidateConnectionsCache();
+      await fetchData(true);
     } catch (err: any) {
       setError('Error al rechazar la solicitud');
     }
   };
 
-  const handleCancelInvite = async (id: string) => {
+  const handleCancel = async (id: string) => {
     if (!confirm('¿Cancelar esta invitación enviada?')) return;
     try {
       await deleteConnection(id);
-      await fetchData();
+      invalidateConnectionsCache();
+      await fetchData(true);
     } catch (err: any) {
       setError('Error al cancelar la invitación');
     }
@@ -139,6 +146,7 @@ export const PanasPage: React.FC = () => {
 
       {overview && (
         <SummaryHeroCard
+          isLoading={loading}
           eyebrow="RESUMEN CONJUNTO"
           badgeText={`${activePanas.length} ${activePanas.length === 1 ? 'Pana activo' : 'Panas activos'}`}
           badgeIcon={<Users size={13} />}
@@ -198,8 +206,9 @@ export const PanasPage: React.FC = () => {
       />
 
       {loading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '180px' }}>
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+        <div style={{ padding: '8px 0' }}>
+          <SkeletonHeroCard />
+          <SkeletonList count={3} />
         </div>
       ) : activeTab === 'panas' ? (
         /* TAB 1: MIS PANAS */
@@ -495,7 +504,7 @@ export const PanasPage: React.FC = () => {
                     quickAction={
                       <button
                         type="button"
-                        onClick={() => handleCancelInvite(conn.id)}
+                        onClick={() => handleCancel(conn.id)}
                         style={{ 
                           background: 'transparent', 
                           border: 'none', 
@@ -527,7 +536,8 @@ export const PanasPage: React.FC = () => {
         isOpen={isInviteModalOpen}
         onClose={() => setIsInviteModalOpen(false)}
         onSuccess={() => {
-          fetchData();
+          invalidateConnectionsCache();
+          fetchData(true);
           setActiveTab('requests');
         }}
       />
@@ -535,9 +545,18 @@ export const PanasPage: React.FC = () => {
       <PanaDetailModal
         isOpen={!!selectedPartnerId}
         partnerId={selectedPartnerId}
-        onClose={() => setSelectedPartnerId(null)}
+        onClose={() => {
+          setSelectedPartnerId(null);
+          invalidateConnectionsCache();
+          fetchData(true);
+        }}
+        onUpdated={() => {
+          invalidateConnectionsCache();
+          fetchData(true);
+        }}
         onConnectionDeleted={() => {
-          fetchData();
+          invalidateConnectionsCache();
+          fetchData(true);
         }}
       />
     </div>

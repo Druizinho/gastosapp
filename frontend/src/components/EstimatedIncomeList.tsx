@@ -29,6 +29,7 @@ import { SummaryHeroCard } from './ui/SummaryHeroCard';
 import { SegmentedTabs } from './ui/SegmentedTabs';
 import { EmptyState } from './ui/EmptyState';
 import { CurrencyBreakdownCard } from './ui/CurrencyBreakdownCard';
+import { SkeletonList } from './ui/Skeleton';
 import ListCard from './ListCard';
 import ListCardBottomSheet from './ListCardBottomSheet';
 
@@ -76,8 +77,8 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
     return `${shortMonths[parseInt(m, 10) - 1]} ${y}`;
   }, [currentMonthYear]);
 
-  const fetchData = async () => {
-    setIsLoading(true);
+  const fetchData = async (silent = false) => {
+    if (!silent) setIsLoading(true);
     try {
       const [data, ratesData, categoriesData] = await Promise.all([
         getMonthlyIncomes(currentMonthYear),
@@ -85,12 +86,13 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
         getCategories().catch(() => []),
       ]);
       setIncomes(data);
+      setSelectedIncomeForSheet((prev) => (prev ? (data.find((i) => i.id === prev.id) || prev) : null));
       if (ratesData) setRates(ratesData);
       if (categoriesData) setCategories(categoriesData);
     } catch (error) {
       console.error('Error fetching incomes or rates:', error);
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   };
 
@@ -151,7 +153,8 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
   const handleDelete = async () => {
     try {
       await deleteEstimatedIncome(confirmDelete.incomeId, currentMonthYear);
-      await fetchData();
+      setIncomes((prev) => prev.filter((i) => i.id !== confirmDelete.incomeId));
+      await fetchData(true);
     } catch (error) {
       console.error('Error deleting income:', error);
       alert('Error al dar de baja el ingreso');
@@ -163,7 +166,10 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
   const handleUncheck = async (incomeId: string) => {
     try {
       await uncheckIncome(incomeId, currentMonthYear);
-      fetchData();
+      setIncomes((prev) =>
+        prev.map((i) => (i.id === incomeId ? { ...i, checks: [] } : i))
+      );
+      await fetchData(true);
     } catch (error) {
       console.error('Error unchecking income:', error);
     }
@@ -171,8 +177,11 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
 
   const handleTogglePause = async (income: EstimatedIncome) => {
     try {
-      await updateEstimatedIncome(income.id, { is_active: !income.is_active });
-      fetchData();
+      const updated = await updateEstimatedIncome(income.id, { is_active: !income.is_active });
+      if (updated) {
+        setIncomes((prev) => prev.map((i) => (i.id === income.id ? { ...i, ...updated } : i)));
+      }
+      await fetchData(true);
     } catch (error) {
       console.error('Error toggling income state:', error);
     }
@@ -475,6 +484,7 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
         badgeText={`${confirmedCount} / ${totalExpectedCount} confirmados`}
         badgeIcon={<Wallet size={14} />}
         mainAmount={isLoading ? '...' : formatCurrencyAmount(received, displayCurrency)}
+        isLoading={isLoading}
         mainAmountColor="var(--income-color)"
         currencyHintText="Toca para alternar moneda"
         onCycleCurrency={cycleCurrency}
@@ -499,7 +509,9 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
       />
 
       {isLoading ? (
-        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-tertiary)' }}>Cargando ingresos...</div>
+        <div style={{ padding: '8px 0' }}>
+          <SkeletonList count={4} />
+        </div>
       ) : incomes.length === 0 ? (
         <EmptyState
           icon={<Wallet size={28} />}
@@ -623,7 +635,7 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
             setIsFormOpen(false);
             setEditingIncome(null);
           }}
-          onSaved={fetchData}
+          onSaved={() => fetchData(true)}
         />
       )}
 
@@ -635,7 +647,7 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
             setIsCheckFormOpen(false);
             setCheckingIncome(null);
           }}
-          onSaved={fetchData}
+          onSaved={() => fetchData(true)}
         />
       )}
 

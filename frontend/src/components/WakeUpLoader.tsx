@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
+import { SkeletonHeroCard, SkeletonList } from './ui/Skeleton';
 
 const MESSAGES = [
   "Conectando con la base de datos...",
@@ -11,14 +12,21 @@ const MESSAGES = [
 
 export const WakeUpLoader: React.FC = () => {
   const [messageIndex, setMessageIndex] = useState(0);
+  const [showColdStartBanner, setShowColdStartBanner] = useState(false);
 
   useEffect(() => {
-    // Change message every 12 seconds
-    const interval = setInterval(() => {
+    const bannerTimer = setTimeout(() => {
+      setShowColdStartBanner(true);
+    }, 3500);
+
+    const messageInterval = setInterval(() => {
       setMessageIndex((prev) => (prev + 1 < MESSAGES.length ? prev + 1 : prev));
     }, 12000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(bannerTimer);
+      clearInterval(messageInterval);
+    };
   }, []);
 
   return (
@@ -29,67 +37,77 @@ export const WakeUpLoader: React.FC = () => {
             100% { transform: rotate(360deg); }
           }
           @keyframes wu-fadeIn {
-            from { opacity: 0; transform: translateY(5px); }
+            from { opacity: 0; transform: translateY(-4px); }
             to { opacity: 1; transform: translateY(0); }
           }
           .wu-animate-spin {
             animation: wu-spin 1s linear infinite;
           }
-          .wu-animate-fade-in {
-            animation: wu-fadeIn 0.5s ease-out forwards;
+          .wu-banner-fade-in {
+            animation: wu-fadeIn 0.25s ease-out forwards;
+          }
+          @media (prefers-reduced-motion: reduce) {
+            .wu-animate-spin {
+              animation: none;
+            }
+            .wu-banner-fade-in {
+              animation: none;
+            }
           }
         `}
       </style>
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '4rem 1rem',
-        textAlign: 'center',
-        minHeight: '60vh',
-      }}>
-        <div className="soft-card wu-animate-fade-in" style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: '1.5rem',
-          maxWidth: '300px',
-          width: '100%',
-          padding: '2.5rem 2rem'
-        }}>
-          <div style={{ 
-            color: 'var(--info-color)', 
-            background: 'var(--info-bg)', 
-            padding: '1.25rem', 
-            borderRadius: '50%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
-            <Loader2 size={36} className="wu-animate-spin" />
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            <h3 style={{ fontWeight: 700, color: 'var(--text-primary)', margin: 0, fontSize: '1.15rem' }}>
-              Cargando datos
-            </h3>
-            <p 
-              className="wu-animate-fade-in"
-              style={{ 
-                color: 'var(--text-secondary)', 
-                fontSize: '0.9rem', 
-                margin: 0, 
-                minHeight: '40px',
+      <div style={{ padding: '4px 0' }}>
+        <SkeletonHeroCard />
+
+        {showColdStartBanner && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="wu-banner-fade-in"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              padding: '12px 16px',
+              borderRadius: '16px',
+              background: 'var(--surface-color, #ffffff)',
+              border: '1px solid var(--border-color, rgba(148, 163, 184, 0.2))',
+              boxShadow: 'var(--shadow-xs, 0 1px 3px rgba(0, 0, 0, 0.05))',
+              marginBottom: '12px',
+            }}
+          >
+            <div
+              style={{
+                color: 'var(--info-color, #3B82F6)',
+                background: 'var(--info-bg, rgba(59, 130, 246, 0.1))',
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-              }} 
-              key={messageIndex}
+                flexShrink: 0,
+              }}
             >
-              {MESSAGES[messageIndex]}
-            </p>
+              <Loader2 size={18} className="wu-animate-spin" />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  color: 'var(--text-primary, #0F172A)',
+                  lineHeight: 1.3,
+                }}
+              >
+                {MESSAGES[messageIndex]}
+              </p>
+            </div>
           </div>
-        </div>
+        )}
+
+        <SkeletonList count={showColdStartBanner ? 4 : 5} />
       </div>
     </>
   );

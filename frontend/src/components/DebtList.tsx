@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Plus,
@@ -64,6 +64,7 @@ import { EmptyState } from './ui/EmptyState';
 import { CurrencyBreakdownCard } from './ui/CurrencyBreakdownCard';
 import { useToast } from './ui/Toast';
 import { AttributionBadge } from './ui/AttributionBadge';
+import { SkeletonList } from './ui/Skeleton';
 
 const currencyLabels: Record<string, string> = {
   'USD_BCV': '$',
@@ -174,7 +175,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
     if (selectedDebt && selectedDebt.id === debtId) {
       setSelectedDebt((prev) => (prev ? { ...prev, category: newCategory } : null));
     }
-    await fetchDebts();
+    await fetchDebts(true);
     toast.success('Categoría actualizada exitosamente');
   };
 
@@ -187,9 +188,9 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
     }
   };
 
-  const fetchDebts = async () => {
+  const fetchDebts = useCallback(async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const [debtsData, ratesData] = await Promise.all([
         getDebts(undefined, filterSettled).catch(() =>
           Promise.all([getDebts('owed', filterSettled), getDebts('receivable', filterSettled)])
@@ -201,22 +202,23 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
       setRates(ratesData);
       setSelectedDebt(prev => {
         if (!prev) return null;
-        return debtsData.find(d => d.id === prev.id) || null;
+        const found = debtsData.find(d => d.id === prev.id);
+        return found || prev;
       });
       setSelectedDebtForSheet(prev => {
         if (!prev) return null;
-        return debtsData.find(d => d.id === prev.id) || null;
+        return debtsData.find(d => d.id === prev.id) || prev;
       });
     } catch (error) {
       console.error('Error fetching debts:', error);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  };
+  }, [filterSettled]);
 
   useEffect(() => {
     fetchDebts();
-  }, [filterSettled]);
+  }, [fetchDebts]);
 
   const handleCreateOrUpdate = async (data: DebtCreate | DebtUpdate) => {
     try {
@@ -230,11 +232,17 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
       setShowForm(false);
       setEditingDebt(undefined);
 
-      if (selectedDebt && editingDebt && selectedDebt.id === editingDebt.id) {
-        setSelectedDebt(savedDebt);
-      }
+      setDebts(prev => {
+        const exists = prev.some(d => d.id === savedDebt.id);
+        if (exists) {
+          return prev.map(d => d.id === savedDebt.id ? savedDebt : d);
+        }
+        return [savedDebt, ...prev];
+      });
+      setSelectedDebt(prev => (prev?.id === savedDebt.id ? savedDebt : prev));
+      setSelectedDebtForSheet(prev => (prev?.id === savedDebt.id ? savedDebt : prev));
 
-      await fetchDebts();
+      await fetchDebts(true);
       toast.success('Guardado exitosamente');
     } catch (error: any) {
       console.error('Error saving debt:', error);
@@ -256,12 +264,12 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
       } else {
         updatedDebt = await addDebtPayment(debtToPay.id, data as DebtPaymentCreate);
       }
-      if (selectedDebt && selectedDebt.id === debtToPay.id) {
-        setSelectedDebt(updatedDebt);
-      }
+      setDebts(prev => prev.map(d => d.id === updatedDebt.id ? updatedDebt : d));
+      setSelectedDebt(updatedDebt);
+      setSelectedDebtForSheet(prev => (prev?.id === updatedDebt.id ? updatedDebt : prev));
       setPayingDebt(null);
       setEditingPayment(undefined);
-      await fetchDebts();
+      await fetchDebts(true);
 
       if (editingPayment) {
         toast.success('Abono actualizado');
@@ -283,9 +291,10 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
     try {
       setSubmitting(true);
       await deleteDebt(id);
+      setDebts(prev => prev.filter(d => d.id !== id));
       if (selectedDebt?.id === id) setSelectedDebt(null);
       if (selectedDebtForSheet?.id === id) setSelectedDebtForSheet(null);
-      await fetchDebts();
+      await fetchDebts(true);
       toast.success('Deuda eliminada');
     } catch (error: any) {
       console.error('Error deleting debt:', error);
@@ -301,8 +310,10 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
     try {
       setSubmitting(true);
       const updatedDebt = await deleteDebtPayment(paymentId);
+      setDebts(prev => prev.map(d => d.id === updatedDebt.id ? updatedDebt : d));
       setSelectedDebt(updatedDebt);
-      await fetchDebts();
+      setSelectedDebtForSheet(prev => (prev?.id === updatedDebt.id ? updatedDebt : prev));
+      await fetchDebts(true);
       toast.success('Abono eliminado');
     } catch (error: any) {
       console.error('Error deleting payment:', error);
@@ -1031,11 +1042,11 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
             entityType="debt"
             entityName={activeShareModalItem.name}
             onClose={() => setActiveShareModalItem(null)}
-            onUpdated={fetchDebts}
+            onUpdated={() => fetchDebts(true)}
             onSelfLeave={() => {
               setActiveShareModalItem(null);
               setSelectedDebt(null);
-              fetchDebts();
+              fetchDebts(true);
               toast.success('Has salido de la deuda compartida');
             }}
           />
@@ -1082,6 +1093,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
 
       {/* Summary Net Balance Card */}
       <SummaryHeroCard
+        isLoading={loading}
         eyebrow={filterSettled ? 'Balance Histórico Liquidado' : 'Balance Neto Pendiente'}
         badgeText={`${debts.length} ${filterSettled ? 'liquidadas' : 'activas'}`}
         badgeIcon={<Wallet size={12} />}
@@ -1135,7 +1147,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-tertiary)' }}>Cargando...</div>
+        <div style={{ padding: '8px 0' }}><SkeletonList count={4} /></div>
       ) : displayedDebts.length === 0 ? (
         <EmptyState
           title={`No hay deudas ${activeTab === 'owed' ? 'por pagar' : activeTab === 'receivable' ? 'por cobrar' : ''} ${filterSettled ? 'liquidadas' : 'activas'}`.trim()}
@@ -1611,10 +1623,10 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
           entityType="debt"
           entityName={activeShareModalItem.name}
           onClose={() => setActiveShareModalItem(null)}
-          onUpdated={fetchDebts}
+          onUpdated={() => fetchDebts(true)}
           onSelfLeave={() => {
             setActiveShareModalItem(null);
-            fetchDebts();
+            fetchDebts(true);
             toast.success('Has salido de la deuda compartida');
           }}
         />

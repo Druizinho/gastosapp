@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import ListCard from './ListCard';
 import ListCardBottomSheet from './ListCardBottomSheet';
+import { SkeletonList } from './ui/Skeleton';
 
 // Re-export visual helpers for backward compatibility
 export { ICON_MAP, CATEGORY_COLORS, DEFAULT_ICONS, resolveCategoryVisuals };
@@ -615,9 +616,7 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
         {/* Category List */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           {isContextLoading ? (
-            <p style={{ color: 'var(--text-tertiary)', textAlign: 'center', padding: '1.5rem 0' }}>
-              Cargando categorías...
-            </p>
+            <div style={{ padding: '8px 0' }}><SkeletonList count={4} /></div>
           ) : categories.length === 0 ? (
             <div
               style={{

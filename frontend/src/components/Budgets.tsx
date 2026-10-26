@@ -34,7 +34,8 @@ import {
   upsertCategoryLimitByBudgetId,
   deleteCategoryLimitByBudgetId,
   getConnections,
-  removeShareMember
+  removeShareMember,
+  invalidateMonthlyBudgetCache
 } from '../api';
 import { supabase } from '../supabaseClient';
 import { resolveCategoryVisuals } from '../utils/categoryVisuals';
@@ -42,10 +43,11 @@ import { useCategories } from '../context/CategoriesContext';
 import { useCurrencyPreference } from '../context/CurrencyPreferenceContext';
 import ListCard from './ListCard';
 import ConfirmModal from './ConfirmModal';
-import { MemberAvatars } from './panas';
+import { MemberAvatars, ShareMembersModal } from './panas';
 import { PageHeader } from './ui/PageHeader';
 import { SummaryHeroCard, type SummaryMetricItem } from './ui/SummaryHeroCard';
 import { SegmentedTabs } from './ui/SegmentedTabs';
+import { SkeletonList } from './ui/Skeleton';
 import { useToast } from './ui/Toast';
 
 interface BudgetsProps {
@@ -335,6 +337,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
   });
 
   const [leaveSharedBudgetConfirm, setLeaveSharedBudgetConfirm] = useState<SingleBudgetOut | null>(null);
+  const [activeShareModalItem, setActiveShareModalItem] = useState<{ id: string; name: string } | null>(null);
 
   // Short month label for navigator pill
   const shortMonthLabel = useMemo(() => {
@@ -428,7 +431,8 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
         setSelectedBudgetId(null);
       }
       setLeaveSharedBudgetConfirm(null);
-      await fetchData();
+      invalidateMonthlyBudgetCache(currentMonthYear);
+      await fetchData(true);
     } catch (err: any) {
       console.error('Error al salir del presupuesto compartido:', err);
       toast.error(err?.response?.data?.detail || 'Error al salir del presupuesto compartido');
@@ -438,11 +442,11 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
   };
 
   // Fetch budget data
-  const fetchData = async () => {
+  const fetchData = async (silent = false) => {
     const cached = getCachedMonthlyBudget(currentMonthYear);
     if (cached) {
       setBudgetResponse(cached);
-    } else {
+    } else if (!silent) {
       setIsLoading(true);
     }
     try {
@@ -451,7 +455,9 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
     } catch (error) {
       console.error('Error fetching budget data:', error);
     } finally {
-      setIsLoading(false);
+      if (!silent) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -501,6 +507,8 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
     try {
       const res = await confirmMonthlyBudget(currentMonthYear);
       setBudgetResponse(res);
+      invalidateMonthlyBudgetCache(currentMonthYear);
+      await fetchData(true);
     } catch (error) {
       console.error('Error confirming budget:', error);
       toast.error('Error al confirmar presupuesto del mes');
@@ -584,6 +592,8 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
       });
       setBudgetResponse(updated);
       setCategoryModal((prev) => ({ ...prev, isOpen: false }));
+      invalidateMonthlyBudgetCache(currentMonthYear);
+      await fetchData(true);
     } catch (error: any) {
       console.error('Error saving category limit:', error);
       toast.error(error?.response?.data?.detail || 'Error al guardar límite de categoría');
@@ -599,6 +609,8 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
         setSelectedBudgetId(null);
       }
       setConfirmDeleteBudget({ isOpen: false, budgetId: '', budgetName: '' });
+      invalidateMonthlyBudgetCache(currentMonthYear);
+      await fetchData(true);
     } catch (error) {
       console.error('Error deleting budget:', error);
       toast.error('Error al eliminar presupuesto');
@@ -614,6 +626,8 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
       );
       setBudgetResponse(updated);
       setConfirmDeleteCategoryLimit({ isOpen: false, budgetId: '', categoryName: '' });
+      invalidateMonthlyBudgetCache(currentMonthYear);
+      await fetchData(true);
     } catch (error) {
       console.error('Error deleting category limit:', error);
       toast.error('Error al eliminar límite de categoría');
@@ -926,8 +940,8 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
 
           {/* List of Sub-Budgets */}
           {isLoading ? (
-            <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-tertiary)' }}>
-              Cargando presupuestos...
+            <div style={{ padding: '8px 0' }}>
+              <SkeletonList count={4} />
             </div>
           ) : displayedSubBudgets.length === 0 ? (
             subBudgetTab === 'shared' ? (
@@ -1087,8 +1101,17 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                       <div
                         style={{ display: 'inline-flex', alignItems: 'center' }}
                         title={`Compartido por ${b.shared_by || 'Pana'}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveShareModalItem({ id: b.id, name: b.name });
+                        }}
                       >
-                        <MemberAvatars members={sharedWithMeMembers} size={18} interactive={false} />
+                        <MemberAvatars
+                          members={sharedWithMeMembers}
+                          size={18}
+                          interactive={true}
+                          onClick={() => setActiveShareModalItem({ id: b.id, name: b.name })}
+                        />
                       </div>
                     )}
                   </>
@@ -1128,8 +1151,20 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                     </span>
 
                     {isShared && ownBudgetMembers.length > 0 && (
-                      <div style={{ display: 'inline-flex', alignItems: 'center' }} title="Miembros compartidos">
-                        <MemberAvatars members={ownBudgetMembers} size={18} interactive={false} />
+                      <div
+                        style={{ display: 'inline-flex', alignItems: 'center' }}
+                        title="Gestionar miembros compartidos"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveShareModalItem({ id: b.id, name: b.name });
+                        }}
+                      >
+                        <MemberAvatars
+                          members={ownBudgetMembers}
+                          size={18}
+                          interactive={true}
+                          onClick={() => setActiveShareModalItem({ id: b.id, name: b.name })}
+                        />
                       </div>
                     )}
                   </>
@@ -1362,6 +1397,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
             }}
             displayCurrency={displayCurrency}
             onCycleCurrency={cycleDisplayCurrency}
+            isLoading={isLoading}
             showProgress={!!(selectedBudget.effective_global_limit && selectedBudget.effective_global_limit > 0)}
             percentage={selectedBudget.global_spent_percentage}
             trafficLight={selectedBudget.global_traffic_light}
@@ -1770,6 +1806,8 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
           onSaved={(updated) => {
             setBudgetResponse(updated);
             setBudgetModal({ isOpen: false, budgetToEdit: null });
+            invalidateMonthlyBudgetCache(currentMonthYear);
+            fetchData(true);
           }}
         />
       )}
@@ -1938,6 +1976,27 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
         onConfirm={handleConfirmLeaveSharedBudget}
         onCancel={() => setLeaveSharedBudgetConfirm(null)}
       />
+
+      {/* ShareMembersModal for Sub-Budget */}
+      {activeShareModalItem && (
+        <ShareMembersModal
+          entityId={activeShareModalItem.id}
+          entityType="sub_budget"
+          entityTypeLabel="sub-presupuesto"
+          entityName={activeShareModalItem.name}
+          onClose={() => setActiveShareModalItem(null)}
+          onUpdated={() => {
+            invalidateMonthlyBudgetCache(currentMonthYear);
+            fetchData(true);
+          }}
+          onSelfLeave={() => {
+            setActiveShareModalItem(null);
+            invalidateMonthlyBudgetCache(currentMonthYear);
+            fetchData(true);
+            toast.success('Has salido del presupuesto compartido');
+          }}
+        />
+      )}
     </div>
   );
 };

@@ -23,6 +23,7 @@ import {
   getConnections,
 } from '../../api';
 import { ParticipantPicker } from './ParticipantPicker';
+import { SkeletonList } from '../ui/Skeleton';
 
 interface ShareMembersModalProps {
   entityId: string;
@@ -61,14 +62,21 @@ export const ShareMembersModal: React.FC<ShareMembersModalProps> = ({
   const [confirmKickMember, setConfirmKickMember] = useState<ShareMemberOut | null>(null);
   const [confirmSelfLeave, setConfirmSelfLeave] = useState(false);
 
-  const fetchShareData = async () => {
+  const fetchShareData = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent && !shareInfo) {
+        setLoading(true);
+      }
       setError(null);
       const data = await getShareByEntity(entityId);
       setShareInfo(data);
     } catch (err: any) {
       console.error('Error fetching share info:', err);
+      if (silent && (err?.response?.status === 404 || err?.status === 404)) {
+        onUpdated?.();
+        onClose();
+        return;
+      }
       setError(err?.response?.data?.detail || 'No se pudo cargar la información del grupo');
     } finally {
       setLoading(false);
@@ -105,6 +113,7 @@ export const ShareMembersModal: React.FC<ShareMembersModalProps> = ({
       setIsAdding(false);
       setSuccessMsg('Panas agregados con éxito');
       setTimeout(() => setSuccessMsg(null), 3000);
+      await fetchShareData(true);
       onUpdated?.();
     } catch (err: any) {
       setError(err?.response?.data?.detail || 'Error al agregar integrantes');
@@ -113,7 +122,7 @@ export const ShareMembersModal: React.FC<ShareMembersModalProps> = ({
     }
   };
 
-  const handleRoleChange = async (targetUserId: string, newRole: ShareRole) => {
+  const handleToggleRole = async (targetUserId: string, newRole: ShareRole) => {
     if (!shareInfo) return;
     try {
       setActionLoadingId(targetUserId);
@@ -122,6 +131,7 @@ export const ShareMembersModal: React.FC<ShareMembersModalProps> = ({
       setShareInfo(updated);
       setSuccessMsg(`Rol actualizado a ${newRole === 'admin' ? 'Administrador' : 'Miembro'}`);
       setTimeout(() => setSuccessMsg(null), 3000);
+      await fetchShareData(true);
       onUpdated?.();
     } catch (err: any) {
       setError(err?.response?.data?.detail || 'No se pudo cambiar el rol');
@@ -135,12 +145,16 @@ export const ShareMembersModal: React.FC<ShareMembersModalProps> = ({
     try {
       setActionLoadingId(member.user_id);
       setError(null);
-      await removeShareMember(shareInfo.share_id, member.user_id);
+      const res = await removeShareMember(shareInfo.share_id, member.user_id);
       setConfirmKickMember(null);
       setSuccessMsg(`${member.name} fue retirado de ${resolvedLabel}`);
       setTimeout(() => setSuccessMsg(null), 3000);
-      await fetchShareData();
       onUpdated?.();
+      if (res?.share_deleted) {
+        onClose();
+        return;
+      }
+      await fetchShareData(true);
     } catch (err: any) {
       setError(err?.response?.data?.detail || 'No se pudo retirar al integrante');
     } finally {
@@ -333,8 +347,8 @@ export const ShareMembersModal: React.FC<ShareMembersModalProps> = ({
           )}
 
           {loading ? (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
-              <Loader2 size={32} className="spin" color="var(--accent-color)" />
+            <div style={{ padding: '8px 0' }}>
+              <SkeletonList count={3} />
             </div>
           ) : shareInfo ? (
             <>
@@ -668,7 +682,7 @@ export const ShareMembersModal: React.FC<ShareMembersModalProps> = ({
                         {canPromoteToAdmin && (
                           <button
                             type="button"
-                            onClick={() => handleRoleChange(member.user_id, 'admin')}
+                            onClick={() => handleToggleRole(member.user_id, 'admin')}
                             disabled={isActionLoading}
                             title="Promover a Administrador"
                             style={{
@@ -693,7 +707,7 @@ export const ShareMembersModal: React.FC<ShareMembersModalProps> = ({
                         {canDemoteToMember && (
                           <button
                             type="button"
-                            onClick={() => handleRoleChange(member.user_id, 'member')}
+                            onClick={() => handleToggleRole(member.user_id, 'member')}
                             disabled={isActionLoading}
                             title="Degradar a Miembro común"
                             style={{

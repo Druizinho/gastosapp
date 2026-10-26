@@ -42,6 +42,7 @@ import { EmptyState } from './ui/EmptyState';
 import { CurrencyBreakdownCard } from './ui/CurrencyBreakdownCard';
 import { useToast } from './ui/Toast';
 import { AttributionBadge } from './ui/AttributionBadge';
+import { SkeletonList } from './ui/Skeleton';
 import ListCard from './ListCard';
 import ListCardBottomSheet from './ListCardBottomSheet';
 
@@ -116,7 +117,7 @@ const FixedExpenses: React.FC = () => {
     setExpenses((prev) =>
       prev.map((e) => (e.id === expenseId ? { ...e, category: newCategory } : e))
     );
-    await fetchData();
+    await fetchData(true);
   };
 
   // Sync preference with local display currency
@@ -141,19 +142,20 @@ const FixedExpenses: React.FC = () => {
     return `${shortMonths[parseInt(m, 10) - 1]} ${y}`;
   }, [currentMonth]);
 
-  const fetchData = async () => {
-    setIsLoading(true);
+  const fetchData = async (silent = false) => {
+    if (!silent) setIsLoading(true);
     try {
       const [expensesData, ratesData] = await Promise.all([
         getFixedExpenses(),
         getRates().catch(() => null),
       ]);
       setExpenses(expensesData);
+      setSelectedExpenseForSheet((prev) => (prev ? (expensesData.find((e) => e.id === prev.id) || prev) : null));
       if (ratesData) setRates(ratesData);
     } catch (error) {
       console.error('Error fetching fixed expenses:', error);
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   };
 
@@ -257,13 +259,19 @@ const FixedExpenses: React.FC = () => {
   const handleCreateOrUpdate = async (data: FixedExpenseCreate | FixedExpenseUpdate) => {
     try {
       if (editingExpense) {
-        await updateFixedExpense(editingExpense.id, data as FixedExpenseUpdate);
+        const updated = await updateFixedExpense(editingExpense.id, data as FixedExpenseUpdate);
+        if (updated) {
+          setExpenses((prev) => prev.map((e) => (e.id === editingExpense.id ? { ...e, ...updated } : e)));
+        }
       } else {
-        await createFixedExpense(data as FixedExpenseCreate);
+        const created = await createFixedExpense(data as FixedExpenseCreate);
+        if (created) {
+          setExpenses((prev) => [...prev, created]);
+        }
       }
       setIsFormOpen(false);
       setEditingExpense(null);
-      await fetchData();
+      await fetchData(true);
     } catch (error) {
       console.error('Error saving fixed expense:', error);
       alert('Error al guardar el gasto fijo');
@@ -272,8 +280,11 @@ const FixedExpenses: React.FC = () => {
 
   const handleToggleActive = async (expense: FixedExpense) => {
     try {
-      await updateFixedExpense(expense.id, { is_active: !expense.is_active });
-      await fetchData();
+      const updated = await updateFixedExpense(expense.id, { is_active: !expense.is_active });
+      if (updated) {
+        setExpenses((prev) => prev.map((e) => (e.id === expense.id ? { ...e, ...updated } : e)));
+      }
+      await fetchData(true);
     } catch (error) {
       console.error('Error toggling active:', error);
     }
@@ -282,9 +293,18 @@ const FixedExpenses: React.FC = () => {
   const handleCheckPaid = async (data: FixedExpenseCheckCreate) => {
     if (!payingExpense) return;
     try {
-      await checkFixedExpense(payingExpense.id, data);
+      const newCheck = await checkFixedExpense(payingExpense.id, data);
+      if (newCheck) {
+        setExpenses((prev) =>
+          prev.map((e) =>
+            e.id === payingExpense.id
+              ? { ...e, checks: [...(e.checks || []).filter((c) => c.month_year !== currentMonth), newCheck] }
+              : e
+          )
+        );
+      }
       setPayingExpense(null);
-      await fetchData();
+      await fetchData(true);
     } catch (error: any) {
       console.error('Error checking paid:', error);
       if (error?.response?.status === 409) {
@@ -298,7 +318,14 @@ const FixedExpenses: React.FC = () => {
   const handleUncheck = async (expense: FixedExpense) => {
     try {
       await uncheckFixedExpense(expense.id, currentMonth);
-      await fetchData();
+      setExpenses((prev) =>
+        prev.map((e) =>
+          e.id === expense.id
+            ? { ...e, checks: (e.checks || []).filter((c) => c.month_year !== currentMonth) }
+            : e
+        )
+      );
+      await fetchData(true);
     } catch (error) {
       console.error('Error unchecking:', error);
       alert('Error al deshacer el pago');
@@ -308,8 +335,9 @@ const FixedExpenses: React.FC = () => {
   const handleConfirmDelete = async () => {
     try {
       await deleteFixedExpense(confirmDelete.expenseId, currentMonth);
+      setExpenses((prev) => prev.filter((e) => e.id !== confirmDelete.expenseId));
       setConfirmDelete({ isOpen: false, expenseId: '' });
-      await fetchData();
+      await fetchData(true);
     } catch (error) {
       console.error('Error deleting:', error);
       alert('Error al dar de baja el gasto fijo');
@@ -611,6 +639,7 @@ const FixedExpenses: React.FC = () => {
         badgeText={`${totalActive} activos`}
         badgeIcon={<Receipt size={14} />}
         mainAmount={isLoading ? '...' : formatCurrencyAmount(totalCommittedInSelected, displayCurrency)}
+        isLoading={isLoading}
         currencyHintText="Toca para alternar moneda"
         onCycleCurrency={cycleDisplayCurrency}
         accentColor="#F59E0B"
@@ -636,7 +665,9 @@ const FixedExpenses: React.FC = () => {
 
       {/* Expense list */}
       {isLoading ? (
-        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-tertiary)' }}>Cargando...</div>
+        <div style={{ padding: '8px 0' }}>
+          <SkeletonList count={4} />
+        </div>
       ) : expenses.length === 0 ? (
         <EmptyState
           icon={<Receipt size={28} />}
@@ -799,10 +830,10 @@ const FixedExpenses: React.FC = () => {
           entityType="fixed_expense"
           entityName={activeShareModalItem.name}
           onClose={() => setActiveShareModalItem(null)}
-          onUpdated={fetchData}
+          onUpdated={() => fetchData(true)}
           onSelfLeave={() => {
             setActiveShareModalItem(null);
-            fetchData();
+            fetchData(true);
             toast.success('Has salido del gasto fijo compartido');
           }}
         />

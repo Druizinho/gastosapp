@@ -1,4 +1,5 @@
 import React from 'react';
+import { Skeleton } from './Skeleton';
 
 export interface SummaryMetricItem {
   label: string;
@@ -26,6 +27,7 @@ export interface SummaryHeroCardProps {
     color?: string;
   };
   children?: React.ReactNode;
+  isLoading?: boolean;
 }
 
 export const SummaryHeroCard: React.FC<SummaryHeroCardProps> = ({
@@ -41,6 +43,7 @@ export const SummaryHeroCard: React.FC<SummaryHeroCardProps> = ({
   metrics,
   progress,
   children,
+  isLoading = false,
 }) => {
   const isInteractive = typeof onCycleCurrency === 'function';
 
@@ -125,7 +128,11 @@ export const SummaryHeroCard: React.FC<SummaryHeroCardProps> = ({
           letterSpacing: '-0.03em',
           lineHeight: 1.15,
         }}>
-          {mainAmount}
+          {isLoading || mainAmount === '...' ? (
+            <Skeleton width={150} height={30} borderRadius={8} style={{ verticalAlign: 'middle' }} />
+          ) : (
+            mainAmount
+          )}
         </div>
 
         {(statusSubtext || currencyHintText) && (
@@ -194,7 +201,11 @@ export const SummaryHeroCard: React.FC<SummaryHeroCardProps> = ({
                 color: item.valueColor || 'var(--text-primary, #0F172A)',
                 letterSpacing: '-0.01em',
               }}>
-                {item.value}
+                {isLoading || item.value === '...' ? (
+                  <Skeleton width={68} height={16} borderRadius={6} style={{ marginTop: 2 }} />
+                ) : (
+                  item.value
+                )}
               </div>
               {item.subtext && (
                 <div style={{ fontSize: '0.68rem', color: 'var(--text-tertiary, #94A3B8)', marginTop: '2px' }}>

@@ -36,8 +36,8 @@ const Dashboard: React.FC = () => {
   const [loadError, setLoadError] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState({ isOpen: false, expenseId: '' });
 
-  const fetchData = async () => {
-    setIsLoading(true);
+  const fetchData = useCallback(async (silent = false) => {
+    if (!silent) setIsLoading(true);
     setLoadError(false);
     try {
       // Helper function to resolve dates based on preset
@@ -78,7 +78,7 @@ const Dashboard: React.FC = () => {
 
       // Si es "custom" pero no hay fechas, no podemos hacer fetch
       if (dateFilter.preset === 'custom' && (!dateFilter.from || !dateFilter.to)) {
-        setIsLoading(false);
+        if (!silent) setIsLoading(false);
         return;
       }
 
@@ -105,10 +105,10 @@ const Dashboard: React.FC = () => {
       console.error('Error fetching data:', error);
       setLoadError(true);
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
       setIsInitialLoad(false);
     }
-  };
+  }, [dateFilter]);
 
   // Sync URL when filter changes
   useEffect(() => {
@@ -148,7 +148,7 @@ const Dashboard: React.FC = () => {
         await createExpense(data as ExpenseCreate);
       }
       handleCloseForm();
-      await fetchData();
+      await fetchData(true);
     } catch (error) {
       console.error('Error saving expense:', error);
       alert('Failed to save expense');
@@ -170,7 +170,7 @@ const Dashboard: React.FC = () => {
     try {
       await deleteExpense(confirmDelete.expenseId);
       setConfirmDelete({ isOpen: false, expenseId: '' });
-      await fetchData();
+      await fetchData(true);
     } catch (error) {
       console.error('Error deleting expense:', error);
       alert('Failed to delete expense');
@@ -270,7 +270,7 @@ const Dashboard: React.FC = () => {
           initialData={editingExpense}
           onSubmit={handleCreateOrUpdate}
           onCancel={handleCloseForm}
-          onCategoriesChanged={fetchData}
+          onCategoriesChanged={() => fetchData(true)}
         />
       )}
     </div>

@@ -383,11 +383,11 @@ async def add_members(
     await db.flush()
 
 
-async def remove_member(db: AsyncSession, share: models.Share, user_id_to_remove: UUID):
+async def remove_member(db: AsyncSession, share: models.Share, user_id_to_remove: Any) -> bool:
     members = await get_members(db, share.id)
     target_member = next((m for m in members if m.user_id == user_id_to_remove), None)
     if not target_member:
-        return
+        return False
 
     cfg = ENTITY_CONFIG[share.entity_type]
     model_cls = cfg["model"]
@@ -406,9 +406,9 @@ async def remove_member(db: AsyncSession, share: models.Share, user_id_to_remove
         if user_id_to_remove == share.owner_id or len(remaining_members) <= 1:
             await db.delete(share)
             await db.commit()
-            return None
+            return True
         await db.flush()
-        return None
+        return False
 
     if remaining_members:
         if share.owner_id == user_id_to_remove:
@@ -423,6 +423,7 @@ async def remove_member(db: AsyncSession, share: models.Share, user_id_to_remove
             if owner_m.local_category:
                 canonical_entity.category = owner_m.local_category
 
+    share_deleted = False
     if len(remaining_members) <= 1:
         if len(remaining_members) == 1 and canonical_entity:
             last_m = remaining_members[0]
@@ -430,8 +431,86 @@ async def remove_member(db: AsyncSession, share: models.Share, user_id_to_remove
             if last_m.local_category:
                 canonical_entity.category = last_m.local_category
         await db.delete(share)
+        share_deleted = True
 
     await db.flush()
+    return share_deleted
+
+
+async def sync_share_members(
+    db: AsyncSession,
+    share: models.Share,
+    actor_id: Any,
+    canonical_entity: Any,
+    target_ids: list[Any],
+    admin_ids: Optional[list[Any]] = None,
+) -> bool:
+    def _norm(val: Any) -> Any:
+        if val is None:
+            return None
+        if isinstance(val, (int, UUID)):
+            return val
+        try:
+            return int(val)
+        except (ValueError, TypeError):
+            try:
+                return UUID(str(val))
+            except (ValueError, TypeError):
+                return str(val)
+
+    norm_owner_id = _norm(share.owner_id)
+    norm_actor_id = _norm(actor_id)
+
+    # Query active members
+    active_members = await get_members(db, share.id)
+    if hasattr(models.ShareMember, "status"):
+        active_members = [m for m in active_members if getattr(m, "status", "active") == "active"]
+
+    # Verify actor permissions (must be owner or admin)
+    actor_member = next((m for m in active_members if _norm(m.user_id) == norm_actor_id), None)
+    if norm_actor_id != norm_owner_id:
+        if not actor_member or actor_member.role != "admin":
+            raise HTTPException(
+                status_code=403,
+                detail="Solo los administradores o el creador pueden modificar los integrantes"
+            )
+
+    desired_other_ids = {_norm(uid) for uid in target_ids if _norm(uid) != norm_owner_id}
+    orig_target_map = {_norm(uid): uid for uid in target_ids}
+
+    current_other_ids = {_norm(m.user_id) for m in active_members if _norm(m.user_id) != norm_owner_id}
+
+    # Remove members not in desired_other_ids
+    for uid in (current_other_ids - desired_other_ids):
+        target_m = next((m for m in active_members if _norm(m.user_id) == uid), None)
+        if target_m:
+            if actor_member:
+                assert_can_remove_member(share, actor_member, target_m)
+            elif norm_actor_id != norm_owner_id and target_m.role == "admin":
+                raise HTTPException(status_code=403, detail="Un administrador no puede expulsar a otro administrador")
+
+            share_deleted = await remove_member(db, share, target_m.user_id)
+            if share_deleted:
+                return True
+
+    # Add missing members
+    to_add = [orig_target_map[uid] for uid in desired_other_ids if uid not in current_other_ids]
+    if to_add:
+        await add_members(db, share, actor_id, to_add, admin_ids=admin_ids)
+
+    # Sync roles if owner specified admin_ids
+    if admin_ids is not None and norm_actor_id == norm_owner_id:
+        admin_norm_set = set() if share.entity_type == "sub_budget" else {_norm(aid) for aid in admin_ids}
+        remaining_members = await get_members(db, share.id)
+        if hasattr(models.ShareMember, "status"):
+            remaining_members = [m for m in remaining_members if getattr(m, "status", "active") == "active"]
+        for m in remaining_members:
+            m_norm_id = _norm(m.user_id)
+            if m_norm_id != norm_owner_id and m_norm_id in desired_other_ids:
+                m.role = "admin" if m_norm_id in admin_norm_set else "member"
+
+    await db.flush()
+    return False
 
 
 # ==============================================================================
