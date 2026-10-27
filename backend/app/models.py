@@ -26,8 +26,11 @@ class Category(Base):
     name = Column(String, nullable=False)
     color = Column(String(20), default='#6366F1')
     icon = Column(String(50), nullable=True, default='Package')
-    kind = Column(String(20), nullable=False, default='expense', server_default='expense')
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    @property
+    def kind(self) -> str:
+        return "expense"
 
     # Dynamically populated counts (for response serialization)
     usage_count: int = 0
@@ -39,8 +42,35 @@ class Category(Base):
     income_count: int = 0
     
     __table_args__ = (
-        UniqueConstraint('user_id', 'kind', 'name', name='_user_category_uc'),
-        Index('ix_categories_user_kind', 'user_id', 'kind')
+        UniqueConstraint('user_id', 'name', name='_user_category_uc'),
+    )
+
+class IncomeCategory(Base):
+    __tablename__ = "income_categories"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    color = Column(String(20), default='#10B981')
+    icon = Column(String(50), nullable=True, default='Wallet')
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    @property
+    def kind(self) -> str:
+        return "income"
+
+    # Dynamically populated counts (for response serialization)
+    usage_count: int = 0
+    expense_count: int = 0
+    fixed_count: int = 0
+    debt_count: int = 0
+    saving_count: int = 0
+    budget_count: int = 0
+    income_count: int = 0
+
+    __table_args__ = (
+        UniqueConstraint('user_id', 'name', name='_user_income_category_uc'),
+        Index('idx_income_categories_user', 'user_id'),
     )
 
 class Expense(Base):

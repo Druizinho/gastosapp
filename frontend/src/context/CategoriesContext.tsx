@@ -29,10 +29,16 @@ export const CategoriesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
     setLoading(true);
     try {
-      const [expenseData, incomeData] = await Promise.all([
+      const [expenseRes, incomeRes] = await Promise.allSettled([
         getCategories('expense'),
         getCategories('income'),
       ]);
+      const expenseData = expenseRes.status === 'fulfilled'
+        ? expenseRes.value.filter((c) => !c.kind || c.kind === 'expense')
+        : [];
+      const incomeData = incomeRes.status === 'fulfilled'
+        ? incomeRes.value.filter((c) => c.kind === 'income')
+        : [];
       setCategories(expenseData);
       setIncomeCategories(incomeData);
       return expenseData;

@@ -136,11 +136,16 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
     setErrorMessage('');
     try {
       if (editingCategory) {
-        const updated = await updateCategory(editingCategory.id, {
-          name: trimmed,
-          color: catColor,
-          icon: catIcon,
-        });
+        const updated = await updateCategory(
+          editingCategory.id,
+          {
+            name: trimmed,
+            color: catColor,
+            icon: catIcon,
+            kind: activeKind,
+          },
+          activeKind
+        );
         setCurrentCategories((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
       } else {
         const created = await createCategory({
@@ -185,7 +190,7 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
     setIsDeleting(true);
     try {
       const target = reassignTo.trim() || defaultReassignTarget;
-      await deleteCategory(deletingCategory.id, target);
+      await deleteCategory(deletingCategory.id, target, activeKind);
       setCurrentCategories((prev) => prev.filter((c) => c.id !== deletingCategory.id));
       await refreshCategories();
       onCategoriesChanged?.();

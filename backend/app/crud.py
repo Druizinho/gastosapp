@@ -253,26 +253,26 @@ async def get_summary_range(db: AsyncSession, user_id: UUID, date_from: date, da
 # Category CRUD, Defaults & Migrations
 
 DEFAULT_CATEGORIES = [
-    {"name": "Alimentación", "icon": "Utensils", "color": "#F59E0B", "kind": "expense"},
-    {"name": "Transporte", "icon": "Car", "color": "#3B82F6", "kind": "expense"},
-    {"name": "Vivienda", "icon": "Home", "color": "#8B5CF6", "kind": "expense"},
-    {"name": "Servicios", "icon": "Zap", "color": "#06B6D4", "kind": "expense"},
-    {"name": "Salud", "icon": "HeartPulse", "color": "#EF4444", "kind": "expense"},
-    {"name": "Ocio", "icon": "Tv", "color": "#EC4899", "kind": "expense"},
-    {"name": "Compras", "icon": "ShoppingCart", "color": "#10B981", "kind": "expense"},
-    {"name": "Educación", "icon": "GraduationCap", "color": "#6366F1", "kind": "expense"},
-    {"name": "Gastos Fijos", "icon": "Receipt", "color": "#14B8A6", "kind": "expense"},
-    {"name": "Deudas", "icon": "CreditCard", "color": "#F97316", "kind": "expense"},
-    {"name": "Ahorro", "icon": "PiggyBank", "color": "#22C55E", "kind": "expense"},
-    {"name": "Proyectos", "icon": "FolderKanban", "color": "#3B82F6", "kind": "expense"},
-    {"name": "Sin Categoría", "icon": "HelpCircle", "color": "#64748B", "kind": "expense"},
+    {"name": "Alimentación", "icon": "Utensils", "color": "#F59E0B"},
+    {"name": "Transporte", "icon": "Car", "color": "#3B82F6"},
+    {"name": "Vivienda", "icon": "Home", "color": "#8B5CF6"},
+    {"name": "Servicios", "icon": "Zap", "color": "#06B6D4"},
+    {"name": "Salud", "icon": "HeartPulse", "color": "#EF4444"},
+    {"name": "Ocio", "icon": "Tv", "color": "#EC4899"},
+    {"name": "Compras", "icon": "ShoppingCart", "color": "#10B981"},
+    {"name": "Educación", "icon": "GraduationCap", "color": "#6366F1"},
+    {"name": "Gastos Fijos", "icon": "Receipt", "color": "#14B8A6"},
+    {"name": "Deudas", "icon": "CreditCard", "color": "#F97316"},
+    {"name": "Ahorro", "icon": "PiggyBank", "color": "#22C55E"},
+    {"name": "Proyectos", "icon": "FolderKanban", "color": "#3B82F6"},
+    {"name": "Sin Categoría", "icon": "HelpCircle", "color": "#64748B"},
 ]
 
 DEFAULT_INCOME_CATEGORIES = [
-    {"name": "Salario", "icon": "Briefcase", "color": "#10B981", "kind": "income"},
-    {"name": "Freelance", "icon": "Monitor", "color": "#3B82F6", "kind": "income"},
-    {"name": "Ventas", "icon": "ShoppingBag", "color": "#F59E0B", "kind": "income"},
-    {"name": "Otros ingresos", "icon": "Wallet", "color": "#64748B", "kind": "income"},
+    {"name": "Salario", "icon": "Briefcase", "color": "#10B981"},
+    {"name": "Freelance", "icon": "Monitor", "color": "#3B82F6"},
+    {"name": "Ventas", "icon": "ShoppingBag", "color": "#F59E0B"},
+    {"name": "Otros ingresos", "icon": "Wallet", "color": "#64748B"},
 ]
 
 _categories_debts_schema_ensured = False
@@ -285,8 +285,6 @@ async def ensure_categories_and_debts_schema() -> None:
     statements = [
         # 1. categories columns
         "ALTER TABLE categories ADD COLUMN IF NOT EXISTS icon VARCHAR(50) DEFAULT 'Package'",
-        "ALTER TABLE categories ADD COLUMN IF NOT EXISTS kind VARCHAR(20) NOT NULL DEFAULT 'expense'",
-        "CREATE INDEX IF NOT EXISTS idx_categories_user_kind ON categories(user_id, kind)",
         # 2. debts columns
         "ALTER TABLE debts ADD COLUMN IF NOT EXISTS category VARCHAR(100) DEFAULT 'Deudas'",
         # 3. debt_payments columns
@@ -659,39 +657,96 @@ async def ensure_categories_and_debts_schema() -> None:
             NULL;
         END $$;
         """,
-        # 12. Categories kind constraint migration
+        # 12. Create income_categories table, index, RLS, and policy
+        """
+        CREATE TABLE IF NOT EXISTS income_categories (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            color VARCHAR(20) DEFAULT '#10B981',
+            icon VARCHAR(50) DEFAULT 'Wallet',
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now()),
+            CONSTRAINT _user_income_category_uc UNIQUE (user_id, name)
+        );
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_income_categories_user ON income_categories(user_id);
+        """,
+        """
+        ALTER TABLE income_categories ENABLE ROW LEVEL SECURITY;
+        """,
         """
         DO $$
         BEGIN
-            IF EXISTS (
-                SELECT 1
-                FROM information_schema.table_constraints tc
-                WHERE tc.table_name = 'categories'
-                  AND tc.constraint_name = '_user_category_uc'
-                  AND tc.constraint_type = 'UNIQUE'
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_policies WHERE tablename = 'income_categories' AND policyname = 'Users can manage their own income_categories'
             ) THEN
-                IF NOT EXISTS (
-                    SELECT 1
-                    FROM information_schema.key_column_usage kcu
-                    WHERE kcu.table_name = 'categories'
-                      AND kcu.constraint_name = '_user_category_uc'
-                      AND kcu.column_name = 'kind'
-                ) THEN
-                    ALTER TABLE categories DROP CONSTRAINT _user_category_uc;
-                    ALTER TABLE categories ADD CONSTRAINT _user_category_uc UNIQUE (user_id, kind, name);
-                END IF;
-            ELSE
-                BEGIN
-                    ALTER TABLE categories ADD CONSTRAINT _user_category_uc UNIQUE (user_id, kind, name);
-                EXCEPTION WHEN OTHERS THEN
-                    NULL;
-                END;
+                CREATE POLICY "Users can manage their own income_categories" ON income_categories
+                    FOR ALL USING (auth.uid() = user_id)
+                    WITH CHECK (auth.uid() = user_id);
             END IF;
         EXCEPTION WHEN OTHERS THEN
             NULL;
         END $$;
         """,
-        # 13. Seed DEFAULT_INCOME_CATEGORIES across profiles
+        # 13. Clean up legacy kind column from categories and migrate income categories
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name = 'categories' AND column_name = 'kind'
+            ) THEN
+                INSERT INTO income_categories (id, user_id, name, color, icon, created_at)
+                SELECT c.id, c.user_id, c.name, COALESCE(c.color, '#10B981'), COALESCE(c.icon, 'Wallet'), COALESCE(c.created_at, timezone('utc', now()))
+                FROM categories c
+                WHERE c.kind = 'income'
+                  AND (
+                      lower(btrim(c.name)) IN ('salario', 'freelance', 'ventas', 'otros ingresos')
+                      OR NOT EXISTS (
+                          SELECT 1 FROM categories e
+                          WHERE e.user_id = c.user_id
+                            AND e.kind = 'expense'
+                            AND lower(btrim(e.name)) = lower(btrim(c.name))
+                      )
+                  )
+                ON CONFLICT (user_id, name) DO NOTHING;
+
+                DELETE FROM categories WHERE kind = 'income';
+
+                DROP INDEX IF EXISTS idx_categories_user_kind;
+                DROP INDEX IF EXISTS ix_categories_user_kind;
+
+                BEGIN
+                    ALTER TABLE categories DROP CONSTRAINT IF EXISTS _user_category_uc;
+                EXCEPTION WHEN OTHERS THEN
+                    NULL;
+                END;
+
+                ALTER TABLE categories DROP COLUMN IF EXISTS kind CASCADE;
+
+                BEGIN
+                    ALTER TABLE categories ADD CONSTRAINT _user_category_uc UNIQUE (user_id, name);
+                EXCEPTION WHEN OTHERS THEN
+                    NULL;
+                END;
+            ELSE
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.table_constraints
+                    WHERE table_name = 'categories' AND constraint_name = '_user_category_uc'
+                ) THEN
+                    BEGIN
+                        ALTER TABLE categories ADD CONSTRAINT _user_category_uc UNIQUE (user_id, name);
+                    EXCEPTION WHEN OTHERS THEN
+                        NULL;
+                    END;
+                END IF;
+            END IF;
+        EXCEPTION WHEN OTHERS THEN
+            NULL;
+        END $$;
+        """,
+        # 13c. Seed DEFAULT_INCOME_CATEGORIES across profiles in income_categories
         """
         DO $$
         DECLARE
@@ -699,20 +754,19 @@ async def ensure_categories_and_debts_schema() -> None:
         BEGIN
             FOR inc_cat IN
                 SELECT * FROM (VALUES
-                    ('Salario', 'Briefcase', '#10B981', 'income'),
-                    ('Freelance', 'Monitor', '#3B82F6', 'income'),
-                    ('Ventas', 'ShoppingBag', '#F59E0B', 'income'),
-                    ('Otros ingresos', 'Wallet', '#64748B', 'income')
-                ) AS v(name, icon, color, kind)
+                    ('Salario', 'Briefcase', '#10B981'),
+                    ('Freelance', 'Monitor', '#3B82F6'),
+                    ('Ventas', 'ShoppingBag', '#F59E0B'),
+                    ('Otros ingresos', 'Wallet', '#64748B')
+                ) AS v(name, icon, color)
             LOOP
-                INSERT INTO categories (id, user_id, name, icon, color, kind, created_at)
-                SELECT gen_random_uuid(), p.id, inc_cat.name, inc_cat.icon, inc_cat.color, inc_cat.kind, timezone('utc', now())
+                INSERT INTO income_categories (id, user_id, name, icon, color, created_at)
+                SELECT gen_random_uuid(), p.id, inc_cat.name, inc_cat.icon, inc_cat.color, timezone('utc', now())
                 FROM profiles p
                 WHERE NOT EXISTS (
-                    SELECT 1 FROM categories c
-                    WHERE c.user_id = p.id
-                      AND c.kind = 'income'
-                      AND lower(btrim(c.name)) = lower(inc_cat.name)
+                    SELECT 1 FROM income_categories ic
+                    WHERE ic.user_id = p.id
+                      AND lower(btrim(ic.name)) = lower(inc_cat.name)
                 );
             END LOOP;
         EXCEPTION WHEN OTHERS THEN
@@ -730,21 +784,18 @@ async def ensure_categories_and_debts_schema() -> None:
                EXISTS (
                    SELECT 1 FROM categories c 
                    WHERE c.user_id = ei.user_id 
-                     AND c.kind = 'expense' 
                      AND lower(btrim(c.name)) = lower(btrim(ei.category))
                )
                AND NOT EXISTS (
-                   SELECT 1 FROM categories c 
-                   WHERE c.user_id = ei.user_id 
-                     AND c.kind = 'income' 
-                     AND lower(btrim(c.name)) = lower(btrim(ei.category))
+                   SELECT 1 FROM income_categories ic 
+                   WHERE ic.user_id = ei.user_id 
+                     AND lower(btrim(ic.name)) = lower(btrim(ei.category))
                )
            )
         """,
         """
         DELETE FROM categories c
-        WHERE c.kind = 'expense' 
-          AND lower(btrim(c.name)) = 'ingresos'
+        WHERE lower(btrim(c.name)) = 'ingresos'
           AND NOT EXISTS (
               SELECT 1 FROM expenses e 
               WHERE e.user_id = c.user_id 
@@ -850,12 +901,12 @@ async def ensure_categories_and_debts_schema() -> None:
 # Alias for schema initialization
 ensure_incomes_and_categories_schema = ensure_categories_and_debts_schema
 
-def _normalize_category_instance(cat: models.Category) -> None:
+def _normalize_category_instance(cat) -> None:
     if not cat.icon or cat.icon.strip() == "":
         if cat.color and not cat.color.startswith("#"):
             cat.icon = cat.color
         else:
-            cat.icon = "Package"
+            cat.icon = "Wallet" if isinstance(cat, models.IncomeCategory) else "Package"
     if not cat.color or not cat.color.startswith("#"):
         name_lower = (cat.name or "").strip().lower()
         color_lower = (cat.color or "").strip().lower()
@@ -896,15 +947,52 @@ def _normalize_category_instance(cat: models.Category) -> None:
             "sin categoría": "#64748B",
             "helpcircle": "#64748B",
         }
-        cat.color = mapping.get(name_lower, mapping.get(color_lower, "#6366F1"))
+        default_color = "#10B981" if isinstance(cat, models.IncomeCategory) else "#6366F1"
+        cat.color = mapping.get(name_lower, mapping.get(color_lower, default_color))
 
-async def seed_default_categories(db: AsyncSession, user_id: UUID, only_if_empty: bool = False, kind: str = "expense") -> List[models.Category]:
+async def seed_default_categories(db: AsyncSession, user_id: UUID, only_if_empty: bool = False, kind: str = "expense") -> List:
+    if kind == "income":
+        res = await db.execute(
+            select(models.IncomeCategory)
+            .where(models.IncomeCategory.user_id == user_id)
+            .order_by(models.IncomeCategory.created_at.asc())
+        )
+        existing = res.scalars().all()
+        if only_if_empty and len(existing) > 0:
+            return existing
+
+        existing_names = {c.name.strip().lower() for c in existing}
+        to_add = []
+        for item in DEFAULT_INCOME_CATEGORIES:
+            if item["name"].strip().lower() not in existing_names:
+                to_add.append(
+                    models.IncomeCategory(
+                        user_id=user_id,
+                        name=item["name"],
+                        icon=item["icon"],
+                        color=item["color"]
+                    )
+                )
+        if to_add:
+            try:
+                db.add_all(to_add)
+                await db.commit()
+            except IntegrityError:
+                await db.rollback()
+            except Exception:
+                await db.rollback()
+                raise
+
+        res = await db.execute(
+            select(models.IncomeCategory)
+            .where(models.IncomeCategory.user_id == user_id)
+            .order_by(models.IncomeCategory.created_at.asc())
+        )
+        return res.scalars().all()
+
     res = await db.execute(
         select(models.Category)
-        .where(
-            models.Category.user_id == user_id,
-            models.Category.kind == kind
-        )
+        .where(models.Category.user_id == user_id)
         .order_by(models.Category.created_at.asc())
     )
     existing = res.scalars().all()
@@ -912,17 +1000,15 @@ async def seed_default_categories(db: AsyncSession, user_id: UUID, only_if_empty
         return existing
         
     existing_names = {c.name.strip().lower() for c in existing}
-    defaults = DEFAULT_INCOME_CATEGORIES if kind == "income" else DEFAULT_CATEGORIES
     to_add = []
-    for item in defaults:
+    for item in DEFAULT_CATEGORIES:
         if item["name"].strip().lower() not in existing_names:
             to_add.append(
                 models.Category(
                     user_id=user_id,
                     name=item["name"],
                     icon=item["icon"],
-                    color=item["color"],
-                    kind=kind
+                    color=item["color"]
                 )
             )
             
@@ -938,54 +1024,31 @@ async def seed_default_categories(db: AsyncSession, user_id: UUID, only_if_empty
 
     res = await db.execute(
         select(models.Category)
-        .where(
-            models.Category.user_id == user_id,
-            models.Category.kind == kind
-        )
+        .where(models.Category.user_id == user_id)
         .order_by(models.Category.created_at.asc())
     )
     return res.scalars().all()
 
 async def get_categories(db: AsyncSession, user_id: UUID, kind: str = "expense"):
     await ensure_categories_and_debts_schema()
-    result = await db.execute(
-        select(models.Category)
-        .filter(
-            models.Category.user_id == user_id,
-            models.Category.kind == kind
-        )
-        .order_by(models.Category.created_at.asc())
-    )
-    cats = list(result.scalars().all())
-    if not cats:
-        cats = list(await seed_default_categories(db, user_id=user_id, only_if_empty=True, kind=kind))
 
-    if kind == "expense":
-        has_sin_cat = any((c.name or "").strip().lower() == "sin categoría" for c in cats)
-        if not has_sin_cat:
-            db_sin_cat = models.Category(
-                user_id=user_id,
-                name="Sin Categoría",
-                icon="HelpCircle",
-                color="#64748B",
-                kind="expense"
-            )
-            db.add(db_sin_cat)
-            try:
-                await db.commit()
-                await db.refresh(db_sin_cat)
-                cats.append(db_sin_cat)
-            except IntegrityError:
-                await db.rollback()
-    elif kind == "income":
+    if kind == "income":
+        result = await db.execute(
+            select(models.IncomeCategory)
+            .filter(models.IncomeCategory.user_id == user_id)
+            .order_by(models.IncomeCategory.created_at.asc())
+        )
+        cats = list(result.scalars().all())
+        if not cats:
+            cats = list(await seed_default_categories(db, user_id=user_id, only_if_empty=True, kind="income"))
+
         has_otros = any((c.name or "").strip().lower() == "otros ingresos" for c in cats)
         if not has_otros:
-            db_otros = models.Category(
+            db_otros = models.IncomeCategory(
                 user_id=user_id,
                 name="Otros ingresos",
                 icon="Wallet",
-                color="#64748B",
-                kind="income"
+                color="#64748B"
             )
             db.add(db_otros)
             try:
@@ -995,10 +1058,9 @@ async def get_categories(db: AsyncSession, user_id: UUID, kind: str = "expense")
             except IntegrityError:
                 await db.rollback()
 
-    for cat in cats:
-        _normalize_category_instance(cat)
+        for cat in cats:
+            _normalize_category_instance(cat)
 
-    if kind == "income":
         est_counts = {}
         try:
             est_res = await db.execute(
@@ -1033,6 +1095,34 @@ async def get_categories(db: AsyncSession, user_id: UUID, kind: str = "expense")
             cat.usage_count = tot
 
         return cats
+
+    result = await db.execute(
+        select(models.Category)
+        .filter(models.Category.user_id == user_id)
+        .order_by(models.Category.created_at.asc())
+    )
+    cats = list(result.scalars().all())
+    if not cats:
+        cats = list(await seed_default_categories(db, user_id=user_id, only_if_empty=True, kind="expense"))
+
+    has_sin_cat = any((c.name or "").strip().lower() == "sin categoría" for c in cats)
+    if not has_sin_cat:
+        db_sin_cat = models.Category(
+            user_id=user_id,
+            name="Sin Categoría",
+            icon="HelpCircle",
+            color="#64748B"
+        )
+        db.add(db_sin_cat)
+        try:
+            await db.commit()
+            await db.refresh(db_sin_cat)
+            cats.append(db_sin_cat)
+        except IntegrityError:
+            await db.rollback()
+
+    for cat in cats:
+        _normalize_category_instance(cat)
 
     # Grouped counts across tables for expense categories
     exp_counts = {}
@@ -1140,16 +1230,48 @@ async def get_categories(db: AsyncSession, user_id: UUID, kind: str = "expense")
 
     return cats
 
-async def get_category(db: AsyncSession, category_id: UUID, user_id: UUID):
-    result = await db.execute(select(models.Category).filter(models.Category.id == category_id, models.Category.user_id == user_id))
-    cat = result.scalars().first()
+async def get_category(db: AsyncSession, category_id: UUID, user_id: UUID, kind: Optional[str] = None):
+    cat = None
+    if kind == "income":
+        result = await db.execute(
+            select(models.IncomeCategory).filter(
+                models.IncomeCategory.id == category_id,
+                models.IncomeCategory.user_id == user_id
+            )
+        )
+        cat = result.scalars().first()
+    elif kind == "expense":
+        result = await db.execute(
+            select(models.Category).filter(
+                models.Category.id == category_id,
+                models.Category.user_id == user_id
+            )
+        )
+        cat = result.scalars().first()
+    else:
+        result = await db.execute(
+            select(models.Category).filter(
+                models.Category.id == category_id,
+                models.Category.user_id == user_id
+            )
+        )
+        cat = result.scalars().first()
+        if not cat:
+            result = await db.execute(
+                select(models.IncomeCategory).filter(
+                    models.IncomeCategory.id == category_id,
+                    models.IncomeCategory.user_id == user_id
+                )
+            )
+            cat = result.scalars().first()
+
     if cat:
         _normalize_category_instance(cat)
     return cat
 
-async def create_category(db: AsyncSession, category: schemas.CategoryCreate, user_id: UUID):
+async def create_category(db: AsyncSession, category: schemas.CategoryCreate, user_id: UUID, kind_override: Optional[str] = None):
     raw_kind = getattr(category, "kind", "expense")
-    kind = getattr(raw_kind, "value", raw_kind) or "expense"
+    kind = kind_override or getattr(raw_kind, "value", raw_kind) or "expense"
     norm_name = category.name.strip()
 
     if kind == "expense" and norm_name.lower() == "sin categoría":
@@ -1163,30 +1285,57 @@ async def create_category(db: AsyncSession, category: schemas.CategoryCreate, us
             detail="La categoría 'Otros ingresos' es del sistema y se gestiona automáticamente."
         )
 
-    existing = await db.execute(
-        select(models.Category.id).where(
-            models.Category.user_id == user_id,
-            models.Category.kind == kind,
-            func.lower(models.Category.name) == func.lower(norm_name)
+    if kind == "income":
+        existing = await db.execute(
+            select(models.IncomeCategory.id).where(
+                models.IncomeCategory.user_id == user_id,
+                func.lower(models.IncomeCategory.name) == func.lower(norm_name)
+            )
         )
-    )
-    if existing.scalars().first():
-        raise HTTPException(status_code=400, detail="Ya existe una categoría con ese nombre")
+        if existing.scalars().first():
+            raise HTTPException(status_code=400, detail="Ya existe una categoría con ese nombre")
+    else:
+        existing = await db.execute(
+            select(models.Category.id).where(
+                models.Category.user_id == user_id,
+                func.lower(models.Category.name) == func.lower(norm_name)
+            )
+        )
+        if existing.scalars().first():
+            raise HTTPException(status_code=400, detail="Ya existe una categoría con ese nombre")
 
     cat_data = category.model_dump()
     cat_data["name"] = norm_name
-    cat_data["kind"] = kind
+    cat_data.pop("kind", None)
 
     raw_color = cat_data.get("color")
     raw_icon = cat_data.get("icon")
-    if raw_color and not raw_color.startswith("#"):
-        if not raw_icon or raw_icon == "Package":
-            cat_data["icon"] = raw_color
-        cat_data["color"] = "#6366F1"
-    elif not raw_icon:
-        cat_data["icon"] = "Package"
+    default_icon = "Wallet" if kind == "income" else "Package"
+    default_color = "#10B981" if kind == "income" else "#6366F1"
 
-    db_category = models.Category(**cat_data, user_id=user_id)
+    if raw_color and not raw_color.startswith("#"):
+        if not raw_icon or raw_icon in ("Package", "Wallet"):
+            cat_data["icon"] = raw_color
+        cat_data["color"] = default_color
+    elif not raw_icon:
+        cat_data["icon"] = default_icon
+
+    if not cat_data.get("color") or not cat_data["color"].startswith("#"):
+        cat_data["color"] = default_color
+
+    if kind == "income":
+        db_category = models.IncomeCategory(
+            user_id=user_id,
+            name=norm_name,
+            color=cat_data["color"],
+            icon=cat_data["icon"]
+        )
+    else:
+        db_category = models.Category(
+            **cat_data,
+            user_id=user_id
+        )
+
     db.add(db_category)
     try:
         await db.commit()
@@ -1197,57 +1346,70 @@ async def create_category(db: AsyncSession, category: schemas.CategoryCreate, us
     _normalize_category_instance(db_category)
     return db_category
 
-async def update_category(db: AsyncSession, category_id: UUID, category_update: schemas.CategoryCreate, user_id: UUID):
-    db_category = await get_category(db, category_id, user_id)
+async def update_category(db: AsyncSession, category_id: UUID, category_update: schemas.CategoryCreate, user_id: UUID, kind: Optional[str] = None):
+    db_category = await get_category(db, category_id, user_id, kind=kind)
     if not db_category:
         return None
     
     old_name = db_category.name
     new_name = category_update.name.strip()
-    kind = db_category.kind or "expense"
+    cat_kind = getattr(db_category, "kind", "expense")
 
-    if kind == "expense":
+    if cat_kind == "expense":
         if old_name.strip().lower() == "sin categoría":
             raise HTTPException(status_code=400, detail="La categoría 'Sin Categoría' es del sistema y no puede ser modificada.")
         if new_name.lower() == "sin categoría" and old_name.lower() != "sin categoría":
             raise HTTPException(status_code=400, detail="No puedes renombrar una categoría a 'Sin Categoría'.")
-    elif kind == "income":
+    elif cat_kind == "income":
         if old_name.strip().lower() == "otros ingresos":
             raise HTTPException(status_code=400, detail="La categoría 'Otros ingresos' es del sistema y no puede ser modificada.")
         if new_name.lower() == "otros ingresos" and old_name.lower() != "otros ingresos":
             raise HTTPException(status_code=400, detail="No puedes renombrar una categoría a 'Otros ingresos'.")
 
     if old_name.lower() != new_name.lower():
-        existing = await db.execute(
-            select(models.Category.id).where(
-                models.Category.user_id == user_id,
-                models.Category.kind == kind,
-                func.lower(models.Category.name) == func.lower(new_name),
-                models.Category.id != category_id
+        if cat_kind == "income":
+            existing = await db.execute(
+                select(models.IncomeCategory.id).where(
+                    models.IncomeCategory.user_id == user_id,
+                    func.lower(models.IncomeCategory.name) == func.lower(new_name),
+                    models.IncomeCategory.id != category_id
+                )
             )
-        )
-        if existing.scalars().first():
-            raise HTTPException(status_code=400, detail="Ya existe una categoría con ese nombre")
+            if existing.scalars().first():
+                raise HTTPException(status_code=400, detail="Ya existe una categoría con ese nombre")
+        else:
+            existing = await db.execute(
+                select(models.Category.id).where(
+                    models.Category.user_id == user_id,
+                    func.lower(models.Category.name) == func.lower(new_name),
+                    models.Category.id != category_id
+                )
+            )
+            if existing.scalars().first():
+                raise HTTPException(status_code=400, detail="Ya existe una categoría con ese nombre")
     
     update_data = category_update.model_dump(exclude_unset=True)
     update_data["name"] = new_name
-    if "kind" in update_data:
-        del update_data["kind"]
+    update_data.pop("kind", None)
+
+    default_icon = "Wallet" if cat_kind == "income" else "Package"
+    default_color = "#10B981" if cat_kind == "income" else "#6366F1"
 
     raw_color = update_data.get("color")
     raw_icon = update_data.get("icon")
     if raw_color and not raw_color.startswith("#"):
-        if not raw_icon or raw_icon == "Package":
+        if not raw_icon or raw_icon in ("Package", "Wallet"):
             update_data["icon"] = raw_color
-        update_data["color"] = "#6366F1"
+        update_data["color"] = default_color
     elif not raw_icon and "icon" in update_data:
-        update_data["icon"] = "Package"
+        update_data["icon"] = default_icon
 
     for key, value in update_data.items():
-        setattr(db_category, key, value)
+        if key != "kind":
+            setattr(db_category, key, value)
         
     if old_name != new_name:
-        if kind == "income":
+        if cat_kind == "income":
             # 1. Update estimated incomes
             await db.execute(
                 models.EstimatedIncome.__table__.update()
@@ -1367,18 +1529,18 @@ async def update_category(db: AsyncSession, category_id: UUID, category_update: 
     _normalize_category_instance(db_category)
     return db_category
 
-async def delete_category(db: AsyncSession, category_id: UUID, user_id: UUID, reassign_to: Optional[str] = None):
-    db_category = await get_category(db, category_id, user_id)
+async def delete_category(db: AsyncSession, category_id: UUID, user_id: UUID, reassign_to: Optional[str] = None, kind: Optional[str] = None):
+    db_category = await get_category(db, category_id, user_id, kind=kind)
     if not db_category:
         return False
     
     category_name = db_category.name
-    kind = db_category.kind or "expense"
-    system_fallback = "Otros ingresos" if kind == "income" else "Sin Categoría"
+    cat_kind = getattr(db_category, "kind", "expense")
+    system_fallback = "Otros ingresos" if cat_kind == "income" else "Sin Categoría"
 
-    if kind == "expense" and category_name.strip().lower() == "sin categoría":
+    if cat_kind == "expense" and category_name.strip().lower() == "sin categoría":
         raise HTTPException(status_code=400, detail="La categoría 'Sin Categoría' es del sistema y no puede ser eliminada.")
-    if kind == "income" and category_name.strip().lower() == "otros ingresos":
+    if cat_kind == "income" and category_name.strip().lower() == "otros ingresos":
         raise HTTPException(status_code=400, detail="La categoría 'Otros ingresos' es del sistema y no puede ser eliminada.")
     
     if reassign_to:
@@ -1386,19 +1548,28 @@ async def delete_category(db: AsyncSession, category_id: UUID, user_id: UUID, re
         if reassign_to.lower() == category_name.lower():
             raise HTTPException(status_code=400, detail="No se puede reasignar a la categoría que se está eliminando")
         if reassign_to != system_fallback:
-            val_res = await db.execute(
-                select(models.Category.id).where(
-                    models.Category.user_id == user_id,
-                    models.Category.kind == kind,
-                    func.lower(models.Category.name) == func.lower(reassign_to)
+            if cat_kind == "income":
+                val_res = await db.execute(
+                    select(models.IncomeCategory.id).where(
+                        models.IncomeCategory.user_id == user_id,
+                        func.lower(models.IncomeCategory.name) == func.lower(reassign_to)
+                    )
                 )
-            )
-            if not val_res.scalars().first():
-                raise HTTPException(status_code=400, detail=f"La categoría de destino '{reassign_to}' no existe")
+                if not val_res.scalars().first():
+                    raise HTTPException(status_code=400, detail=f"La categoría de destino '{reassign_to}' no existe")
+            else:
+                val_res = await db.execute(
+                    select(models.Category.id).where(
+                        models.Category.user_id == user_id,
+                        func.lower(models.Category.name) == func.lower(reassign_to)
+                    )
+                )
+                if not val_res.scalars().first():
+                    raise HTTPException(status_code=400, detail=f"La categoría de destino '{reassign_to}' no existe")
 
     target_category = reassign_to if reassign_to else system_fallback
 
-    if kind == "income":
+    if cat_kind == "income":
         # 1. Reassign estimated incomes
         await db.execute(
             models.EstimatedIncome.__table__.update()

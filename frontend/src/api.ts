@@ -127,28 +127,47 @@ export const deleteExpense = async (id: string): Promise<void> => {
 };
 
 export const getCategories = async (kind: CategoryKind = 'expense'): Promise<Category[]> => {
-  const response = await api.get('/categories/', { params: { kind } });
+  const url = kind === 'income' ? '/categories/income' : '/categories/';
+  const response = await api.get(url, { params: { kind } });
   return response.data;
 };
 
 export const createCategory = async (category: CategoryCreate): Promise<Category> => {
-  const response = await api.post('/categories/', category);
+  const url = category.kind === 'income' ? '/categories/income' : '/categories/';
+  const response = await api.post(url, category);
   return response.data;
 };
 
-export const updateCategory = async (id: string, category: Partial<CategoryCreate>): Promise<Category> => {
-  const response = await api.put(`/categories/${id}`, category);
+export const updateCategory = async (
+  id: string,
+  category: Partial<CategoryCreate>,
+  kind?: CategoryKind
+): Promise<Category> => {
+  const effectiveKind = kind ?? category.kind;
+  const url = effectiveKind === 'income' ? `/categories/income/${id}` : `/categories/${id}`;
+  const response = await api.put(url, category, {
+    params: effectiveKind ? { kind: effectiveKind } : undefined,
+  });
   return response.data;
 };
 
-export const deleteCategory = async (id: string, reassignTo?: string): Promise<void> => {
-  await api.delete(`/categories/${id}`, {
-    params: reassignTo ? { reassign_to: reassignTo } : undefined,
+export const deleteCategory = async (
+  id: string,
+  reassignTo?: string,
+  kind?: CategoryKind
+): Promise<void> => {
+  const url = kind === 'income' ? `/categories/income/${id}` : `/categories/${id}`;
+  const params: Record<string, string> = {};
+  if (reassignTo) params.reassign_to = reassignTo;
+  if (kind) params.kind = kind;
+  await api.delete(url, {
+    params: Object.keys(params).length > 0 ? params : undefined,
   });
 };
 
 export const seedDefaultCategories = async (kind: CategoryKind = 'expense'): Promise<Category[]> => {
-  const response = await api.post('/categories/seed-defaults', null, { params: { kind } });
+  const url = kind === 'income' ? '/categories/income/seed-defaults' : '/categories/seed-defaults';
+  const response = await api.post(url, null, { params: { kind } });
   return response.data;
 };
 

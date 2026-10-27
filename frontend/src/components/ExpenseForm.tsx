@@ -99,15 +99,21 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
       }
     } else {
       if (mode === 'income') {
-        if (!category || category === 'Sin Categoría') {
+        const categoryExistsInIncome = incomeCategories.some(
+          (c) => c.name.toLowerCase() === category?.trim().toLowerCase()
+        );
+        if (!categoryExistsInIncome || category === 'Sin Categoría') {
           const defaultCat = incomeCategories.find((c) => c.name === 'Otros ingresos')?.name
             || incomeCategories[0]?.name
             || 'Otros ingresos';
           setCategory(defaultCat);
         }
       } else {
-        if (categories.length > 0 && (!category || category === 'Sin Categoría' || category === 'Otros ingresos')) {
-          setCategory(categories[0].name);
+        const categoryExistsInExpense = categories.some(
+          (c) => c.name.toLowerCase() === category?.trim().toLowerCase()
+        );
+        if (!categoryExistsInExpense || category === 'Otros ingresos' || !category) {
+          setCategory(categories[0]?.name || 'Sin Categoría');
         }
       }
     }
@@ -201,7 +207,26 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitError(null);
-    const effectiveCategory = category || (mode === 'income' ? 'Otros ingresos' : 'Sin Categoría');
+
+    let effectiveCategory = category?.trim();
+    if (mode === 'income') {
+      const isValid = incomeCategories.length === 0 || incomeCategories.some(
+        (c) => c.name.toLowerCase() === effectiveCategory?.toLowerCase()
+      );
+      if (!isValid || !effectiveCategory || effectiveCategory === 'Sin Categoría') {
+        effectiveCategory = incomeCategories.find((c) => c.name === 'Otros ingresos')?.name
+          || incomeCategories[0]?.name
+          || 'Otros ingresos';
+      }
+    } else {
+      const isValid = categories.length === 0 || categories.some(
+        (c) => c.name.toLowerCase() === effectiveCategory?.toLowerCase()
+      );
+      if (!isValid || !effectiveCategory || effectiveCategory === 'Otros ingresos') {
+        effectiveCategory = categories[0]?.name || 'Sin Categoría';
+      }
+    }
+
     if (!amount || !description || !effectiveCategory) return;
 
     setIsSubmitting(true);

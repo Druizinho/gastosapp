@@ -27,12 +27,30 @@ CREATE TABLE IF NOT EXISTS public.categories (
     name TEXT NOT NULL,
     color VARCHAR(20) DEFAULT '#6366F1',
     icon VARCHAR(50) DEFAULT 'Package',
-    kind VARCHAR(20) NOT NULL DEFAULT 'expense',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now()),
-    CONSTRAINT _user_category_uc UNIQUE (user_id, kind, name)
+    CONSTRAINT _user_category_uc UNIQUE (user_id, name)
 );
 CREATE INDEX IF NOT EXISTS idx_categories_user ON public.categories(user_id);
-CREATE INDEX IF NOT EXISTS idx_categories_user_kind ON public.categories(user_id, kind);
+
+-- ------------------------------------------------------------------------------
+-- 2B. INCOME CATEGORIES
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.income_categories (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    color VARCHAR(20) DEFAULT '#10B981',
+    icon VARCHAR(50) DEFAULT 'Wallet',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now()),
+    CONSTRAINT _user_income_category_uc UNIQUE (user_id, name)
+);
+CREATE INDEX IF NOT EXISTS idx_income_categories_user ON public.income_categories(user_id);
+
+ALTER TABLE public.income_categories ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can manage their own income_categories" ON public.income_categories
+    FOR ALL USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
 
 -- ------------------------------------------------------------------------------
 -- 3. EXPENSES

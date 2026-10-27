@@ -679,15 +679,15 @@ class TestIncomesRefactor(unittest.TestCase):
         # 3. Protecting 'Sin Categoría' and 'Otros ingresos' on delete_category
         with patch("app.crud.get_category", new_callable=AsyncMock) as mock_get_cat:
             mock_get_cat.return_value = models.Category(
-                id=uuid4(), name="Sin Categoría", kind="expense", user_id=user_id
+                id=uuid4(), name="Sin Categoría", user_id=user_id
             )
             with self.assertRaises(HTTPException) as cm_del_exp:
                 await crud.delete_category(self.db, category_id=uuid4(), user_id=user_id)
             self.assertEqual(cm_del_exp.exception.status_code, 400)
             self.assertIn("Sin Categoría", cm_del_exp.exception.detail)
 
-            mock_get_cat.return_value = models.Category(
-                id=uuid4(), name="Otros ingresos", kind="income", user_id=user_id
+            mock_get_cat.return_value = models.IncomeCategory(
+                id=uuid4(), name="Otros ingresos", user_id=user_id
             )
             with self.assertRaises(HTTPException) as cm_del_inc:
                 await crud.delete_category(self.db, category_id=uuid4(), user_id=user_id)
@@ -696,9 +696,10 @@ class TestIncomesRefactor(unittest.TestCase):
 
         # 4. Deleting an income category reassigns Income and EstimatedIncome to 'Otros ingresos'
         del_db = AsyncMock()
-        income_cat_to_delete = models.Category(
-            id=uuid4(), name="Consultoría", kind="income", user_id=user_id
+        income_cat_to_delete = models.IncomeCategory(
+            id=uuid4(), name="Consultoría", user_id=user_id
         )
+        self.assertEqual(income_cat_to_delete.kind, "income")
         with patch("app.crud.get_category", new_callable=AsyncMock) as mock_get_cat:
             mock_get_cat.return_value = income_cat_to_delete
             del_ok = await crud.delete_category(del_db, category_id=income_cat_to_delete.id, user_id=user_id)
@@ -725,8 +726,10 @@ class TestIncomesRefactor(unittest.TestCase):
         # 5. Isolating kind in get_categories
         with patch("app.crud.ensure_categories_and_debts_schema", new_callable=AsyncMock):
             mock_inc_db = AsyncMock()
-            inc_cat = models.Category(id=uuid4(), name="Ventas", kind="income", user_id=user_id)
-            otros_cat = models.Category(id=uuid4(), name="Otros ingresos", kind="income", user_id=user_id)
+            inc_cat = models.IncomeCategory(id=uuid4(), name="Ventas", user_id=user_id)
+            otros_cat = models.IncomeCategory(id=uuid4(), name="Otros ingresos", user_id=user_id)
+            self.assertEqual(inc_cat.kind, "income")
+            self.assertEqual(otros_cat.kind, "income")
             mock_inc_db.execute.side_effect = [
                 MagicMock(scalars=lambda: MagicMock(all=lambda: [inc_cat, otros_cat])),
                 MagicMock(all=lambda: [("Ventas", 2)]),
@@ -737,10 +740,13 @@ class TestIncomesRefactor(unittest.TestCase):
             self.assertEqual(v_cat.income_count, 5)
             self.assertEqual(v_cat.expense_count, 0)
             self.assertEqual(v_cat.usage_count, 5)
+            self.assertEqual(v_cat.kind, "income")
 
             mock_exp_db = AsyncMock()
-            exp_cat = models.Category(id=uuid4(), name="Comida", kind="expense", user_id=user_id)
-            sin_cat = models.Category(id=uuid4(), name="Sin Categoría", kind="expense", user_id=user_id)
+            exp_cat = models.Category(id=uuid4(), name="Comida", user_id=user_id)
+            sin_cat = models.Category(id=uuid4(), name="Sin Categoría", user_id=user_id)
+            self.assertEqual(exp_cat.kind, "expense")
+            self.assertEqual(sin_cat.kind, "expense")
             mock_exp_db.execute.side_effect = [
                 MagicMock(scalars=lambda: MagicMock(all=lambda: [exp_cat, sin_cat])),
                 MagicMock(all=lambda: [("Comida", 7)]),
@@ -755,6 +761,7 @@ class TestIncomesRefactor(unittest.TestCase):
             self.assertEqual(c_cat.expense_count, 7)
             self.assertEqual(c_cat.income_count, 0)
             self.assertEqual(c_cat.usage_count, 7)
+            self.assertEqual(c_cat.kind, "expense")
 
     @sync_run
     async def test_partial_status_becomes_true_when_income_reduced_or_deleted(self):
@@ -1123,6 +1130,68 @@ class TestIncomesRouter(unittest.TestCase):
             self.assertEqual(del_res, {"ok": True})
 
 
+class TestIncomeCategoriesRefactor(unittest.TestCase):
+
+    @sync_run
+    async def test_create_category_instantiates_correct_model(self):
+        user_id = uuid4()
+        mock_db = AsyncMock()
+        mock_db.add = MagicMock()
+        mock_db.execute = AsyncMock(return_value=MockResult([None]))
+
+        income_cat = await crud.create_category(
+            mock_db,
+            schemas.CategoryCreate(name="Honorarios", kind="income"),
+            user_id=user_id
+        )
+        self.assertTrue(isinstance(income_cat, models.IncomeCategory))
+        self.assertEqual(income_cat.__tablename__, "income_categories")
+        self.assertEqual(income_cat.kind, "income")
+
+        expense_cat = await crud.create_category(
+            mock_db,
+            schemas.CategoryCreate(name="Transporte", kind="expense"),
+            user_id=user_id
+        )
+        self.assertTrue(isinstance(expense_cat, models.Category))
+        self.assertEqual(expense_cat.__tablename__, "categories")
+        self.assertEqual(expense_cat.kind, "expense")
+
+    @sync_run
+    async def test_delete_category_with_income_kind_never_deletes_expense(self):
+        user_id = uuid4()
+        expense_cat_id = uuid4()
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=MockResult([]))
+        db.delete = MagicMock()
+
+        result = await crud.delete_category(db, category_id=expense_cat_id, user_id=user_id, kind="income")
+        self.assertFalse(result)
+        db.delete.assert_not_called()
+
+    def test_categories_router_precedence(self):
+        from app.routers import categories
+        routes = [r for r in categories.router.routes if isinstance(r, APIRoute)]
+        paths = [(r.path, tuple(sorted(r.methods))) for r in routes]
+
+        # Verify income routes exist
+        self.assertIn(("/api/categories/income", ("GET",)), paths)
+        self.assertIn(("/api/categories/income", ("POST",)), paths)
+        self.assertIn(("/api/categories/income/seed-defaults", ("POST",)), paths)
+        self.assertIn(("/api/categories/income/{category_id}", ("PUT",)), paths)
+        self.assertIn(("/api/categories/income/{category_id}", ("DELETE",)), paths)
+
+        # Precedence check:
+        # /api/categories/income routes MUST appear before /api/categories/{category_id}
+        idx_income_get = next(i for i, r in enumerate(routes) if r.path == "/api/categories/income")
+        idx_param_cat = next(i for i, r in enumerate(routes) if r.path == "/api/categories/{category_id}")
+        self.assertLess(
+            idx_income_get, idx_param_cat,
+            f"Precedence error: /api/categories/income ({idx_income_get}) must be declared before /api/categories/{{category_id}} ({idx_param_cat})"
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
+
 

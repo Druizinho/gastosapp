@@ -382,6 +382,57 @@ class TestBudgetPerformance(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(cl_viajes.spent_amount, Decimal("150.00"))
         self.assertEqual(shared_sb.total_spent_usd, Decimal("150.00"))
 
+    async def test_get_available_budget_categories_filters_out_income_categories(self):
+        """
+        Verifies get_available_budget_categories queries models.Category (not income_categories)
+        and passes kind='expense' to crud.get_categories on fallback.
+        """
+        user_id = uuid4()
+        executed_stmts = []
+
+        async def fake_execute(stmt, *args, **kwargs):
+            executed_stmts.append(stmt)
+            mock_res = MagicMock()
+            mock_res.scalars.return_value.all.return_value = ["Comida", "Transporte"]
+            return mock_res
+
+        db = AsyncMock()
+        db.execute = fake_execute
+
+        # 1. Primary path: verify Category table is queried and NOT income_categories
+        res = await crud_budgets.get_available_budget_categories(db, user_id)
+        self.assertEqual(res, ["Comida", "Transporte"])
+        self.assertEqual(len(executed_stmts), 1)
+
+        stmt = executed_stmts[0]
+        sql_str = str(stmt).lower()
+        self.assertIn("categories", sql_str)
+        self.assertNotIn("income_categories", sql_str)
+        self.assertNotIn("categories.kind", sql_str)
+
+        # 2. Fallback path: verify fallback calls crud.get_categories with kind='expense'
+        executed_stmts.clear()
+        async def fake_execute_empty(stmt, *args, **kwargs):
+            executed_stmts.append(stmt)
+            mock_res = MagicMock()
+            mock_res.scalars.return_value.all.return_value = []
+            return mock_res
+
+        db.execute = fake_execute_empty
+
+        fallback_calls = []
+        async def fake_get_categories(db_arg, u_id, kind=None):
+            fallback_calls.append({"db": db_arg, "user_id": u_id, "kind": kind})
+            return [SimpleNamespace(name="Alimentación")]
+
+        with patch("app.crud.get_categories", side_effect=fake_get_categories):
+            res_fallback = await crud_budgets.get_available_budget_categories(db, user_id)
+
+        self.assertEqual(res_fallback, ["Alimentación"])
+        self.assertEqual(len(fallback_calls), 1)
+        self.assertEqual(fallback_calls[0]["kind"], "expense")
+        self.assertEqual(fallback_calls[0]["user_id"], user_id)
+
 
 if __name__ == "__main__":
     unittest.main()

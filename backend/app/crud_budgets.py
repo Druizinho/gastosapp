@@ -135,12 +135,14 @@ async def get_available_budget_categories(db: AsyncSession, user_id: UUID) -> Li
     Strictly user categories defined in the categories table.
     """
     res = await db.execute(
-        select(models.Category.name).where(models.Category.user_id == user_id).order_by(models.Category.name.asc())
+        select(models.Category.name).where(
+            models.Category.user_id == user_id
+        ).order_by(models.Category.name.asc())
     )
     user_cats = res.scalars().all()
     if not user_cats:
         from . import crud
-        cats_obj = await crud.get_categories(db, user_id)
+        cats_obj = await crud.get_categories(db, user_id, kind='expense')
         user_cats = [c.name for c in cats_obj]
     seen = set()
     result = []
