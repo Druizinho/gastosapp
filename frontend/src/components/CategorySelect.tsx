@@ -1,5 +1,5 @@
 import React, { useState, useId } from 'react';
-import type { Category } from '../types';
+import type { Category, CategoryKind } from '../types';
 import { useCategories } from '../context/CategoriesContext';
 import { createCategory } from '../api';
 import {
@@ -13,6 +13,7 @@ export interface CategorySelectProps {
   value: string;
   onChange: (categoryName: string) => void;
   categories?: Category[];
+  kind?: CategoryKind;
   onCategoryCreated?: (newCategory: Category) => void;
   allowEmpty?: boolean;
   emptyLabel?: string;
@@ -44,6 +45,7 @@ export const CategorySelect: React.FC<CategorySelectProps> = ({
   value,
   onChange,
   categories: propCategories,
+  kind = 'expense',
   onCategoryCreated,
   allowEmpty = false,
   emptyLabel = '(Sin categoría)',
@@ -60,7 +62,7 @@ export const CategorySelect: React.FC<CategorySelectProps> = ({
 
   // Shared context categories with optional override
   const context = useCategories();
-  const categories = propCategories || context.categories;
+  const categories = propCategories || (kind === 'income' ? context.incomeCategories : context.categories);
   const { addCategoryLocally, refreshCategories } = context;
 
   // Inline creator state
@@ -107,6 +109,7 @@ export const CategorySelect: React.FC<CategorySelectProps> = ({
         name: trimmed,
         color: newCatColor,
         icon: newCatIcon,
+        kind,
       });
 
       // Update local shared state instantly

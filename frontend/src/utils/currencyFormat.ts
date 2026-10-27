@@ -361,3 +361,20 @@ export function getHistoricalRateDisplay(
   const valueText = rateVal > 0 ? `Bs. ${rateVal.toFixed(2)} / $` : 'N/D';
   return { label, valueText, isHistorical };
 }
+
+export function formatAmountForInput(value: number | string | null | undefined): string {
+  if (value == null || value === '') return '';
+  const num = typeof value === 'number' ? value : parseFloat(String(value).replace(',', '.'));
+  if (isNaN(num) || num === 0) return '';
+  const rounded = Math.round((num + Number.EPSILON) * 100) / 100;
+  return rounded.toString();
+}
+
+export function formatRateForInput(value: number | string | null | undefined): string {
+  if (value == null || value === '') return '';
+  const num = typeof value === 'number' ? value : parseFloat(String(value).replace(',', '.'));
+  if (isNaN(num) || num === 0) return '';
+  const rounded = Math.round((num + Number.EPSILON) * 10000) / 10000;
+  return rounded.toString();
+}
+

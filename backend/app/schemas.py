@@ -67,10 +67,15 @@ class ProfileUpdate(BaseModel):
     notify_incomes: Optional[bool] = None
     notify_inactivity: Optional[bool] = None
 
+class CategoryKind(str, Enum):
+    expense = "expense"
+    income = "income"
+
 class CategoryBase(BaseModel):
     name: str = Field(..., min_length=1)
     color: Optional[str] = Field(default="#6366F1")
     icon: Optional[str] = Field(default="Package")
+    kind: CategoryKind = Field(default=CategoryKind.expense)
 
 class CategoryCreate(CategoryBase):
     pass
@@ -78,6 +83,7 @@ class CategoryCreate(CategoryBase):
 class CategoryResponse(CategoryBase):
     id: UUID
     user_id: UUID
+    kind: CategoryKind = Field(default=CategoryKind.expense)
     created_at: datetime.datetime
     usage_count: int = 0
     expense_count: int = 0
@@ -151,6 +157,22 @@ class SummaryResponse(BaseModel):
     total_this_month_usd: Decimal
     total_this_month_eur: Decimal
     total_this_month_usdt: Decimal
+    income_total_bs: Decimal = Decimal("0")
+    income_total_usd: Decimal = Decimal("0")
+    income_total_eur: Decimal = Decimal("0")
+    income_total_usdt: Decimal = Decimal("0")
+    income_this_month_bs: Decimal = Decimal("0")
+    income_this_month_usd: Decimal = Decimal("0")
+    income_this_month_eur: Decimal = Decimal("0")
+    income_this_month_usdt: Decimal = Decimal("0")
+    balance_bs: Decimal = Decimal("0")
+    balance_usd: Decimal = Decimal("0")
+    balance_eur: Decimal = Decimal("0")
+    balance_usdt: Decimal = Decimal("0")
+    balance_this_month_bs: Decimal = Decimal("0")
+    balance_this_month_usd: Decimal = Decimal("0")
+    balance_this_month_eur: Decimal = Decimal("0")
+    balance_this_month_usdt: Decimal = Decimal("0")
     by_category: List[CategorySummary]
 
 class RangeSummaryResponse(BaseModel):
@@ -165,6 +187,14 @@ class RangeSummaryResponse(BaseModel):
     daily_avg_usd: Decimal
     daily_avg_eur: Decimal
     daily_avg_usdt: Decimal
+    income_total_bs: Decimal = Decimal("0")
+    income_total_usd: Decimal = Decimal("0")
+    income_total_eur: Decimal = Decimal("0")
+    income_total_usdt: Decimal = Decimal("0")
+    balance_bs: Decimal = Decimal("0")
+    balance_usd: Decimal = Decimal("0")
+    balance_eur: Decimal = Decimal("0")
+    balance_usdt: Decimal = Decimal("0")
     by_category: List[CategorySummary]
 
 # Fixed Expenses Schemas
@@ -405,10 +435,17 @@ class EstimatedIncomeBase(BaseModel):
     name: str = Field(..., min_length=1)
     expected_amount: Decimal = Field(..., gt=0)
     currency: CurrencyType = Field(default=CurrencyType.BS)
-    category: Optional[str] = "Ingresos"
+    category: Optional[str] = Field(default="Otros ingresos")
     payment_day: Optional[int] = Field(None, ge=1, le=31)
     is_active: bool = True
     notes: Optional[str] = None
+
+    @field_validator("category", mode="before")
+    @classmethod
+    def default_empty_category(cls, v):
+        if not v or not str(v).strip():
+            return "Otros ingresos"
+        return str(v).strip()
 
 class EstimatedIncomeCreate(EstimatedIncomeBase):
     pass
@@ -453,6 +490,60 @@ class EstimatedIncomeResponse(EstimatedIncomeBase):
     user_id: UUID
     created_at: datetime.datetime
     checks: List[IncomeCheckResponse] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+# Real Income Schemas
+
+class IncomeCheckTarget(BaseModel):
+    estimated_income_id: UUID
+    month_year: str = Field(..., pattern=r"^\d{4}-\d{2}$")
+    is_partial: Optional[bool] = None
+    pending_date: Optional[datetime.date] = None
+
+class IncomeBase(BaseModel):
+    amount: Decimal = Field(..., gt=0)
+    description: str = Field(..., min_length=1)
+    category: Optional[str] = Field(default="Otros ingresos")
+    date: Optional[datetime.date] = None
+    currency: CurrencyType = Field(default=CurrencyType.BS)
+
+    @field_validator("category", mode="before")
+    @classmethod
+    def default_empty_category(cls, v):
+        if not v or not str(v).strip():
+            return "Otros ingresos"
+        return str(v).strip()
+
+class IncomeCreate(IncomeBase):
+    manual_rate: Optional[Decimal] = Field(None, gt=0)
+    income_check_target: Optional[IncomeCheckTarget] = None
+    estimated_income_id: Optional[UUID] = None
+    month_year: Optional[str] = Field(None, pattern=r"^\d{4}-\d{2}$")
+
+class IncomeUpdate(BaseModel):
+    amount: Optional[Decimal] = Field(None, gt=0)
+    description: Optional[str] = None
+    category: Optional[str] = None
+    date: Optional[datetime.date] = None
+    currency: Optional[CurrencyType] = None
+    manual_rate: Optional[Decimal] = Field(None, gt=0)
+
+class IncomeResponse(IncomeBase):
+    id: UUID
+    user_id: UUID
+    date: datetime.date
+    created_at: datetime.datetime
+    income_check_id: Optional[UUID] = None
+    estimated_income_id: Optional[UUID] = None
+    estimated_income_name: Optional[str] = None
+    amount_usd: Optional[Decimal] = None
+    amount_bs: Optional[Decimal] = None
+    amount_eur: Optional[Decimal] = None
+    amount_usdt: Optional[Decimal] = None
+    rate_usd_bs: Optional[Decimal] = None
+    rate_eur_bs: Optional[Decimal] = None
+    rate_usdt_bs: Optional[Decimal] = None
 
     model_config = ConfigDict(from_attributes=True)
 

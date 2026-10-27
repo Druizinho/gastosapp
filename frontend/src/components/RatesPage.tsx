@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { RefreshCw, Calculator, ChevronDown } from 'lucide-react';
 import { getRates } from '../api';
 import type { ExchangeRates } from '../types';
-import { PageHeader } from './ui/PageHeader';
 import { SkeletonList } from './ui/Skeleton';
 
 const formatRate = (val: number | null | undefined) => {
@@ -53,6 +52,7 @@ export const RatesPage: React.FC = () => {
       short: 'Dólar BCV',
       symbol: '$',
       color: '#10B981',
+      symbolColor: 'white',
       getValue: (r: ExchangeRates | null) => r?.usd_bs,
     },
     EUR: {
@@ -61,6 +61,7 @@ export const RatesPage: React.FC = () => {
       short: 'Euro BCV',
       symbol: '€',
       color: '#3B82F6',
+      symbolColor: 'white',
       getValue: (r: ExchangeRates | null) => r?.eur_bs,
     },
     USDT: {
@@ -95,43 +96,53 @@ export const RatesPage: React.FC = () => {
 
   return (
     <div style={{ padding: '1rem', paddingBottom: '6rem', maxWidth: '600px', margin: '0 auto' }}>
-      <PageHeader
-        title="Tasas de Cambio"
-        subtitle={rates?.last_updated ? `Actualizado: ${new Date(rates.last_updated).toLocaleString('es-VE')}` : undefined}
-        rightAction={
-          <button
-            type="button"
-            onClick={fetchRates}
-            disabled={loading}
-            aria-label="Actualizar tasas"
-            style={{
-              background: 'var(--surface-color)',
-              border: 'none',
-              color: 'var(--text-secondary)',
-              cursor: loading ? 'default' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: '40px',
-              height: '40px',
-              borderRadius: 'var(--radius-full, 9999px)',
-              boxShadow: 'var(--shadow-sm)',
-              transition: 'transform 150ms ease-out, box-shadow 150ms ease-out',
-            }}
-            onMouseDown={(e) => {
-              if (!loading) e.currentTarget.style.transform = 'scale(0.96)';
-            }}
-            onMouseUp={(e) => {
-              e.currentTarget.style.transform = 'scale(1)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = 'scale(1)';
-            }}
-          >
-            <RefreshCw size={18} className={loading ? 'spin' : ''} />
-          </button>
-        }
-      />
+      <header style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '1.75rem',
+        paddingTop: '1rem',
+      }}>
+        <div>
+          <h1 style={{
+            fontSize: '1.75rem',
+            fontWeight: 800,
+            color: 'var(--text-primary)',
+            letterSpacing: '-0.02em',
+            marginBottom: '0.2rem',
+          }}>
+            Tasas de Cambio
+          </h1>
+          <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+            {rates?.last_updated ? `Actualizado: ${new Date(rates.last_updated).toLocaleString('es-VE')}` : 'Cargando cotizaciones...'}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={fetchRates}
+          className="header-action-btn"
+          aria-label="Actualizar tasas"
+          style={{
+            background: 'var(--surface-color)',
+            border: '1px solid var(--border-color)',
+            borderRadius: 'var(--radius-full)',
+            width: '40px',
+            height: '40px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            color: 'var(--text-primary)',
+            boxShadow: 'var(--shadow-sm)',
+            transition: 'transform 150ms ease-out',
+          }}
+          onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+          onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+        >
+          <RefreshCw size={18} className={loading ? 'spin' : ''} />
+        </button>
+      </header>
 
       {loading && !rates ? (
         <div style={{ padding: '12px 0' }}>
@@ -145,29 +156,48 @@ export const RatesPage: React.FC = () => {
             {(['USD', 'EUR', 'USDT'] as const).map(rateKey => {
               const config = currencyConfigs[rateKey];
               return (
-                <div key={rateKey} className="soft-card" style={{ padding: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div
+                  key={rateKey}
+                  className="soft-card"
+                  style={{
+                    padding: '1.25rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                     <div style={{
                       width: '44px',
                       height: '44px',
-                      borderRadius: '50%',
+                      borderRadius: 'var(--radius-full, 50%)',
                       background: config.color,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      color: 'white',
+                      color: config.symbolColor || 'white',
                       fontWeight: 800,
-                      fontSize: '1.1rem',
-                      boxShadow: 'var(--shadow-sm)'
+                      fontSize: '1.15rem',
+                      boxShadow: 'var(--shadow-sm)',
+                      flexShrink: 0,
                     }}>
                       {config.symbol}
                     </div>
                     <div>
-                      <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.95rem' }}>{config.label}</div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>1 {rateKey}</div>
+                      <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.95rem' }}>
+                        {config.label}
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                        1 {rateKey}
+                      </div>
                     </div>
                   </div>
-                  <div style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  <div style={{
+                    fontSize: '1.25rem',
+                    fontWeight: 700,
+                    color: 'var(--text-primary)',
+                    fontVariantNumeric: 'tabular-nums',
+                  }}>
                     {formatRate(config.getValue(rates))}
                   </div>
                 </div>
@@ -237,7 +267,7 @@ export const RatesPage: React.FC = () => {
                     <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                       <select
                         value={calcBase}
-                        onChange={(e) => setCalcBase(e.target.value as any)}
+                        onChange={(e) => setCalcBase(e.target.value as 'USD' | 'EUR' | 'USDT' | 'BS')}
                         style={{
                           appearance: 'none',
                           WebkitAppearance: 'none',

@@ -17,7 +17,7 @@ const EstimatedIncomeForm: React.FC<EstimatedIncomeFormProps> = ({ income, initi
   const [name, setName] = useState('');
   const [expectedAmount, setExpectedAmount] = useState('');
   const [currency, setCurrency] = useState<CurrencyType>('USD_CASH');
-  const [category, setCategory] = useState<string>(targetIncome?.category || 'Ingresos');
+  const [category, setCategory] = useState<string>(targetIncome?.category || 'Otros ingresos');
   const [categories, setCategories] = useState<Category[]>([]);
   const [paymentDay, setPaymentDay] = useState('');
   const [notes, setNotes] = useState('');
@@ -25,7 +25,7 @@ const EstimatedIncomeForm: React.FC<EstimatedIncomeFormProps> = ({ income, initi
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getCategories()
+    getCategories('income')
       .then(setCategories)
       .catch((err) => console.error('Error fetching categories in EstimatedIncomeForm:', err));
   }, []);
@@ -36,7 +36,7 @@ const EstimatedIncomeForm: React.FC<EstimatedIncomeFormProps> = ({ income, initi
       setName(current.name);
       setExpectedAmount(current.expected_amount.toString());
       setCurrency(current.currency);
-      setCategory(current.category || 'Ingresos');
+      setCategory(current.category || 'Otros ingresos');
       setPaymentDay(current.payment_day ? current.payment_day.toString() : '');
       setNotes(current.notes || '');
     }
@@ -69,7 +69,7 @@ const EstimatedIncomeForm: React.FC<EstimatedIncomeFormProps> = ({ income, initi
           name,
           expected_amount: amountNum,
           currency,
-          category: category || 'Ingresos',
+          category: category || 'Otros ingresos',
           payment_day: dayNum,
           notes: notes || undefined,
         };
@@ -79,7 +79,7 @@ const EstimatedIncomeForm: React.FC<EstimatedIncomeFormProps> = ({ income, initi
           name,
           expected_amount: amountNum,
           currency,
-          category: category || 'Ingresos',
+          category: category || 'Otros ingresos',
           payment_day: dayNum,
           notes: notes || undefined,
         };
@@ -145,8 +145,9 @@ const EstimatedIncomeForm: React.FC<EstimatedIncomeFormProps> = ({ income, initi
               <CategorySelect
                 label="Categoría"
                 value={category}
-                onChange={(val) => setCategory(val || 'Ingresos')}
+                onChange={(val) => setCategory(val || 'Otros ingresos')}
                 categories={categories}
+                kind="income"
                 onCategoryCreated={(cat) => setCategories(prev => [...prev, cat])}
               />
             </div>

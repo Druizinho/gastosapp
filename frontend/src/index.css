@@ -2491,17 +2491,54 @@ body {
 
 .toast-item {
   pointer-events: auto;
-  padding: 0.65rem 1.25rem;
+  padding: 0.65rem 1.15rem;
   border-radius: var(--radius-full);
-  box-shadow: var(--shadow-xl);
+  box-shadow: 0 10px 30px -4px rgba(0, 0, 0, 0.12), 0 4px 12px -2px rgba(0, 0, 0, 0.06);
   font-size: 0.875rem;
   font-weight: 600;
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  background: var(--text-primary);
-  color: #FFFFFF;
+  background: var(--surface-color);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   animation: toastSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.toast-item--success {
+  border-color: rgba(16, 185, 129, 0.35);
+  box-shadow: 0 8px 24px -4px rgba(16, 185, 129, 0.18), var(--shadow-md);
+}
+.toast-item--error {
+  border-color: rgba(239, 68, 68, 0.35);
+  box-shadow: 0 8px 24px -4px rgba(239, 68, 68, 0.18), var(--shadow-md);
+}
+.toast-item--warning {
+  border-color: rgba(245, 158, 11, 0.35);
+  box-shadow: 0 8px 24px -4px rgba(245, 158, 11, 0.18), var(--shadow-md);
+}
+.toast-item--info {
+  border-color: rgba(59, 130, 246, 0.35);
+  box-shadow: 0 8px 24px -4px rgba(59, 130, 246, 0.18), var(--shadow-md);
+}
+
+.toast-action-btn {
+  margin-left: 0.5rem;
+  padding: 0.25rem 0.75rem;
+  background: rgba(59, 130, 246, 0.12);
+  color: #2563EB;
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: var(--radius-full);
+  font-weight: 700;
+  font-size: 0.78rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 150ms ease-out, background 150ms ease-out;
+}
+.toast-action-btn:hover {
+  background: rgba(59, 130, 246, 0.2);
 }
 
 @keyframes toastSlideUp {

@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { getExpenses, getSummaryRange, createExpense, updateExpense, deleteExpense, getMonthlyBudget, getCachedMonthlyBudget } from '../api';
-import type { Expense, RangeSummaryResponse, ExpenseCreate, ExpenseUpdate, DateFilter, DatePreset, MonthlyBudgetResponse } from '../types';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { getExpenses, getSummaryRange, createExpense, updateExpense, deleteExpense, getMonthlyBudget, getCachedMonthlyBudget, createIncome } from '../api';
+import type { Expense, RangeSummaryResponse, ExpenseCreate, ExpenseUpdate, DateFilter, DatePreset, MonthlyBudgetResponse, IncomeCreate, IncomeUpdate } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useCategories } from '../context/CategoriesContext';
+import { useToast } from './ui/Toast';
 import Summary from './Summary';
 import PeriodSelector from './PeriodSelector';
 import ExpenseList from './ExpenseList';
@@ -16,6 +17,8 @@ const Dashboard: React.FC = () => {
   const { displayName, avatarUrl } = useAuth();
   const { categories } = useCategories();
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const toast = useToast();
   
   // Initialize filter from URL or default
   const [dateFilter, setDateFilter] = useState<DateFilter>(() => {
@@ -130,6 +133,17 @@ const Dashboard: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateFilter]);
 
+  // Listen to external data changes (e.g. global + modal in BottomNav/AppLayout)
+  useEffect(() => {
+    const handleDataChanged = () => {
+      fetchData(true);
+    };
+    window.addEventListener('gastosapp:data-changed', handleDataChanged);
+    return () => {
+      window.removeEventListener('gastosapp:data-changed', handleDataChanged);
+    };
+  }, [fetchData]);
+
   // Handle 'add' URL param to open form
   useEffect(() => {
     if (searchParams.get('add') === 'true') {
@@ -152,6 +166,24 @@ const Dashboard: React.FC = () => {
     } catch (error) {
       console.error('Error saving expense:', error);
       alert('Failed to save expense');
+    }
+  };
+
+  const handleIncomeSubmit = async (data: IncomeCreate | IncomeUpdate) => {
+    try {
+      await createIncome(data as IncomeCreate);
+      handleCloseForm();
+      await fetchData(true);
+      toast.success('Ingreso registrado', {
+        duration: 5000,
+        action: {
+          label: 'Ver ingresos',
+          onClick: () => navigate('/herramientas/ingresos'),
+        },
+      });
+    } catch (error) {
+      console.error('Error saving income:', error);
+      toast.error('Error al registrar ingreso');
     }
   };
 
@@ -269,6 +301,7 @@ const Dashboard: React.FC = () => {
         <ExpenseForm 
           initialData={editingExpense}
           onSubmit={handleCreateOrUpdate}
+          onIncomeSubmit={handleIncomeSubmit}
           onCancel={handleCloseForm}
           onCategoriesChanged={() => fetchData(true)}
         />

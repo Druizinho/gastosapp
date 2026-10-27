@@ -64,6 +64,7 @@ class FakeAsyncSession:
         self.store = db_store
         self.autoflush = False
         self.expire_on_commit = False
+        self.identity_map: dict[UUID, models.MonthlyBudget] = {}
 
     def expire_all(self):
         for b in self.store.budgets:
@@ -281,17 +282,27 @@ class FakeAsyncSession:
 
         # MonthlyBudget query
         if entities == [models.MonthlyBudget]:
-            uid = next((v for k, v in params.items() if "user_id" in k and isinstance(v, UUID)), None)
+            target_uids = []
+            for k, v in params.items():
+                if "user_id" in k:
+                    if isinstance(v, (list, tuple, set)):
+                        target_uids.extend(v)
+                    elif isinstance(v, UUID):
+                        target_uids.append(v)
             my = next((v for k, v in params.items() if "month_year" in k and isinstance(v, str)), None)
             bname = next((v for k, v in params.items() if "name" in k and isinstance(v, str)), None)
-            bid = None
+            target_bids = []
             not_bid = None
             for k, v in params.items():
-                if isinstance(v, UUID) and not any(p in k for p in ("user", "share", "owner", "income", "partner")):
+                if not any(p in k for p in ("user", "share", "owner", "income", "partner")):
                     if "!=" in sql or "<>" in sql:
-                        not_bid = v
+                        if isinstance(v, UUID):
+                            not_bid = v
                     else:
-                        bid = v
+                        if isinstance(v, (list, tuple, set)):
+                            target_bids.extend(v)
+                        elif isinstance(v, UUID):
+                            target_bids.append(v)
             is_prim = next((v for k, v in params.items() if "is_primary" in k), None)
 
             def _get_val(obj, attr):
@@ -304,27 +315,50 @@ class FakeAsyncSession:
                     return None
 
             matched = list(self.store.budgets)
-            if uid:
-                matched = [b for b in matched if _get_val(b, "user_id") == uid]
+            if target_uids:
+                matched = [b for b in matched if _get_val(b, "user_id") in target_uids]
             if my:
                 matched = [b for b in matched if _get_val(b, "month_year") == my]
             if bname:
                 matched = [b for b in matched if (_get_val(b, "name") or "").strip().lower() == bname.strip().lower()]
-            if bid:
-                matched = [b for b in matched if _get_val(b, "id") == bid]
+            if target_bids:
+                matched = [b for b in matched if _get_val(b, "id") in target_bids]
             if not_bid:
                 matched = [b for b in matched if _get_val(b, "id") != not_bid]
             if is_prim is not None:
                 matched = [b for b in matched if bool(_get_val(b, "is_primary")) == bool(is_prim)]
 
             matched.sort(key=lambda b: (not bool(_get_val(b, "is_primary")), (_get_val(b, "name") or "").lower()))
+
+            is_noload = False
+            for opt in getattr(stmt, "_with_options", []):
+                for ctx in getattr(opt, "context", []):
+                    strat = getattr(ctx, "strategy", ())
+                    if ("lazy", "noload") in strat and "category_limits" in str(getattr(opt, "path", "")):
+                        is_noload = True
+            populate_existing = bool(stmt.get_execution_options().get("populate_existing", False))
+
+            result_budgets = []
             for b in matched:
                 object.__setattr__(b, "_is_expired", False)
-                if not hasattr(b, "category_limits") or b.category_limits is None:
-                    b.category_limits = [cl for cl in self.store.category_limits if cl.budget_id == b.id]
+                if b.id in self.identity_map:
+                    cached_b = self.identity_map[b.id]
+                    if populate_existing:
+                        cached_b.category_limits = [cl for cl in self.store.category_limits if cl.budget_id == b.id]
+                    elif is_noload:
+                        cached_b.category_limits = []
+                    result_budgets.append(cached_b)
+                else:
+                    if is_noload:
+                        b.category_limits = []
+                    else:
+                        if not hasattr(b, "category_limits") or b.category_limits is None:
+                            b.category_limits = [cl for cl in self.store.category_limits if cl.budget_id == b.id]
+                    self.identity_map[b.id] = b
+                    result_budgets.append(b)
 
-            res.scalars.return_value.all.return_value = matched
-            res.scalars.return_value.first.return_value = matched[0] if matched else None
+            res.scalars.return_value.all.return_value = result_budgets
+            res.scalars.return_value.first.return_value = result_budgets[0] if result_budgets else None
             return res
 
         # Query 2: select(models.Share, models.ShareMember.entity_id) - from get_pana_details
@@ -402,30 +436,40 @@ class FakeAsyncSession:
 
         # Single Share query
         if entities == [models.Share]:
-            owner_not_uid = None
-            owner_uid = None
-            for k, v in params.items():
-                if "owner_id" in k and isinstance(v, UUID):
-                    if "!=" in sql or "<>" in sql:
-                        owner_not_uid = v
-                    else:
-                        owner_uid = v
-
             shares = list(self.store.shares)
-            if owner_not_uid:
-                shares = [s for s in shares if s.owner_id != owner_not_uid]
-            if owner_uid:
-                shares = [s for s in shares if s.owner_id == owner_uid]
 
-            # Check if filtered by user_id in subquery
-            uid = next((v for k, v in params.items() if "user_id" in k and isinstance(v, UUID)), None)
-            if uid:
-                shares = [s for s in shares if any(sm.user_id == uid for sm in self.store.share_members if sm.share_id == s.id)]
+            if " or " in sql:
+                uids = [v for k, v in params.items() if isinstance(v, UUID)]
+                target_uid = uids[0] if uids else None
+                if target_uid:
+                    shares = [
+                        s for s in shares
+                        if s.owner_id == target_uid or any(sm.user_id == target_uid for sm in self.store.share_members if sm.share_id == s.id)
+                    ]
+            else:
+                owner_not_uid = None
+                owner_uid = None
+                for k, v in params.items():
+                    if "owner_id" in k and isinstance(v, UUID):
+                        if "!=" in sql or "<>" in sql:
+                            owner_not_uid = v
+                        else:
+                            owner_uid = v
 
-            # Check entity_id filter
-            eid = next((v for k, v in params.items() if "entity_id" in k and isinstance(v, UUID)), None)
-            if eid:
-                shares = [s for s in shares if any(sm.entity_id == eid for sm in self.store.share_members if sm.share_id == s.id)]
+                if owner_not_uid:
+                    shares = [s for s in shares if s.owner_id != owner_not_uid]
+                if owner_uid:
+                    shares = [s for s in shares if s.owner_id == owner_uid]
+
+                # Check if filtered by user_id in subquery
+                uid = next((v for k, v in params.items() if "user_id" in k and isinstance(v, UUID)), None)
+                if uid:
+                    shares = [s for s in shares if any(sm.user_id == uid for sm in self.store.share_members if sm.share_id == s.id)]
+
+                # Check entity_id filter
+                eid = next((v for k, v in params.items() if "entity_id" in k and isinstance(v, UUID)), None)
+                if eid:
+                    shares = [s for s in shares if any(sm.entity_id == eid for sm in self.store.share_members if sm.share_id == s.id)]
 
             for s in shares:
                 s.members = [sm for sm in self.store.share_members if sm.share_id == s.id]
@@ -472,6 +516,11 @@ class FakeAsyncSession:
             return res
 
         return res
+
+
+class AsyncSession(FakeAsyncSession):
+    """Session class with __name__ == 'AsyncSession' to exercise AsyncSession code paths in crud_budgets."""
+    pass
 
 
 from sqlalchemy.exc import MissingGreenlet
@@ -984,6 +1033,91 @@ class TestSharedBudgets(unittest.TestCase):
         self.assertNotIn("Sin Categoría", persisted_cats)
         for cl in self.store.category_limits:
             self.assertNotEqual(cl.category_name.strip().lower(), "sin categoría")
+
+    @sync_run
+    @patch("app.crud_budgets.bcv_service.get_all_rates", new_callable=AsyncMock)
+    @patch("app.crud_budgets.send_notification_to_user", new_callable=AsyncMock)
+    async def test_10_shared_sub_budget_populates_category_limits_in_async_session(self, mock_notify, mock_rates):
+        mock_rates.return_value = {"usd_bs": Decimal("50"), "eur_bs": Decimal("55"), "usdt_bs": Decimal("60")}
+        month_year = "2026-10"
+
+        # Use AsyncSession so type(db).__name__ == "AsyncSession" exercises line 1229 & line 1270
+        async_db = AsyncSession(self.store)
+
+        # User A sets up Primary Budget and Sub-budget with categories
+        self._setup_primary_budget(
+            self.user_a, month_year, Decimal("1000"), {"Comida": Decimal("200"), "Casa": Decimal("500")}
+        )
+        sub_a = self._setup_sub_budget(self.user_a, month_year, "Viaje Mérida", ["Comida", "Casa"])
+
+        await sharing.create_share(
+            db=async_db,
+            entity_type="sub_budget",
+            owner_id=self.user_a,
+            owner_entity=sub_a,
+            target_ids=[self.user_b],
+            admin_ids=[]
+        )
+
+        # User B sets up primary budget
+        self._setup_primary_budget(
+            self.user_b, month_year, Decimal("500"), {"Comida": Decimal("300")}
+        )
+
+        # User B calls get_monthly_budget_view
+        view_b = await crud_budgets.get_monthly_budget_view(async_db, self.user_b, month_year)
+
+        # User B must see the shared sub-budget with non-empty category limits
+        self.assertEqual(len(view_b.shared_with_me_budgets), 1)
+        shared_sb = view_b.shared_with_me_budgets[0]
+        self.assertEqual(shared_sb.name, "Viaje Mérida")
+        self.assertGreater(len(shared_sb.category_limits), 0, "Shared budget category_limits must not be empty!")
+        cat_names = [cl.category_name for cl in shared_sb.category_limits]
+        self.assertIn("Comida", cat_names)
+        self.assertIn("Casa", cat_names)
+
+    @sync_run
+    @patch("app.crud_budgets.bcv_service.get_all_rates", new_callable=AsyncMock)
+    @patch("app.crud_budgets.send_notification_to_user", new_callable=AsyncMock)
+    async def test_11_shared_sub_budget_rollover_clones_category_limits_in_async_session(self, mock_notify, mock_rates):
+        mock_rates.return_value = {"usd_bs": Decimal("50"), "eur_bs": Decimal("55"), "usdt_bs": Decimal("60")}
+        oct_month = "2026-10"
+        nov_month = "2026-11"
+
+        async_db = AsyncSession(self.store)
+
+        # User A sets up Primary Budget and Sub-budget in October
+        self._setup_primary_budget(
+            self.user_a, oct_month, Decimal("1000"), {"Comida": Decimal("200"), "Casa": Decimal("500")}
+        )
+        sub_a = self._setup_sub_budget(self.user_a, oct_month, "Viaje Mérida", ["Comida", "Casa"])
+
+        await sharing.create_share(
+            db=async_db,
+            entity_type="sub_budget",
+            owner_id=self.user_a,
+            owner_entity=sub_a,
+            target_ids=[self.user_b],
+            admin_ids=[]
+        )
+
+        # User B sets up primary budget in November
+        self._setup_primary_budget(
+            self.user_b, nov_month, Decimal("500"), {"Comida": Decimal("300")}
+        )
+
+        # User A has NO budgets yet in November. When User B calls get_monthly_budget_view for November:
+        # The anchor budget (October sub_a) is loaded with noload(category_limits).
+        # User A's budgets for November are auto-cloned from October via get_or_clone_monthly_budgets!
+        view_b = await crud_budgets.get_monthly_budget_view(async_db, self.user_b, nov_month)
+
+        self.assertEqual(len(view_b.shared_with_me_budgets), 1)
+        shared_sb = view_b.shared_with_me_budgets[0]
+        self.assertEqual(shared_sb.name, "Viaje Mérida")
+        self.assertGreater(len(shared_sb.category_limits), 0, "Cloned shared budget category_limits must not be empty!")
+        cat_names = [cl.category_name for cl in shared_sb.category_limits]
+        self.assertIn("Comida", cat_names)
+        self.assertIn("Casa", cat_names)
 
 
 if __name__ == "__main__":

@@ -26,6 +26,7 @@ class Category(Base):
     name = Column(String, nullable=False)
     color = Column(String(20), default='#6366F1')
     icon = Column(String(50), nullable=True, default='Package')
+    kind = Column(String(20), nullable=False, default='expense', server_default='expense')
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Dynamically populated counts (for response serialization)
@@ -37,7 +38,10 @@ class Category(Base):
     budget_count: int = 0
     income_count: int = 0
     
-    __table_args__ = (UniqueConstraint('user_id', 'name', name='_user_category_uc'),)
+    __table_args__ = (
+        UniqueConstraint('user_id', 'kind', 'name', name='_user_category_uc'),
+        Index('ix_categories_user_kind', 'user_id', 'kind')
+    )
 
 class Expense(Base):
     __tablename__ = "expenses"
@@ -189,7 +193,7 @@ class EstimatedIncome(Base):
     name = Column(String, nullable=False)
     expected_amount = Column(Numeric(12, 4), nullable=False)
     currency = Column(String(10), nullable=False, default='BS')
-    category = Column(String(100), nullable=True, default='Ingresos')
+    category = Column(String(100), nullable=True, default='Otros ingresos', server_default='Otros ingresos')
     payment_day = Column(Numeric(2, 0), nullable=True)
     is_active = Column(Boolean, nullable=False, server_default='true')
     notes = Column(String, nullable=True)
@@ -221,7 +225,39 @@ class IncomeCheck(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     income = relationship("EstimatedIncome", back_populates="checks")
+    incomes = relationship("Income", back_populates="income_check", cascade="all, delete-orphan")
     __table_args__ = (UniqueConstraint('income_id', 'month_year', name='_income_month_uc'),)
+
+
+class Income(Base):
+    __tablename__ = "incomes"
+
+    __table_args__ = (
+        Index("ix_incomes_user_id_date", "user_id", "date"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    amount = Column(Numeric(12, 4), nullable=False)
+    currency = Column(String(10), nullable=False, default='BS')
+    amount_usd = Column(Numeric(12, 4), nullable=True)
+    amount_bs = Column(Numeric(12, 4), nullable=True)
+    amount_eur = Column(Numeric(12, 4), nullable=True)
+    amount_usdt = Column(Numeric(12, 4), nullable=True)
+    rate_usd_bs = Column(Numeric(12, 4), nullable=True)
+    rate_eur_bs = Column(Numeric(12, 4), nullable=True)
+    rate_usdt_bs = Column(Numeric(12, 4), nullable=True)
+    date = Column(Date, nullable=False, default=date.today)
+    category = Column(String, nullable=False, default='Otros ingresos', server_default='Otros ingresos')
+    description = Column(String, nullable=False)
+    income_check_id = Column(UUID(as_uuid=True), ForeignKey("income_checks.id", ondelete="CASCADE"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    income_check = relationship("IncomeCheck", back_populates="incomes")
+
+    # Dynamic attributes for API response serialization
+    estimated_income_id = None
+    estimated_income_name = None
 
 class PushSubscription(Base):
     __tablename__ = "push_subscriptions"

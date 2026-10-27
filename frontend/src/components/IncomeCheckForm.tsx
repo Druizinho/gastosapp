@@ -12,8 +12,13 @@ interface IncomeCheckFormProps {
 }
 
 const IncomeCheckForm: React.FC<IncomeCheckFormProps> = ({ income, monthYear, onClose, onSaved }) => {
+  const isPreviouslyPartial = Boolean(income.checks?.[0]?.is_partial);
+  const remainingAmount = isPreviouslyPartial
+    ? Math.max(Number(income.expected_amount) - Number(income.checks![0].real_amount), 0).toString()
+    : income.expected_amount.toString();
+
   const [isPartial, setIsPartial] = useState(false);
-  const [realAmount, setRealAmount] = useState('');
+  const [realAmount, setRealAmount] = useState(remainingAmount);
   const [currency, setCurrency] = useState<CurrencyType>(income.currency);
   const [pendingDate, setPendingDate] = useState('');
   const [notes, setNotes] = useState('');
@@ -22,10 +27,14 @@ const IncomeCheckForm: React.FC<IncomeCheckFormProps> = ({ income, monthYear, on
 
   useEffect(() => {
     if (!isPartial) {
-      setRealAmount(income.expected_amount.toString());
+      const defaultAmount = income.checks?.[0]?.is_partial
+        ? Math.max(Number(income.expected_amount) - Number(income.checks[0].real_amount), 0).toString()
+        : income.expected_amount.toString();
+      setRealAmount(defaultAmount);
       setCurrency(income.currency);
-    } else {
-      setRealAmount('');
+    } else if (income.checks?.[0]?.is_partial) {
+      const remaining = Math.max(Number(income.expected_amount) - Number(income.checks[0].real_amount), 0).toString();
+      setRealAmount(remaining);
     }
   }, [isPartial, income]);
 
@@ -39,11 +48,6 @@ const IncomeCheckForm: React.FC<IncomeCheckFormProps> = ({ income, monthYear, on
       return;
     }
 
-    if (isPartial && !pendingDate) {
-      setError('Debes especificar una fecha de promesa para el resto del pago.');
-      return;
-    }
-
     setIsSubmitting(true);
     try {
       const checkData: IncomeCheckCreate = {
@@ -51,7 +55,7 @@ const IncomeCheckForm: React.FC<IncomeCheckFormProps> = ({ income, monthYear, on
         real_amount: amountNum,
         currency,
         is_partial: isPartial,
-        pending_date: isPartial ? pendingDate : undefined,
+        pending_date: isPartial && pendingDate ? pendingDate : null,
         notes: notes || undefined,
       };
 
@@ -68,7 +72,7 @@ const IncomeCheckForm: React.FC<IncomeCheckFormProps> = ({ income, monthYear, on
   return (
     <div className="modal-backdrop">
       <div className="expense-form-container">
-        <h2>Confirmar Ingreso: {income.name}</h2>
+        <h2>{income.checks?.[0]?.is_partial ? `Completar Cobro: ${income.name}` : `Confirmar Ingreso: ${income.name}`}</h2>
 
         {error && <div className="error-message">{error}</div>}
 
@@ -123,12 +127,14 @@ const IncomeCheckForm: React.FC<IncomeCheckFormProps> = ({ income, monthYear, on
 
           {isPartial && (
             <div className="form-group">
-              <label>Promesa de pago para el restante (Nueva Fecha)</label>
+              <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Promesa de pago para el restante (Nueva Fecha)</span>
+                <span className="form-hint-inline">(Opcional)</span>
+              </label>
               <input
                 type="date"
                 value={pendingDate}
                 onChange={(e) => setPendingDate(e.target.value)}
-                required={isPartial}
               />
             </div>
           )}

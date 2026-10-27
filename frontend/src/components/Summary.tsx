@@ -8,7 +8,10 @@ import {
   CURRENCY_CONFIGS,
   getFilteredSubCurrencies,
   formatCurrency,
+  formatSignedCurrency,
   resolveCurrencyTotal,
+  resolveIncomeTotal,
+  resolveBalanceTotal,
   resolveCategoryTotal,
   resolveDailyAvg,
   resolveBudgetCategoryLimit
@@ -32,6 +35,7 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [],
 
   // Auditor Fix #7: State hook declared unconditionally at the top
   const [showAllCategories, setShowAllCategories] = useState(false);
+  const [equivMode, setEquivMode] = useState<'expenses' | 'incomes'>('expenses');
 
   useEffect(() => {
     localStorage.setItem(BALANCE_VISIBLE_KEY, String(balanceVisible));
@@ -42,6 +46,8 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [],
   const currentConfig = CURRENCY_CONFIGS[mainCurrency] || CURRENCY_CONFIGS.USD;
 
   const mainTotal = resolveCurrencyTotal(summary, mainCurrency);
+  const mainIncome = resolveIncomeTotal(summary, mainCurrency);
+  const mainBalance = resolveBalanceTotal(summary, mainCurrency);
   const mainDailyAvg = resolveDailyAvg(summary, mainCurrency);
   const subCurrencies = getFilteredSubCurrencies(mainCurrency);
 
@@ -106,13 +112,13 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [],
   const shouldShowTopCard = spentSortedCategories.length > 0 || Boolean(monthlyBudget?.exists && activeCategoryLimits.length > 0);
   const shouldShowToggle = spentSortedCategories.length > 3 || Boolean(monthlyBudget?.exists && (activeCategoryLimits.length > 0 || globalLimitUsd > 0));
 
-  let dailyAvgText = 'Promedio Diario';
+  let dailyAvgText = 'Promedio diario de gasto';
   if (dateFilter) {
-    if (dateFilter.preset === 'week') dailyAvgText = 'Promedio Diario (Esta semana)';
-    else if (dateFilter.preset === 'month') dailyAvgText = 'Promedio Diario (Este mes)';
-    else if (dateFilter.preset === 'year') dailyAvgText = 'Promedio Diario (Este año)';
-    else if (dateFilter.preset === 'all') dailyAvgText = 'Promedio Diario (Histórico)';
-    else if (dateFilter.preset === 'custom') dailyAvgText = 'Promedio Diario (Personalizado)';
+    if (dateFilter.preset === 'week') dailyAvgText = 'Promedio diario de gasto (Esta semana)';
+    else if (dateFilter.preset === 'month') dailyAvgText = 'Promedio diario de gasto (Este mes)';
+    else if (dateFilter.preset === 'year') dailyAvgText = 'Promedio diario de gasto (Este año)';
+    else if (dateFilter.preset === 'all') dailyAvgText = 'Promedio diario de gasto (Histórico)';
+    else if (dateFilter.preset === 'custom') dailyAvgText = 'Promedio diario de gasto (Personalizado)';
   }
 
   const hiddenAmount = '••••••';
@@ -120,28 +126,74 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [],
   return (
     <div className="summary-section mb-6">
 
-      {/* Total Balance (Floating, no card) */}
-      <div style={{ marginBottom: '2rem', marginTop: '1rem', padding: '0 0.5rem' }}>
-        <h2 style={{ fontSize: '1rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>
-          {currentConfig.heroTitle}
-        </h2>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <div style={{ fontSize: '3rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', lineHeight: 1 }}>
-            {balanceVisible
-              ? formatCurrency(mainTotal, mainCurrency)
-              : `${currentConfig.symbol} ${hiddenAmount}`
-            }
-          </div>
+      {/* Hero: Period Balance & Breakdown (Floating & Compact) */}
+      <div
+        style={{
+          marginBottom: '1.25rem',
+          marginTop: '0.25rem',
+          padding: '0.25rem 0.25rem 0.5rem 0.25rem',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+          <span style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)' }}>
+            Balance del período
+          </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <button
+              type="button"
               onClick={() => setBalanceVisible(!balanceVisible)}
               className="balance-toggle"
               aria-label={balanceVisible ? 'Ocultar balance' : 'Mostrar balance'}
             >
               {balanceVisible ? <Eye size={18} /> : <EyeOff size={18} />}
             </button>
-            <span style={{ fontSize: '0.9rem', fontWeight: 500, color: 'var(--text-tertiary)', background: 'rgba(0,0,0,0.05)', padding: '0.2rem 0.6rem', borderRadius: '20px' }}>
+            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-tertiary)', background: 'var(--surface-muted, rgba(0,0,0,0.05))', padding: '0.18rem 0.5rem', borderRadius: '9999px' }}>
               {summary.days_in_range}d
+            </span>
+          </div>
+        </div>
+
+        {/* Main Balance Figure */}
+        <div style={{ fontSize: '2.5rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>
+          {balanceVisible
+            ? formatSignedCurrency(mainBalance, mainCurrency)
+            : `${currentConfig.symbol} ${hiddenAmount}`
+          }
+        </div>
+
+        {/* Compact Sub-metrics: Ingresado & Gastado grouped together directly under the balance */}
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.45rem',
+            padding: '0.3rem 0.7rem',
+            borderRadius: 'var(--radius-full, 9999px)',
+            background: 'var(--surface-muted, rgba(0, 0, 0, 0.04))',
+            border: '1px solid var(--border-color, rgba(0, 0, 0, 0.06))',
+          }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--income-color, #10B981)', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
+              ↓ Ingresado
+            </span>
+            <span style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
+              {balanceVisible ? formatCurrency(mainIncome, mainCurrency) : `${currentConfig.symbol} ${hiddenAmount}`}
+            </span>
+          </div>
+
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.45rem',
+            padding: '0.3rem 0.7rem',
+            borderRadius: 'var(--radius-full, 9999px)',
+            background: 'var(--surface-muted, rgba(0, 0, 0, 0.04))',
+            border: '1px solid var(--border-color, rgba(0, 0, 0, 0.06))',
+          }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--expense-color, #EF4444)', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
+              ↑ Gastado
+            </span>
+            <span style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
+              {balanceVisible ? formatCurrency(mainTotal, mainCurrency) : `${currentConfig.symbol} ${hiddenAmount}`}
             </span>
           </div>
         </div>
@@ -150,14 +202,74 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [],
       {/* Exchange Rates / Currency Equivalents — Hidden when balance is hidden */}
       {balanceVisible && (
         <>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '0 0.5rem', marginBottom: '1rem' }}>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-primary)' }}>Equivalencias</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 0.5rem', marginBottom: '1rem' }}>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Equivalencias</h3>
+            <div
+              role="tablist"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                background: 'var(--surface-muted, rgba(0, 0, 0, 0.05))',
+                padding: '3px',
+                borderRadius: '9999px',
+                gap: '2px',
+              }}
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={equivMode === 'expenses'}
+                onClick={() => setEquivMode('expenses')}
+                style={{
+                  padding: '0.25rem 0.75rem',
+                  borderRadius: '9999px',
+                  border: 'none',
+                  background: equivMode === 'expenses' ? 'var(--surface-color, #FFFFFF)' : 'transparent',
+                  color: equivMode === 'expenses' ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                  fontWeight: equivMode === 'expenses' ? 700 : 500,
+                  fontSize: '0.75rem',
+                  cursor: 'pointer',
+                  boxShadow: equivMode === 'expenses' ? 'var(--shadow-sm)' : 'none',
+                  transition: 'transform 150ms ease-out, background 150ms ease-out, color 150ms ease-out',
+                }}
+                onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+                onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+              >
+                Gastos
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={equivMode === 'incomes'}
+                onClick={() => setEquivMode('incomes')}
+                style={{
+                  padding: '0.25rem 0.75rem',
+                  borderRadius: '9999px',
+                  border: 'none',
+                  background: equivMode === 'incomes' ? 'var(--surface-color, #FFFFFF)' : 'transparent',
+                  color: equivMode === 'incomes' ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                  fontWeight: equivMode === 'incomes' ? 700 : 500,
+                  fontSize: '0.75rem',
+                  cursor: 'pointer',
+                  boxShadow: equivMode === 'incomes' ? 'var(--shadow-sm)' : 'none',
+                  transition: 'transform 150ms ease-out, background 150ms ease-out, color 150ms ease-out',
+                }}
+                onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+                onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+              >
+                Ingresos
+              </button>
+            </div>
           </div>
 
           <div style={{ display: 'flex', gap: '1rem', overflowX: 'auto', paddingBottom: '1rem', paddingLeft: '0.5rem', paddingRight: '0.5rem', scrollSnapType: 'x mandatory' }} className="hide-scrollbar">
             {subCurrencies.map(currencyKey => {
               const config = CURRENCY_CONFIGS[currencyKey];
-              const totalVal = resolveCurrencyTotal(summary, currencyKey);
+              const totalVal = equivMode === 'expenses'
+                ? resolveCurrencyTotal(summary, currencyKey)
+                : resolveIncomeTotal(summary, currencyKey);
               const formattedValue = formatCurrency(totalVal, currencyKey);
               const strLen = formattedValue.length;
               const fontSize = strLen > 11 ? '0.98rem' : strLen >= 9 ? '1.08rem' : '1.22rem';
@@ -219,7 +331,8 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [],
                         whiteSpace: 'nowrap',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
-                        letterSpacing: '-0.02em'
+                        letterSpacing: '-0.02em',
+                        fontVariantNumeric: 'tabular-nums'
                       }}
                     >
                       {formattedValue}
@@ -252,7 +365,7 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [],
             </div>
             <div>
               <div style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-tertiary)' }}>{dailyAvgText}</div>
-              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
                 {formatCurrency(mainDailyAvg, mainCurrency)}
               </div>
             </div>
@@ -267,7 +380,7 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [],
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <PieChart size={18} color="var(--text-tertiary)" />
               <h3 style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
-                Top Categorías
+                Top categorías de gasto
               </h3>
             </div>
             {shouldShowToggle && (

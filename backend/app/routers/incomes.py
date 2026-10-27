@@ -2,17 +2,18 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 from uuid import UUID
+from datetime import date
 
 from .. import crud_incomes, schemas, bcv_service
 from ..database import get_db
 from ..auth import get_current_user
 
-router = APIRouter(
-    prefix="/api/incomes",
-    tags=["incomes"],
-)
+router = APIRouter()
 
-@router.post("/", response_model=schemas.EstimatedIncomeResponse)
+
+# ─── Estimated Incomes & Checks Endpoints ───
+
+@router.post("/api/estimated-incomes/", response_model=schemas.EstimatedIncomeResponse, tags=["estimated-incomes"])
 async def create_estimated_income(
     income: schemas.EstimatedIncomeCreate,
     db: AsyncSession = Depends(get_db),
@@ -20,7 +21,8 @@ async def create_estimated_income(
 ):
     return await crud_incomes.create_estimated_income(db=db, income=income, user_id=user_id)
 
-@router.get("/", response_model=List[schemas.EstimatedIncomeResponse])
+
+@router.get("/api/estimated-incomes/", response_model=List[schemas.EstimatedIncomeResponse], tags=["estimated-incomes"])
 async def read_estimated_incomes(
     active_only: bool = False,
     db: AsyncSession = Depends(get_db),
@@ -28,7 +30,10 @@ async def read_estimated_incomes(
 ):
     return await crud_incomes.get_estimated_incomes(db, user_id=user_id, active_only=active_only)
 
-@router.get("/monthly/{month_year}", response_model=List[schemas.EstimatedIncomeResponse])
+
+# Backward-compatible alias declared BEFORE /api/incomes/{income_id}
+@router.get("/api/incomes/monthly/{month_year}", response_model=List[schemas.EstimatedIncomeResponse], tags=["incomes"])
+@router.get("/api/estimated-incomes/monthly/{month_year}", response_model=List[schemas.EstimatedIncomeResponse], tags=["estimated-incomes"])
 async def read_monthly_incomes(
     month_year: str,
     db: AsyncSession = Depends(get_db),
@@ -36,7 +41,47 @@ async def read_monthly_incomes(
 ):
     return await crud_incomes.get_monthly_incomes(db, user_id=user_id, month_year=month_year)
 
-@router.get("/{income_id}", response_model=schemas.EstimatedIncomeResponse)
+
+# Backward-compatible check alias declared BEFORE /api/incomes/{income_id}
+@router.post("/api/incomes/{income_id}/checks", response_model=schemas.IncomeCheckResponse, tags=["incomes"])
+@router.post("/api/estimated-incomes/{income_id}/checks", response_model=schemas.IncomeCheckResponse, tags=["estimated-incomes"])
+async def check_income(
+    income_id: UUID,
+    check: schemas.IncomeCheckCreate,
+    db: AsyncSession = Depends(get_db),
+    user_id: UUID = Depends(get_current_user)
+):
+    rates = await bcv_service.get_all_rates()
+    currency_str = check.currency.value if hasattr(check.currency, "value") else str(check.currency or "BS")
+    equivalents = bcv_service.convert_amount(
+        amount=check.real_amount,
+        currency=currency_str,
+        rates=rates,
+        manual_rate=check.manual_rate
+    )
+    
+    db_check = await crud_incomes.check_income(db=db, income_id=income_id, check=check, user_id=user_id, extra_data=equivalents)
+    if db_check is None:
+        raise HTTPException(status_code=404, detail="Estimated income not found")
+    return db_check
+
+
+# Backward-compatible uncheck alias declared BEFORE /api/incomes/{income_id}
+@router.delete("/api/incomes/{income_id}/checks/{month_year}", tags=["incomes"])
+@router.delete("/api/estimated-incomes/{income_id}/checks/{month_year}", tags=["estimated-incomes"])
+async def uncheck_income(
+    income_id: UUID,
+    month_year: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: UUID = Depends(get_current_user)
+):
+    success = await crud_incomes.uncheck_income(db, income_id=income_id, month_year=month_year, user_id=user_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Income check not found")
+    return {"ok": True}
+
+
+@router.get("/api/estimated-incomes/{income_id}", response_model=schemas.EstimatedIncomeResponse, tags=["estimated-incomes"])
 async def read_estimated_income(
     income_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -47,7 +92,8 @@ async def read_estimated_income(
         raise HTTPException(status_code=404, detail="Estimated income not found")
     return db_income
 
-@router.put("/{income_id}", response_model=schemas.EstimatedIncomeResponse)
+
+@router.put("/api/estimated-incomes/{income_id}", response_model=schemas.EstimatedIncomeResponse, tags=["estimated-incomes"])
 async def update_estimated_income(
     income_id: UUID,
     income: schemas.EstimatedIncomeUpdate,
@@ -59,7 +105,8 @@ async def update_estimated_income(
         raise HTTPException(status_code=404, detail="Estimated income not found")
     return db_income
 
-@router.delete("/{income_id}")
+
+@router.delete("/api/estimated-incomes/{income_id}", tags=["estimated-incomes"])
 async def delete_estimated_income(
     income_id: UUID,
     month_year: Optional[str] = None,
@@ -71,34 +118,93 @@ async def delete_estimated_income(
         raise HTTPException(status_code=404, detail="Estimated income not found")
     return {"ok": True}
 
-@router.post("/{income_id}/checks", response_model=schemas.IncomeCheckResponse)
-async def check_income(
-    income_id: UUID,
-    check: schemas.IncomeCheckCreate,
+
+# ─── Real Incomes Endpoints (/api/incomes) ───
+
+@router.post("/api/incomes/", response_model=schemas.IncomeResponse, tags=["incomes"])
+async def create_income(
+    income: schemas.IncomeCreate,
     db: AsyncSession = Depends(get_db),
     user_id: UUID = Depends(get_current_user)
 ):
     rates = await bcv_service.get_all_rates()
+    currency_str = income.currency.value if hasattr(income.currency, "value") else str(income.currency or "BS")
     equivalents = bcv_service.convert_amount(
-        amount=check.real_amount,
-        currency=check.currency.value if check.currency else "BS",
+        amount=income.amount,
+        currency=currency_str,
         rates=rates,
-        manual_rate=check.manual_rate
+        manual_rate=income.manual_rate
     )
-    
-    db_check = await crud_incomes.check_income(db=db, income_id=income_id, check=check, user_id=user_id, extra_data=equivalents)
-    if db_check is None:
-        raise HTTPException(status_code=404, detail="Estimated income not found")
-    return db_check
+    db_income = await crud_incomes.create_income(db=db, income=income, user_id=user_id, extra_data=equivalents)
+    if db_income is None:
+        raise HTTPException(status_code=404, detail="Estimated income target not found")
+    return db_income
 
-@router.delete("/{income_id}/checks/{month_year}")
-async def uncheck_income(
-    income_id: UUID,
-    month_year: str,
+
+@router.get("/api/incomes/", response_model=List[schemas.IncomeResponse], tags=["incomes"])
+async def read_incomes(
+    skip: int = 0,
+    limit: int = 200,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
     db: AsyncSession = Depends(get_db),
     user_id: UUID = Depends(get_current_user)
 ):
-    success = await crud_incomes.uncheck_income(db, income_id=income_id, month_year=month_year, user_id=user_id)
+    return await crud_incomes.get_incomes(
+        db, user_id=user_id, skip=skip, limit=limit, date_from=date_from, date_to=date_to
+    )
+
+
+@router.get("/api/incomes/{income_id}", response_model=schemas.IncomeResponse, tags=["incomes"])
+async def read_income(
+    income_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user_id: UUID = Depends(get_current_user)
+):
+    db_income = await crud_incomes.get_income(db, entry_id=income_id, user_id=user_id)
+    if db_income is None:
+        raise HTTPException(status_code=404, detail="Income not found")
+    return db_income
+
+
+@router.put("/api/incomes/{income_id}", response_model=schemas.IncomeResponse, tags=["incomes"])
+async def update_income(
+    income_id: UUID,
+    income: schemas.IncomeUpdate,
+    db: AsyncSession = Depends(get_db),
+    user_id: UUID = Depends(get_current_user)
+):
+    db_income = await crud_incomes.get_income(db, entry_id=income_id, user_id=user_id)
+    if not db_income:
+        raise HTTPException(status_code=404, detail="Income not found")
+
+    amount = income.amount if income.amount is not None else db_income.amount
+    curr_val = income.currency.value if hasattr(income.currency, "value") else income.currency
+    currency = curr_val if curr_val is not None else db_income.currency
+
+    rates = await bcv_service.get_all_rates()
+    equivalents = bcv_service.convert_amount(
+        amount=amount,
+        currency=currency,
+        rates=rates,
+        manual_rate=income.manual_rate
+    )
+
+    updated_income = await crud_incomes.update_income(
+        db, entry_id=income_id, income_update=income, user_id=user_id, extra_data=equivalents
+    )
+    if updated_income is None:
+        raise HTTPException(status_code=404, detail="Income not found")
+    return updated_income
+
+
+@router.delete("/api/incomes/{income_id}", tags=["incomes"])
+async def delete_income(
+    income_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user_id: UUID = Depends(get_current_user)
+):
+    success = await crud_incomes.delete_income(db, entry_id=income_id, user_id=user_id)
     if not success:
-        raise HTTPException(status_code=404, detail="Income check not found")
+        raise HTTPException(status_code=404, detail="Income not found")
     return {"ok": True}

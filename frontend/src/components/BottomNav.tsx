@@ -2,13 +2,21 @@ import React from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { Settings, PieChart, Home, Plus, Wrench } from 'lucide-react';
 
-export const BottomNav: React.FC = () => {
+interface BottomNavProps {
+  onAddClick?: () => void;
+}
+
+export const BottomNav: React.FC<BottomNavProps> = ({ onAddClick }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
   const handleAddClick = () => {
-    // Navigate to dashboard with add param
-    navigate('/?add=true');
+    if (onAddClick) {
+      onAddClick();
+    } else {
+      // Navigate to dashboard with add param
+      navigate('/?add=true');
+    }
   };
 
   return (

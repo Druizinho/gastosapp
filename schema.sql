@@ -27,10 +27,12 @@ CREATE TABLE IF NOT EXISTS public.categories (
     name TEXT NOT NULL,
     color VARCHAR(20) DEFAULT '#6366F1',
     icon VARCHAR(50) DEFAULT 'Package',
+    kind VARCHAR(20) NOT NULL DEFAULT 'expense',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now()),
-    CONSTRAINT _user_category_uc UNIQUE (user_id, name)
+    CONSTRAINT _user_category_uc UNIQUE (user_id, kind, name)
 );
 CREATE INDEX IF NOT EXISTS idx_categories_user ON public.categories(user_id);
+CREATE INDEX IF NOT EXISTS idx_categories_user_kind ON public.categories(user_id, kind);
 
 -- ------------------------------------------------------------------------------
 -- 3. EXPENSES
@@ -168,6 +170,7 @@ CREATE TABLE IF NOT EXISTS public.estimated_incomes (
     name TEXT NOT NULL,
     expected_amount NUMERIC(12, 4) NOT NULL,
     currency VARCHAR(10) NOT NULL DEFAULT 'BS',
+    category VARCHAR(100) DEFAULT 'Otros ingresos',
     payment_day NUMERIC(2, 0),
     is_active BOOLEAN NOT NULL DEFAULT true,
     notes TEXT,
@@ -200,6 +203,36 @@ CREATE TABLE IF NOT EXISTS public.income_checks (
     CONSTRAINT _income_month_uc UNIQUE (income_id, month_year)
 );
 CREATE INDEX IF NOT EXISTS idx_income_checks_income_id ON public.income_checks(income_id);
+
+-- ------------------------------------------------------------------------------
+-- 9b. INCOMES (Real Incomes)
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.incomes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    amount NUMERIC(12, 4) NOT NULL CHECK (amount > 0),
+    currency VARCHAR(10) NOT NULL DEFAULT 'BS',
+    amount_usd NUMERIC(12, 4),
+    amount_bs NUMERIC(12, 4),
+    amount_eur NUMERIC(12, 4),
+    amount_usdt NUMERIC(12, 4),
+    rate_usd_bs NUMERIC(12, 4),
+    rate_eur_bs NUMERIC(12, 4),
+    rate_usdt_bs NUMERIC(12, 4),
+    date DATE NOT NULL DEFAULT CURRENT_DATE,
+    category TEXT NOT NULL DEFAULT 'Otros ingresos',
+    description TEXT NOT NULL,
+    income_check_id UUID REFERENCES public.income_checks(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now())
+);
+CREATE INDEX IF NOT EXISTS ix_incomes_user_id_date ON public.incomes(user_id, date);
+CREATE INDEX IF NOT EXISTS ix_incomes_income_check_id ON public.incomes(income_check_id);
+
+ALTER TABLE public.incomes ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can manage their own incomes" ON public.incomes
+    FOR ALL USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
 
 -- ------------------------------------------------------------------------------
 -- 10. PUSH SUBSCRIPTIONS

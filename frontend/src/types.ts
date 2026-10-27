@@ -14,6 +14,19 @@ export const CURRENCY_OPTIONS: CurrencyOption[] = [
   { value: 'USDT', label: 'USDT (Binance)' },
 ];
 
+export const CURRENCY_LABELS: Record<CurrencyType, string> = {
+  USD_BCV: 'USD (BCV)',
+  USD_CASH: 'USD (efectivo)',
+  EUR_BCV: 'EUR (BCV)',
+  BS: 'Bolívares',
+  USDT: 'USDT',
+};
+
+export const getCurrencyLabel = (curr: string | null | undefined): string => {
+  if (!curr) return '';
+  return CURRENCY_LABELS[curr as CurrencyType] || curr;
+};
+
 export type ShareRole = 'admin' | 'member';
 
 export interface ShareMemberOut {
@@ -96,6 +109,22 @@ export interface SummaryResponse {
   total_this_month_eur: number;
   total_this_month_usdt: number;
   by_category: CategorySummary[];
+  income_total_bs?: number;
+  income_total_usd?: number;
+  income_total_eur?: number;
+  income_total_usdt?: number;
+  balance_bs?: number;
+  balance_usd?: number;
+  balance_eur?: number;
+  balance_usdt?: number;
+  income_this_month_bs?: number;
+  income_this_month_usd?: number;
+  income_this_month_eur?: number;
+  income_this_month_usdt?: number;
+  balance_this_month_bs?: number;
+  balance_this_month_usd?: number;
+  balance_this_month_eur?: number;
+  balance_this_month_usdt?: number;
 }
 
 export interface ExchangeRates {
@@ -105,12 +134,17 @@ export interface ExchangeRates {
   last_updated: string | null;
 }
 
+export type BCVRate = ExchangeRates;
+
+export type CategoryKind = 'expense' | 'income';
+
 export interface Category {
   id: string;
   name: string;
   color: string;
   icon?: string | null;
   user_id: string;
+  kind?: CategoryKind;
   usage_count?: number;
   expense_count?: number;
   fixed_count?: number;
@@ -124,6 +158,7 @@ export interface CategoryCreate {
   name: string;
   color?: string;
   icon?: string;
+  kind?: CategoryKind;
 }
 
 export type DatePreset = 'today' | 'week' | 'month' | 'year' | 'all' | 'custom';
@@ -147,6 +182,14 @@ export interface RangeSummaryResponse {
   daily_avg_eur: number;
   daily_avg_usdt: number;
   by_category: CategorySummary[];
+  income_total_bs?: number;
+  income_total_usd?: number;
+  income_total_eur?: number;
+  income_total_usdt?: number;
+  balance_bs?: number;
+  balance_usd?: number;
+  balance_eur?: number;
+  balance_usdt?: number;
 }
 
 // Fixed Expenses
@@ -362,6 +405,57 @@ export interface DebtUpdate {
   shared_with?: string | null;
   shared_with_ids?: string[];
   admin_ids?: string[];
+}
+
+// Real Income Types
+
+export interface IncomeCheckTarget {
+  estimated_income_id: string;
+  month_year: string;
+  is_partial?: boolean;
+  pending_date?: string | null;
+}
+
+export interface Income {
+  id: string;
+  user_id: string;
+  amount: number;
+  currency: CurrencyType;
+  amount_usd?: number | null;
+  amount_bs?: number | null;
+  amount_eur?: number | null;
+  amount_usdt?: number | null;
+  rate_usd_bs?: number | null;
+  rate_eur_bs?: number | null;
+  rate_usdt_bs?: number | null;
+  date: string;
+  category: string;
+  description: string;
+  income_check_id?: string | null;
+  estimated_income_id?: string | null;
+  estimated_income_name?: string | null;
+  created_at: string;
+}
+
+export interface IncomeCreate {
+  amount: number;
+  description: string;
+  category?: string;
+  date?: string;
+  currency: CurrencyType;
+  manual_rate?: number;
+  income_check_target?: IncomeCheckTarget | null;
+  estimated_income_id?: string | null;
+  month_year?: string | null;
+}
+
+export interface IncomeUpdate {
+  amount?: number;
+  description?: string;
+  category?: string;
+  date?: string;
+  currency?: CurrencyType;
+  manual_rate?: number;
 }
 
 // Estimated Income Types

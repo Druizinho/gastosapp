@@ -1,12 +1,15 @@
-import React, { Suspense, lazy } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useNavigate } from 'react-router-dom';
+import React, { Suspense, lazy, useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { CategoriesProvider } from './context/CategoriesContext';
 import { NotificationProvider } from './context/NotificationContext';
-import { ToastProvider } from './components/ui/Toast';
+import { ToastProvider, useToast } from './components/ui/Toast';
 import { Auth, ResetPassword } from './components/Auth';
 import Dashboard from './components/Dashboard';
 import { BottomNav } from './components/BottomNav';
+import ExpenseForm from './components/ExpenseForm';
+import { createExpense, createIncome } from './api';
+import type { ExpenseCreate, IncomeCreate } from './types';
 import { InstallPWA } from './components/InstallPWA';
 import { RouteErrorBoundary } from './components/ErrorBoundary';
 import { SkeletonHeroCard, SkeletonList } from './components/ui/Skeleton';
@@ -43,6 +46,23 @@ const ProtectedRoute = ({ children }: { children?: React.ReactNode }) => {
 };
 
 const AppLayout = () => {
+  const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const toast = useToast();
+
+  useEffect(() => {
+    if (searchParams.get('add') === 'true') {
+      setIsQuickAddOpen(true);
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete('add');
+      setSearchParams(newParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
+  const defaultMode = location.pathname.startsWith('/herramientas/ingresos') ? 'income' : 'expense';
+
   return (
     <div className="app-container">
       <main className="main-content">
@@ -59,7 +79,38 @@ const AppLayout = () => {
           </Suspense>
         </RouteErrorBoundary>
       </main>
-      <BottomNav />
+      <BottomNav onAddClick={() => setIsQuickAddOpen(true)} />
+
+      {isQuickAddOpen && (
+        <ExpenseForm
+          defaultMode={defaultMode}
+          onSubmit={async (data) => {
+            await createExpense(data as ExpenseCreate);
+            setIsQuickAddOpen(false);
+            window.dispatchEvent(new CustomEvent('gastosapp:data-changed'));
+            toast.success('Gasto registrado');
+          }}
+          onIncomeSubmit={async (data) => {
+            await createIncome(data as IncomeCreate);
+            setIsQuickAddOpen(false);
+            window.dispatchEvent(new CustomEvent('gastosapp:data-changed'));
+            toast.success(
+              'Ingreso registrado',
+              location.pathname.startsWith('/herramientas/ingresos')
+                ? undefined
+                : {
+                    duration: 5000,
+                    action: {
+                      label: 'Ver ingresos',
+                      onClick: () => navigate('/herramientas/ingresos'),
+                    },
+                  }
+            );
+          }}
+          onCancel={() => setIsQuickAddOpen(false)}
+          onCategoriesChanged={() => window.dispatchEvent(new CustomEvent('gastosapp:data-changed'))}
+        />
+      )}
     </div>
   );
 };
@@ -86,7 +137,8 @@ const AppRoutes = () => {
             <Route path="/herramientas/deudas" element={<DebtList onBack={() => navigate('/herramientas')} />} />
             <Route path="/herramientas/deudas-nuestras" element={<Navigate to="/herramientas/deudas?tab=owed" replace />} />
             <Route path="/herramientas/deudas-por-cobrar" element={<Navigate to="/herramientas/deudas?tab=receivable" replace />} />
-            <Route path="/herramientas/ingresos-estimados" element={<EstimatedIncomeList onBack={() => navigate(-1)} />} />
+            <Route path="/herramientas/ingresos" element={<EstimatedIncomeList onBack={() => navigate(-1)} />} />
+            <Route path="/herramientas/ingresos-estimados" element={<Navigate to="/herramientas/ingresos" replace />} />
             <Route path="/herramientas/ahorros" element={<SavingGoals onBack={() => navigate(-1)} />} />
             <Route path="/herramientas/presupuestos" element={<Budgets onBack={() => navigate(-1)} />} />
             <Route path="/herramientas/panas" element={<PanasPage />} />
@@ -97,7 +149,8 @@ const AppRoutes = () => {
             <Route path="/deudas" element={<Navigate to="/herramientas/deudas" replace />} />
             <Route path="/gastos-fijos" element={<Navigate to="/herramientas/gastos-fijos" replace />} />
             <Route path="/ahorros" element={<Navigate to="/herramientas/ahorros" replace />} />
-            <Route path="/ingresos-estimados" element={<Navigate to="/herramientas/ingresos-estimados" replace />} />
+            <Route path="/ingresos-estimados" element={<Navigate to="/herramientas/ingresos" replace />} />
+            <Route path="/ingresos" element={<Navigate to="/herramientas/ingresos" replace />} />
             <Route path="/dashboard" element={<Navigate to="/" replace />} />
             <Route path="/tasas" element={<RatesPage />} />
             <Route path="/ajustes" element={<SettingsPage />} />

@@ -1,27 +1,53 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Wallet, Trash2, Edit3, CheckCircle, Clock, AlertCircle, Calendar, Circle, Undo2, Pause, Play } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import {
+  Plus,
+  Wallet,
+  Trash2,
+  Edit3,
+  CheckCircle,
+  Clock,
+  AlertCircle,
+  Calendar,
+  Circle,
+  Undo2,
+  Pause,
+  Play,
+  ArrowDownLeft,
+} from 'lucide-react';
 import {
   getMonthlyIncomes,
   deleteEstimatedIncome,
   uncheckIncome,
   getRates,
   updateEstimatedIncome,
-  getCategories
+  getCategories,
+  getIncomes,
+  createIncome,
+  updateIncome,
+  deleteIncome,
 } from '../api';
+import {
+  getCurrencyLabel,
+} from '../types';
 import type {
   EstimatedIncome,
   ExchangeRates,
   Category,
-  MainCurrencyPreference
+  MainCurrencyPreference,
+  Income,
+  IncomeCreate,
+  IncomeUpdate,
 } from '../types';
 import ConfirmModal from './ConfirmModal';
 import EstimatedIncomeForm from './EstimatedIncomeForm';
 import IncomeCheckForm from './IncomeCheckForm';
+import ExpenseForm from './ExpenseForm';
 import { useCurrencyPreference } from '../context/CurrencyPreferenceContext';
 import {
   formatCurrencyAmount,
   formatListCardAmounts,
-  convertItemAmountToMainCurrency
+  convertItemAmountToMainCurrency,
 } from '../utils/currencyFormat';
 import { resolveCategoryVisuals } from '../utils/categoryVisuals';
 import { PageHeader } from './ui/PageHeader';
@@ -32,33 +58,69 @@ import { CurrencyBreakdownCard } from './ui/CurrencyBreakdownCard';
 import { SkeletonList } from './ui/Skeleton';
 import ListCard from './ListCard';
 import ListCardBottomSheet from './ListCardBottomSheet';
+import { useToast } from './ui/Toast';
 
 interface EstimatedIncomeListProps {
   onBack: () => void;
 }
 
 const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => {
+  const toast = useToast();
   const { mainCurrency } = useCurrencyPreference();
   const [displayCurrency, setDisplayCurrency] = useState<MainCurrencyPreference>(mainCurrency);
 
-  const [incomes, setIncomes] = useState<EstimatedIncome[]>([]);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab: 'movements' | 'por-cobrar' =
+    searchParams.get('tab') === 'por-cobrar' ? 'por-cobrar' : 'movements';
+
+  const [porCobrarSubTab, setPorCobrarSubTab] = useState<'pending' | 'confirmed' | 'paused'>('pending');
+
+  const [realIncomes, setRealIncomes] = useState<Income[]>([]);
+  const [estimatedIncomes, setEstimatedIncomes] = useState<EstimatedIncome[]>([]);
   const [rates, setRates] = useState<ExchangeRates | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [isCheckFormOpen, setIsCheckFormOpen] = useState(false);
 
-  const [editingIncome, setEditingIncome] = useState<EstimatedIncome | null>(null);
+  // Forms modal state
+  const [isEstimatedFormOpen, setIsEstimatedFormOpen] = useState(false);
+  const [editingEstimatedIncome, setEditingEstimatedIncome] = useState<EstimatedIncome | null>(null);
+
+  const [isCheckFormOpen, setIsCheckFormOpen] = useState(false);
   const [checkingIncome, setCheckingIncome] = useState<EstimatedIncome | null>(null);
 
-  const [confirmDelete, setConfirmDelete] = useState({ isOpen: false, incomeId: '' });
-  const [activeTab, setActiveTab] = useState<'pending' | 'paid'>('pending');
-  const [selectedIncomeForSheet, setSelectedIncomeForSheet] = useState<EstimatedIncome | null>(null);
+  const [isMovementFormOpen, setIsMovementFormOpen] = useState(false);
+  const [editingMovement, setEditingMovement] = useState<Income | null>(null);
+
+  // Bottom sheets state
+  const [selectedEstimatedForSheet, setSelectedEstimatedForSheet] = useState<EstimatedIncome | null>(null);
+  const [selectedMovementForSheet, setSelectedMovementForSheet] = useState<Income | null>(null);
+
+  // Deletion modals state
+  const [confirmDeleteEstimated, setConfirmDeleteEstimated] = useState({ isOpen: false, incomeId: '' });
+  const [confirmDeleteMovement, setConfirmDeleteMovement] = useState<{
+    isOpen: boolean;
+    movement: Income | null;
+  }>({ isOpen: false, movement: null });
 
   // Sync preference with local display currency
   useEffect(() => {
     setDisplayCurrency(mainCurrency);
   }, [mainCurrency]);
+
+  const handleTabChange = (newTab: 'movements' | 'por-cobrar') => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (newTab === 'por-cobrar') {
+          next.set('tab', 'por-cobrar');
+        } else {
+          next.delete('tab');
+        }
+        return next;
+      },
+      { replace: true }
+    );
+  };
 
   // Month selector logic
   const [currentDate, setCurrentDate] = useState(() => new Date());
@@ -77,16 +139,46 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
     return `${shortMonths[parseInt(m, 10) - 1]} ${y}`;
   }, [currentMonthYear]);
 
-  const fetchData = async (silent = false) => {
+  const fetchData = useCallback(async (silent = false) => {
     if (!silent) setIsLoading(true);
     try {
-      const [data, ratesData, categoriesData] = await Promise.all([
-        getMonthlyIncomes(currentMonthYear),
+      const [yearStr, monthStr] = currentMonthYear.split('-');
+      const year = parseInt(yearStr, 10);
+      const month = parseInt(monthStr, 10);
+      const lastDayNum = new Date(year, month, 0).getDate();
+      const firstDay = `${currentMonthYear}-01`;
+      const lastDay = `${currentMonthYear}-${String(lastDayNum).padStart(2, '0')}`;
+
+      const [incomesData, estimatedData, ratesData, categoriesData] = await Promise.all([
+        getIncomes(firstDay, lastDay).catch((err) => {
+          console.error('Error fetching real incomes:', err);
+          return [] as Income[];
+        }),
+        getMonthlyIncomes(currentMonthYear).catch((err) => {
+          console.error('Error fetching estimated incomes:', err);
+          return [] as EstimatedIncome[];
+        }),
         getRates().catch(() => null),
-        getCategories().catch(() => []),
+        getCategories('income').catch(() => [] as Category[]),
       ]);
-      setIncomes(data);
-      setSelectedIncomeForSheet((prev) => (prev ? (data.find((i) => i.id === prev.id) || prev) : null));
+
+      // Sort real incomes chronologically descending (newest first)
+      const sortedRealIncomes = [...incomesData].sort((a, b) => {
+        const dateDiff = new Date(b.date).getTime() - new Date(a.date).getTime();
+        if (dateDiff !== 0) return dateDiff;
+        return new Date(b.created_at || b.date).getTime() - new Date(a.created_at || a.date).getTime();
+      });
+
+      setRealIncomes(sortedRealIncomes);
+      setEstimatedIncomes(estimatedData);
+
+      setSelectedEstimatedForSheet((prev) =>
+        prev ? estimatedData.find((i) => i.id === prev.id) || null : null
+      );
+      setSelectedMovementForSheet((prev) =>
+        prev ? sortedRealIncomes.find((i) => i.id === prev.id) || null : null
+      );
+
       if (ratesData) setRates(ratesData);
       if (categoriesData) setCategories(categoriesData);
     } catch (error) {
@@ -94,49 +186,80 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
     } finally {
       if (!silent) setIsLoading(false);
     }
-  };
+  }, [currentMonthYear]);
 
   useEffect(() => {
     fetchData();
-  }, [currentMonthYear]);
+  }, [fetchData]);
 
+  useEffect(() => {
+    const handleDataChanged = () => {
+      fetchData(true);
+    };
+    window.addEventListener('gastosapp:data-changed', handleDataChanged);
+    return () => {
+      window.removeEventListener('gastosapp:data-changed', handleDataChanged);
+    };
+  }, [fetchData]);
+
+  // Hero Card metrics in displayCurrency
   const { expected, received, pending } = useMemo(() => {
-    let expSum = 0;
+    // 1. Recibido: total of all realIncomes of the month converted using their frozen amounts
     let recSum = 0;
-
-    incomes.forEach((income) => {
-      expSum += convertItemAmountToMainCurrency(
+    realIncomes.forEach((item) => {
+      recSum += convertItemAmountToMainCurrency(
         {
-          amount: Number(income.expected_amount),
-          currency: income.currency,
+          amount: Number(item.amount),
+          currency: item.currency,
+          amount_usd: item.amount_usd,
+          amount_bs: item.amount_bs,
+          amount_eur: item.amount_eur,
+          amount_usdt: item.amount_usdt,
         },
         displayCurrency,
         rates
       );
+    });
 
-      if (income.checks && income.checks.length > 0) {
-        const check = income.checks[0];
-        recSum += convertItemAmountToMainCurrency(
+    // 2. Esperado: sum of expected_amount of active estimatedIncomes for the month
+    let expSum = 0;
+    let templateCollectedSum = 0;
+
+    estimatedIncomes.forEach((income) => {
+      if (income.is_active) {
+        expSum += convertItemAmountToMainCurrency(
           {
-            amount: Number(check.real_amount),
-            currency: check.currency,
-            amount_usd: check.amount_usd,
-            amount_bs: check.amount_bs,
-            amount_eur: check.amount_eur,
-            amount_usdt: check.amount_usdt,
+            amount: Number(income.expected_amount),
+            currency: income.currency,
           },
           displayCurrency,
           rates
         );
+
+        if (income.checks && income.checks.length > 0) {
+          const check = income.checks[0];
+          templateCollectedSum += convertItemAmountToMainCurrency(
+            {
+              amount: Number(check.real_amount),
+              currency: check.currency,
+              amount_usd: check.amount_usd,
+              amount_bs: check.amount_bs,
+              amount_eur: check.amount_eur,
+              amount_usdt: check.amount_usdt,
+            },
+            displayCurrency,
+            rates
+          );
+        }
       }
     });
 
     return {
       expected: expSum,
       received: recSum,
-      pending: Math.max(expSum - recSum, 0),
+      pending: Math.max(expSum - templateCollectedSum, 0),
     };
-  }, [incomes, displayCurrency, rates]);
+  }, [realIncomes, estimatedIncomes, displayCurrency, rates]);
 
   const cycleCurrency = () => {
     const currencies: MainCurrencyPreference[] = ['USD', 'BS', 'EUR', 'USDT'];
@@ -150,23 +273,24 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
     setCurrentDate(new Date(Number(year), Number(month) - 1, 1));
   };
 
-  const handleDelete = async () => {
+  // Estimated incomes actions
+  const handleDeleteEstimated = async () => {
     try {
-      await deleteEstimatedIncome(confirmDelete.incomeId, currentMonthYear);
-      setIncomes((prev) => prev.filter((i) => i.id !== confirmDelete.incomeId));
+      await deleteEstimatedIncome(confirmDeleteEstimated.incomeId, currentMonthYear);
+      setEstimatedIncomes((prev) => prev.filter((i) => i.id !== confirmDeleteEstimated.incomeId));
       await fetchData(true);
     } catch (error) {
-      console.error('Error deleting income:', error);
+      console.error('Error deleting estimated income:', error);
       alert('Error al dar de baja el ingreso');
     } finally {
-      setConfirmDelete({ isOpen: false, incomeId: '' });
+      setConfirmDeleteEstimated({ isOpen: false, incomeId: '' });
     }
   };
 
   const handleUncheck = async (incomeId: string) => {
     try {
       await uncheckIncome(incomeId, currentMonthYear);
-      setIncomes((prev) =>
+      setEstimatedIncomes((prev) =>
         prev.map((i) => (i.id === incomeId ? { ...i, checks: [] } : i))
       );
       await fetchData(true);
@@ -179,7 +303,7 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
     try {
       const updated = await updateEstimatedIncome(income.id, { is_active: !income.is_active });
       if (updated) {
-        setIncomes((prev) => prev.map((i) => (i.id === income.id ? { ...i, ...updated } : i)));
+        setEstimatedIncomes((prev) => prev.map((i) => (i.id === income.id ? { ...i, ...updated } : i)));
       }
       await fetchData(true);
     } catch (error) {
@@ -187,12 +311,136 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
     }
   };
 
-  const totalExpectedCount = incomes.length;
-  const confirmedIncomes = incomes.filter((i) => i.checks && i.checks.length > 0);
-  const confirmedCount = confirmedIncomes.length;
-  const progressPercent = totalExpectedCount > 0 ? (confirmedCount / totalExpectedCount) * 100 : 0;
+  // Real incomes actions
+  const handleDeleteMovement = async () => {
+    if (!confirmDeleteMovement.movement) return;
+    try {
+      await deleteIncome(confirmDeleteMovement.movement.id);
+      setRealIncomes((prev) => prev.filter((i) => i.id !== confirmDeleteMovement.movement!.id));
+      await fetchData(true);
+    } catch (error) {
+      console.error('Error deleting income movement:', error);
+      alert('Error al eliminar el ingreso');
+    } finally {
+      setConfirmDeleteMovement({ isOpen: false, movement: null });
+    }
+  };
 
-  const renderIncomeCard = (income: EstimatedIncome) => {
+  // Groupings for Tab 2 (por-cobrar)
+  const pendingAndPartialIncomesList = useMemo(
+    () => estimatedIncomes.filter((i) => i.is_active && (!i.checks || i.checks.length === 0 || i.checks[0].is_partial)),
+    [estimatedIncomes]
+  );
+  const confirmedIncomesList = useMemo(
+    () => estimatedIncomes.filter((i) => i.is_active && i.checks && i.checks.length > 0 && !i.checks[0].is_partial),
+    [estimatedIncomes]
+  );
+  const pausedIncomesList = useMemo(
+    () => estimatedIncomes.filter((i) => !i.is_active),
+    [estimatedIncomes]
+  );
+
+  const pendingCount = pendingAndPartialIncomesList.length;
+  const confirmedCount = confirmedIncomesList.length;
+  const pausedCount = pausedIncomesList.length;
+  const effectivePorCobrarSubTab = porCobrarSubTab === 'paused' && pausedCount === 0 ? 'pending' : porCobrarSubTab;
+
+  const activeEstimatedCount = estimatedIncomes.filter((i) => i.is_active).length;
+  const fullyConfirmedCount = confirmedIncomesList.length;
+  const progressPercent = activeEstimatedCount > 0 ? (fullyConfirmedCount / activeEstimatedCount) * 100 : (realIncomes.length > 0 ? 100 : 0);
+
+  // Render Movement Card (Tab 1)
+  const renderMovementCard = (movement: Income) => {
+    const matchedCat = categories.find(
+      (c) => c.name.toLowerCase() === (movement.category || '').toLowerCase()
+    );
+    const { IconComponent, hexColor } = resolveCategoryVisuals(matchedCat, movement.category || 'Otros ingresos');
+    const statusColor = hexColor || 'var(--income-color)';
+
+    const formattedDate = new Date(`${movement.date}T12:00:00`).toLocaleDateString('es-VE', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+
+    const badges = (
+      <>
+        {movement.category && (
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.25rem',
+              fontSize: '0.7rem',
+              fontWeight: 600,
+              color: hexColor,
+              background: `${hexColor}18`,
+              border: `1px solid ${hexColor}35`,
+              padding: '0.12rem 0.5rem',
+              borderRadius: 'var(--radius-full)',
+            }}
+          >
+            <IconComponent size={10} />
+            {movement.category}
+          </span>
+        )}
+        {movement.income_check_id && (
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.25rem',
+              fontSize: '0.7rem',
+              fontWeight: 600,
+              color: 'var(--income-color)',
+              background: 'rgba(16, 185, 129, 0.12)',
+              border: '1px solid rgba(16, 185, 129, 0.25)',
+              padding: '0.12rem 0.5rem',
+              borderRadius: 'var(--radius-full)',
+            }}
+          >
+            <CheckCircle size={10} />
+            Cobro: {movement.estimated_income_name || 'Plantilla'}
+          </span>
+        )}
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            fontSize: '0.7rem',
+            fontWeight: 600,
+            color: 'var(--text-secondary)',
+            background: 'var(--surface-muted)',
+            padding: '0.12rem 0.45rem',
+            borderRadius: 'var(--radius-full)',
+          }}
+        >
+          {getCurrencyLabel(movement.currency)}
+        </span>
+      </>
+    );
+
+    const { primaryAmount, secondaryAmount } = formatListCardAmounts(movement, mainCurrency, rates);
+
+    return (
+      <ListCard
+        key={movement.id}
+        statusColor={statusColor}
+        icon={<IconComponent size={20} />}
+        iconBg={`${hexColor}18`}
+        iconColor={hexColor}
+        title={movement.description || movement.category || 'Ingreso'}
+        subtitle={formattedDate}
+        badges={badges}
+        primaryAmount={primaryAmount}
+        secondaryAmount={secondaryAmount}
+        onClick={() => setSelectedMovementForSheet(movement)}
+      />
+    );
+  };
+
+  // Render Estimated Income Card (Tab 2)
+  const renderEstimatedIncomeCard = (income: EstimatedIncome) => {
     const check = income.checks && income.checks.length > 0 ? income.checks[0] : null;
     const isConfirmed = !!check;
     const isPartial = check?.is_partial;
@@ -200,7 +448,7 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
     const matchedCat = categories.find(
       (c) => c.name.toLowerCase() === (income.category || '').toLowerCase()
     );
-    const { IconComponent, hexColor } = resolveCategoryVisuals(matchedCat, income.category || 'Ingresos');
+    const { IconComponent, hexColor } = resolveCategoryVisuals(matchedCat, income.category || 'Otros ingresos');
 
     // Overdue logic
     const today = new Date();
@@ -339,6 +587,20 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
             Pendiente
           </span>
         )}
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            fontSize: '0.7rem',
+            fontWeight: 600,
+            color: 'var(--text-secondary)',
+            background: 'var(--surface-muted)',
+            padding: '0.12rem 0.45rem',
+            borderRadius: 'var(--radius-full)',
+          }}
+        >
+          {getCurrencyLabel(income.currency)}
+        </span>
       </>
     );
 
@@ -352,7 +614,7 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
         )}
         {isConfirmed && isPartial && check.pending_date && (
           <span style={{ color: 'var(--warning-color)', fontWeight: 500 }}>
-            Resto: {new Date(check.pending_date).toLocaleDateString('es-VE')}
+            Resto: {new Date(`${check.pending_date}T12:00:00`).toLocaleDateString('es-VE')}
           </span>
         )}
       </span>
@@ -388,20 +650,97 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
         primaryAmount={primaryAmount}
         secondaryAmount={secondaryAmount}
         quickAction={quickAction}
-        onClick={() => setSelectedIncomeForSheet(income)}
-      />
+        onClick={() => setSelectedEstimatedForSheet(income)}
+      >
+        {isConfirmed && isPartial && (
+          <div
+            style={{
+              display: 'flex',
+              gap: '0.5rem',
+              marginTop: '0.5rem',
+              paddingTop: '0.5rem',
+              borderTop: '1px solid var(--border-color, rgba(0,0,0,0.06))',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setCheckingIncome(income);
+                setIsCheckFormOpen(true);
+              }}
+              style={{
+                flex: 1,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.35rem',
+                padding: '0.42rem 0.75rem',
+                borderRadius: 'var(--radius-md, 8px)',
+                fontSize: '0.78rem',
+                fontWeight: 600,
+                backgroundColor: 'rgba(245, 158, 11, 0.14)',
+                color: '#D97706',
+                border: '1px solid rgba(245, 158, 11, 0.3)',
+                cursor: 'pointer',
+                transition: 'transform 150ms ease-out',
+              }}
+              onMouseDown={(e) => {
+                e.currentTarget.style.transform = 'scale(0.96)';
+              }}
+              onMouseUp={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+            >
+              <Plus size={14} />
+              <span>Registrar pago restante</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleUncheck(income.id)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.35rem',
+                padding: '0.42rem 0.65rem',
+                borderRadius: 'var(--radius-md, 8px)',
+                fontSize: '0.78rem',
+                fontWeight: 500,
+                backgroundColor: 'var(--surface-muted)',
+                color: 'var(--text-secondary)',
+                border: '1px solid var(--border-color, rgba(0,0,0,0.08))',
+                cursor: 'pointer',
+                transition: 'transform 150ms ease-out',
+              }}
+              onMouseDown={(e) => {
+                e.currentTarget.style.transform = 'scale(0.96)';
+              }}
+              onMouseUp={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+              title="Deshacer confirmación"
+            >
+              <Undo2 size={14} />
+              <span>Deshacer</span>
+            </button>
+          </div>
+        )}
+      </ListCard>
     );
   };
-
-  const pendingIncomesList = incomes.filter((i) => !(i.checks && i.checks.length > 0) && i.is_active);
-  const pausedIncomesList = incomes.filter((i) => !(i.checks && i.checks.length > 0) && !i.is_active);
-  const paidIncomesList = incomes.filter((i) => i.checks && i.checks.length > 0);
 
   return (
     <div style={{ padding: '1rem', paddingBottom: '6rem', maxWidth: '600px', margin: '0 auto' }}>
       <PageHeader
         title="Ingresos"
-        subtitle="Ingresos estimados del mes"
+        subtitle={activeTab === 'movements' ? 'Movimientos del mes' : 'Plantillas por cobrar'}
         onBack={onBack}
         rightAction={
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -439,53 +778,95 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
               />
             </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                setEditingIncome(null);
-                setIsFormOpen(true);
-              }}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.35rem',
-                background: '#3B82F6',
-                color: '#FFFFFF',
-                border: 'none',
-                borderRadius: 'var(--radius-md, 12px)',
-                padding: '0.5rem 0.85rem',
-                fontSize: '0.82rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                boxShadow: '0 3px 10px rgba(59, 130, 246, 0.35)',
-                transition: 'transform 150ms ease-out',
-                flexShrink: 0,
-              }}
-              onMouseDown={(e) => {
-                e.currentTarget.style.transform = 'scale(0.96)';
-              }}
-              onMouseUp={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-              }}
-            >
-              <Plus size={16} strokeWidth={2.5} />
-              <span>Nuevo</span>
-            </button>
+            {activeTab === 'movements' ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingMovement(null);
+                  setIsMovementFormOpen(true);
+                }}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  background: '#10B981',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  borderRadius: 'var(--radius-md, 12px)',
+                  padding: '0.5rem 0.85rem',
+                  fontSize: '0.82rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  boxShadow: '0 3px 10px rgba(16, 185, 129, 0.35)',
+                  transition: 'transform 150ms ease-out',
+                  flexShrink: 0,
+                }}
+                onMouseDown={(e) => {
+                  e.currentTarget.style.transform = 'scale(0.96)';
+                }}
+                onMouseUp={(e) => {
+                  e.currentTarget.style.transform = 'scale(1)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'scale(1)';
+                }}
+              >
+                <Plus size={16} strokeWidth={2.5} />
+                <span>+ Ingreso</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingEstimatedIncome(null);
+                  setIsEstimatedFormOpen(true);
+                }}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  background: '#3B82F6',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  borderRadius: 'var(--radius-md, 12px)',
+                  padding: '0.5rem 0.85rem',
+                  fontSize: '0.82rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  boxShadow: '0 3px 10px rgba(59, 130, 246, 0.35)',
+                  transition: 'transform 150ms ease-out',
+                  flexShrink: 0,
+                }}
+                onMouseDown={(e) => {
+                  e.currentTarget.style.transform = 'scale(0.96)';
+                }}
+                onMouseUp={(e) => {
+                  e.currentTarget.style.transform = 'scale(1)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'scale(1)';
+                }}
+              >
+                <Plus size={16} strokeWidth={2.5} />
+                <span>+ Plantilla</span>
+              </button>
+            )}
           </div>
         }
       />
 
-      {/* Monetary Summary Card */}
+      {/* Monetary Summary Hero Card */}
       <SummaryHeroCard
         eyebrow="Total Recibido"
-        badgeText={`${confirmedCount} / ${totalExpectedCount} confirmados`}
+        badgeText={
+          activeTab === 'por-cobrar'
+            ? `${fullyConfirmedCount} / ${activeEstimatedCount} confirmados`
+            : `${realIncomes.length} ${realIncomes.length === 1 ? 'ingreso registrado' : 'ingresos registrados'}`
+        }
         badgeIcon={<Wallet size={14} />}
         mainAmount={isLoading ? '...' : formatCurrencyAmount(received, displayCurrency)}
         isLoading={isLoading}
-        mainAmountColor="var(--income-color)"
+        mainAmountColor="#3B82F6"
         currencyHintText="Toca para alternar moneda"
         onCycleCurrency={cycleCurrency}
         accentColor="#3B82F6"
@@ -503,49 +884,60 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
         progress={{
           percent: progressPercent,
           leftLabel: 'Progreso de cobro',
-          rightLabel: `${Math.round(progressPercent)}% (${confirmedCount}/${totalExpectedCount})`,
-          color: progressPercent === 100 ? '#10B981' : '#3B82F6',
+          rightLabel: `${Math.round(progressPercent)}% (${fullyConfirmedCount}/${activeEstimatedCount})`,
+          color: '#3B82F6',
         }}
       />
+
+      {/* Main Segmented Tabs */}
+      <div style={{ marginTop: '1.25rem', marginBottom: '1rem' }}>
+        <SegmentedTabs<'movements' | 'por-cobrar'>
+          activeTab={activeTab}
+          onChange={handleTabChange}
+          activeColor="#3B82F6"
+          tabs={[
+            {
+              id: 'movements',
+              label: 'Movimientos',
+              count: realIncomes.length,
+            },
+            {
+              id: 'por-cobrar',
+              label: 'Por cobrar',
+              count: pendingAndPartialIncomesList.length + pausedIncomesList.length,
+            },
+          ]}
+        />
+      </div>
 
       {isLoading ? (
         <div style={{ padding: '8px 0' }}>
           <SkeletonList count={4} />
         </div>
-      ) : incomes.length === 0 ? (
-        <EmptyState
-          icon={<Wallet size={28} />}
-          title="Sin ingresos estimados"
-          description="No tienes ingresos estimados para este mes."
-          actionLabel="Añadir ingreso estimado"
-          onAction={() => {
-            setEditingIncome(null);
-            setIsFormOpen(true);
-          }}
-          actionColor="#3B82F6"
-        />
+      ) : activeTab === 'movements' ? (
+        /* Tab 1: Movimientos */
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          {realIncomes.length === 0 ? (
+            <EmptyState
+              icon={<ArrowDownLeft size={28} />}
+              title="Sin ingresos registrados"
+              description="No tienes movimientos de ingreso registrados en este mes."
+              actionLabel="+ Registrar Ingreso"
+              onAction={() => {
+                setEditingMovement(null);
+                setIsMovementFormOpen(true);
+              }}
+              actionColor="#10B981"
+            />
+          ) : (
+            realIncomes.map((movement) => renderMovementCard(movement))
+          )}
+        </div>
       ) : (
+        /* Tab 2: Por cobrar */
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          <SegmentedTabs<'pending' | 'paid'>
-            activeTab={activeTab}
-            onChange={setActiveTab}
-            activeColor={activeTab === 'paid' ? '#10B981' : '#3B82F6'}
-            tabs={[
-              {
-                id: 'pending',
-                label: 'Pendientes',
-                count: pendingIncomesList.length + pausedIncomesList.length,
-              },
-              {
-                id: 'paid',
-                label: 'Confirmados',
-                count: paidIncomesList.length,
-              },
-            ]}
-          />
-
           {/* All collected celebration */}
-          {confirmedCount === totalExpectedCount && totalExpectedCount > 0 && (
+          {fullyConfirmedCount === activeEstimatedCount && activeEstimatedCount > 0 && (
             <div
               style={{
                 display: 'flex',
@@ -565,80 +957,126 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
             </div>
           )}
 
-          {/* Pending section */}
-          {activeTab === 'pending' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {pendingIncomesList.length === 0 && pausedIncomesList.length === 0 ? (
-                <EmptyState
-                  compact
-                  title="Sin ingresos pendientes"
-                  description="No tienes cobros pendientes por recibir este mes."
+          {estimatedIncomes.length === 0 ? (
+            <EmptyState
+              icon={<Wallet size={28} />}
+              title="Sin ingresos por cobrar"
+              description="No tienes plantillas de ingresos configuradas para este mes."
+              actionLabel="+ Crear Plantilla"
+              onAction={() => {
+                setEditingEstimatedIncome(null);
+                setIsEstimatedFormOpen(true);
+              }}
+              actionColor="#3B82F6"
+            />
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <div style={{ marginBottom: '1.25rem' }}>
+                <SegmentedTabs<'pending' | 'confirmed' | 'paused'>
+                  activeTab={effectivePorCobrarSubTab}
+                  onChange={setPorCobrarSubTab}
+                  activeColor="#3B82F6"
+                  tabs={[
+                    { id: 'pending', label: `Pendientes (${pendingCount})` },
+                    { id: 'confirmed', label: `Cobrados (${confirmedCount})` },
+                    ...(pausedCount > 0 ? [{ id: 'paused' as const, label: `Pausados (${pausedCount})` }] : []),
+                  ]}
                 />
-              ) : (
-                <>
-                  {pendingIncomesList.map((income) => renderIncomeCard(income))}
+              </div>
 
-                  {pausedIncomesList.length > 0 && (
-                    <>
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.5rem',
-                          marginTop: '1rem',
-                          marginBottom: '0.2rem',
-                          paddingLeft: '0.25rem',
-                        }}
-                      >
-                        <Pause size={14} style={{ color: 'var(--text-tertiary)' }} />
-                        <span
-                          style={{
-                            fontSize: '0.8rem',
-                            fontWeight: 600,
-                            color: 'var(--text-tertiary)',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.04em',
-                          }}
-                        >
-                          Pausados
-                        </span>
-                      </div>
-                      {pausedIncomesList.map((income) => renderIncomeCard(income))}
-                    </>
+              {effectivePorCobrarSubTab === 'pending' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {pendingCount === 0 ? (
+                    <EmptyState
+                      compact
+                      title="Sin cobros pendientes"
+                      description="No tienes cobros pendientes por recibir este mes."
+                    />
+                  ) : (
+                    pendingAndPartialIncomesList.map((income) => renderEstimatedIncomeCard(income))
                   )}
-                </>
+                </div>
               )}
-            </div>
-          )}
 
-          {/* Paid section */}
-          {activeTab === 'paid' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {paidIncomesList.length === 0 ? (
-                <EmptyState
-                  compact
-                  title="Sin ingresos confirmados"
-                  description="Aún no has confirmado cobros en este mes."
-                />
-              ) : (
-                paidIncomesList.map((income) => renderIncomeCard(income))
+              {effectivePorCobrarSubTab === 'confirmed' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {confirmedCount === 0 ? (
+                    <EmptyState
+                      compact
+                      title="Sin cobros confirmados"
+                      description="Aún no has registrado ningún cobro en este mes."
+                    />
+                  ) : (
+                    confirmedIncomesList.map((income) => renderEstimatedIncomeCard(income))
+                  )}
+                </div>
+              )}
+
+              {effectivePorCobrarSubTab === 'paused' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {pausedCount === 0 ? (
+                    <EmptyState
+                      compact
+                      title="Sin plantillas pausadas"
+                      description="No tienes plantillas pausadas en este momento."
+                    />
+                  ) : (
+                    pausedIncomesList.map((income) => renderEstimatedIncomeCard(income))
+                  )}
+                </div>
               )}
             </div>
           )}
         </div>
       )}
 
-      {isFormOpen && (
-        <EstimatedIncomeForm
-          income={editingIncome}
-          onClose={() => {
-            setIsFormOpen(false);
-            setEditingIncome(null);
+      {/* Movement Form Modal (ExpenseForm with mode="income") */}
+      {isMovementFormOpen && (
+        <ExpenseForm
+          defaultMode="income"
+          initialIncomeData={editingMovement}
+          onSubmit={async () => {}}
+          onIncomeSubmit={async (data: IncomeCreate | IncomeUpdate) => {
+            const wasEditing = Boolean(editingMovement);
+            try {
+              if (editingMovement) {
+                await updateIncome(editingMovement.id, data as IncomeUpdate);
+              } else {
+                await createIncome(data as IncomeCreate);
+              }
+              setIsMovementFormOpen(false);
+              setEditingMovement(null);
+              await fetchData(true);
+              toast.success(wasEditing ? 'Ingreso actualizado' : 'Ingreso registrado');
+            } catch (err) {
+              console.error('Error saving income movement:', err);
+              toast.error('No se pudo guardar el ingreso');
+            }
           }}
-          onSaved={() => fetchData(true)}
+          onCancel={() => {
+            setIsMovementFormOpen(false);
+            setEditingMovement(null);
+          }}
         />
       )}
 
+      {/* Estimated Income Form Modal */}
+      {isEstimatedFormOpen && (
+        <EstimatedIncomeForm
+          income={editingEstimatedIncome}
+          onClose={() => {
+            setIsEstimatedFormOpen(false);
+            setEditingEstimatedIncome(null);
+          }}
+          onSaved={() => {
+            setIsEstimatedFormOpen(false);
+            setEditingEstimatedIncome(null);
+            fetchData(true);
+          }}
+        />
+      )}
+
+      {/* Income Check Form Modal */}
       {isCheckFormOpen && checkingIncome && (
         <IncomeCheckForm
           income={checkingIncome}
@@ -647,65 +1085,191 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
             setIsCheckFormOpen(false);
             setCheckingIncome(null);
           }}
-          onSaved={() => fetchData(true)}
+          onSaved={() => {
+            setIsCheckFormOpen(false);
+            setCheckingIncome(null);
+            fetchData(true);
+          }}
         />
       )}
 
+      {/* Confirm Delete Movement Modal */}
       <ConfirmModal
-        isOpen={confirmDelete.isOpen}
-        title="Dar de baja / Eliminar Ingreso"
-        message="¿Estás seguro de que quieres dar de baja este ingreso? A partir de este mes dejará de aparecer. Si registraste cobros en meses anteriores, se mantendrán protegidos en tu historial."
-        onConfirm={handleDelete}
-        onCancel={() => setConfirmDelete({ isOpen: false, incomeId: '' })}
+        isOpen={confirmDeleteMovement.isOpen}
+        title="Eliminar Ingreso"
+        message={
+          confirmDeleteMovement.movement?.income_check_id
+            ? `Este ingreso pertenece al cobro de ${confirmDeleteMovement.movement.estimated_income_name || 'una plantilla'}. Al borrarlo se recalculará el cobro y, si no quedan otros pagos vinculados, volverá a Pendiente.`
+            : '¿Estás seguro de que deseas eliminar este ingreso? Esta acción no se puede deshacer.'
+        }
+        onConfirm={handleDeleteMovement}
+        onCancel={() => setConfirmDeleteMovement({ isOpen: false, movement: null })}
       />
 
-      {/* Mobile Bottom Sheet for Income Details & Actions */}
-      {selectedIncomeForSheet && (() => {
-        const check = selectedIncomeForSheet.checks && selectedIncomeForSheet.checks.length > 0 ? selectedIncomeForSheet.checks[0] : null;
+      {/* Confirm Delete Estimated Income Modal */}
+      <ConfirmModal
+        isOpen={confirmDeleteEstimated.isOpen}
+        title="Dar de baja / Eliminar Ingreso"
+        message="¿Estás seguro de que quieres dar de baja este ingreso? A partir de este mes dejará de aparecer. Si registraste cobros en meses anteriores, se mantendrán protegidos en tu historial."
+        onConfirm={handleDeleteEstimated}
+        onCancel={() => setConfirmDeleteEstimated({ isOpen: false, incomeId: '' })}
+      />
+
+      {/* Bottom Sheet for Movement Details & Actions */}
+      {selectedMovementForSheet && (
+        <ListCardBottomSheet
+          isOpen={!!selectedMovementForSheet}
+          onClose={() => setSelectedMovementForSheet(null)}
+          title={selectedMovementForSheet.description || selectedMovementForSheet.category || 'Ingreso'}
+          subtitle={`Registrado el ${new Date(`${selectedMovementForSheet.date}T12:00:00`).toLocaleDateString('es-VE', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
+          })}`}
+          secondaryActions={[
+            {
+              label: 'Editar',
+              icon: <Edit3 size={16} />,
+              onClick: () => {
+                const target = selectedMovementForSheet;
+                setSelectedMovementForSheet(null);
+                setEditingMovement(target);
+                setIsMovementFormOpen(true);
+              },
+            },
+            {
+              label: 'Eliminar',
+              icon: <Trash2 size={16} />,
+              danger: true,
+              onClick: () => {
+                const target = selectedMovementForSheet;
+                setSelectedMovementForSheet(null);
+                setConfirmDeleteMovement({ isOpen: true, movement: target });
+              },
+            },
+          ]}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <CurrencyBreakdownCard
+              originalAmount={selectedMovementForSheet.amount}
+              originalCurrency={selectedMovementForSheet.currency}
+              amountBs={selectedMovementForSheet.amount_bs}
+              amountUsd={selectedMovementForSheet.amount_usd}
+              amountEur={selectedMovementForSheet.amount_eur}
+              amountUsdt={selectedMovementForSheet.amount_usdt}
+              rateUsdBs={selectedMovementForSheet.rate_usd_bs}
+              rateEurBs={selectedMovementForSheet.rate_eur_bs}
+              rateUsdtBs={selectedMovementForSheet.rate_usdt_bs}
+              fallbackRates={rates}
+            />
+
+            {selectedMovementForSheet.income_check_id && (
+              <div
+                style={{
+                  padding: '0.75rem',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'rgba(16, 185, 129, 0.08)',
+                  border: '1px solid rgba(16, 185, 129, 0.2)',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    color: 'var(--income-color)',
+                    fontWeight: 600,
+                    fontSize: '0.85rem',
+                  }}
+                >
+                  <CheckCircle size={16} />
+                  <span>Cobro vinculado a plantilla</span>
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                  {selectedMovementForSheet.estimated_income_name
+                    ? `Plantilla: ${selectedMovementForSheet.estimated_income_name}`
+                    : 'Este ingreso forma parte de un cobro de plantilla.'}
+                </div>
+              </div>
+            )}
+          </div>
+        </ListCardBottomSheet>
+      )}
+
+      {/* Bottom Sheet for Estimated Income Details & Actions */}
+      {selectedEstimatedForSheet && (() => {
+        const check =
+          selectedEstimatedForSheet.checks && selectedEstimatedForSheet.checks.length > 0
+            ? selectedEstimatedForSheet.checks[0]
+            : null;
         const isConfirmed = !!check;
         const isPartial = check?.is_partial;
 
         return (
           <ListCardBottomSheet
-            isOpen={!!selectedIncomeForSheet}
-            onClose={() => setSelectedIncomeForSheet(null)}
-            title={selectedIncomeForSheet.name}
+            isOpen={!!selectedEstimatedForSheet}
+            onClose={() => setSelectedEstimatedForSheet(null)}
+            title={selectedEstimatedForSheet.name}
             subtitle={
-              selectedIncomeForSheet.payment_day
-                ? `Cobro estimado: Día ${selectedIncomeForSheet.payment_day} de cada mes`
+              selectedEstimatedForSheet.payment_day
+                ? `Cobro estimado: Día ${selectedEstimatedForSheet.payment_day} de cada mes`
                 : 'Ingreso estimado recurrente'
             }
             primaryAction={
-              !isConfirmed && selectedIncomeForSheet.is_active
+              !isConfirmed && selectedEstimatedForSheet.is_active
                 ? {
                     label: 'Confirmar Recepción de Ingreso',
                     icon: <Circle size={18} />,
                     onClick: () => {
-                      const target = selectedIncomeForSheet;
-                      setSelectedIncomeForSheet(null);
+                      const target = selectedEstimatedForSheet;
+                      setSelectedEstimatedForSheet(null);
                       setCheckingIncome(target);
                       setIsCheckFormOpen(true);
                     },
                   }
-                : isConfirmed && selectedIncomeForSheet.is_active
+                : isConfirmed && isPartial && selectedEstimatedForSheet.is_active
+                ? {
+                    label: 'Registrar pago restante',
+                    icon: <Plus size={18} />,
+                    onClick: () => {
+                      const target = selectedEstimatedForSheet;
+                      setSelectedEstimatedForSheet(null);
+                      setCheckingIncome(target);
+                      setIsCheckFormOpen(true);
+                    },
+                  }
+                : isConfirmed && !isPartial && selectedEstimatedForSheet.is_active
                 ? {
                     label: 'Deshacer Confirmación',
                     icon: <Undo2 size={18} />,
                     onClick: () => {
-                      const target = selectedIncomeForSheet;
-                      setSelectedIncomeForSheet(null);
+                      const target = selectedEstimatedForSheet;
+                      setSelectedEstimatedForSheet(null);
                       handleUncheck(target.id);
                     },
                   }
                 : undefined
             }
             secondaryActions={[
+              ...(isConfirmed && isPartial && selectedEstimatedForSheet.is_active
+                ? [
+                    {
+                      label: 'Deshacer Confirmación',
+                      icon: <Undo2 size={16} />,
+                      onClick: () => {
+                        const target = selectedEstimatedForSheet;
+                        setSelectedEstimatedForSheet(null);
+                        handleUncheck(target.id);
+                      },
+                    },
+                  ]
+                : []),
               {
-                label: selectedIncomeForSheet.is_active ? 'Pausar Ingreso' : 'Reanudar Ingreso',
-                icon: selectedIncomeForSheet.is_active ? <Pause size={16} /> : <Play size={16} />,
+                label: selectedEstimatedForSheet.is_active ? 'Pausar Ingreso' : 'Reanudar Ingreso',
+                icon: selectedEstimatedForSheet.is_active ? <Pause size={16} /> : <Play size={16} />,
                 onClick: () => {
-                  const target = selectedIncomeForSheet;
-                  setSelectedIncomeForSheet(null);
+                  const target = selectedEstimatedForSheet;
+                  setSelectedEstimatedForSheet(null);
                   handleTogglePause(target);
                 },
               },
@@ -713,10 +1277,10 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
                 label: 'Editar',
                 icon: <Edit3 size={16} />,
                 onClick: () => {
-                  const target = selectedIncomeForSheet;
-                  setSelectedIncomeForSheet(null);
-                  setEditingIncome(target);
-                  setIsFormOpen(true);
+                  const target = selectedEstimatedForSheet;
+                  setSelectedEstimatedForSheet(null);
+                  setEditingEstimatedIncome(target);
+                  setIsEstimatedFormOpen(true);
                 },
               },
               {
@@ -724,17 +1288,17 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
                 icon: <Trash2 size={16} />,
                 danger: true,
                 onClick: () => {
-                  const target = selectedIncomeForSheet;
-                  setSelectedIncomeForSheet(null);
-                  setConfirmDelete({ isOpen: true, incomeId: target.id });
+                  const target = selectedEstimatedForSheet;
+                  setSelectedEstimatedForSheet(null);
+                  setConfirmDeleteEstimated({ isOpen: true, incomeId: target.id });
                 },
               },
             ]}
           >
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               <CurrencyBreakdownCard
-                originalAmount={isConfirmed && check ? check.real_amount : selectedIncomeForSheet.expected_amount}
-                originalCurrency={isConfirmed && check ? check.currency : selectedIncomeForSheet.currency}
+                originalAmount={isConfirmed && check ? check.real_amount : selectedEstimatedForSheet.expected_amount}
+                originalCurrency={isConfirmed && check ? check.currency : selectedEstimatedForSheet.currency}
                 amountBs={isConfirmed && check ? check.amount_bs : undefined}
                 amountUsd={isConfirmed && check ? check.amount_usd : undefined}
                 amountEur={isConfirmed && check ? check.amount_eur : undefined}
@@ -746,7 +1310,7 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
                 isPendingReference={!isConfirmed}
               />
 
-              {selectedIncomeForSheet.notes && (
+              {selectedEstimatedForSheet.notes && (
                 <div
                   style={{
                     fontSize: '0.85rem',
@@ -756,7 +1320,7 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
                     borderRadius: 'var(--radius-sm)',
                   }}
                 >
-                  <strong>Nota:</strong> {selectedIncomeForSheet.notes}
+                  <strong>Nota:</strong> {selectedEstimatedForSheet.notes}
                 </div>
               )}
 

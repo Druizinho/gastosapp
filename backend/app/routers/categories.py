@@ -15,10 +15,11 @@ router = APIRouter(
 
 @router.get("/", response_model=List[schemas.CategoryResponse])
 async def read_categories(
+    kind: Optional[str] = Query("expense", pattern="^(expense|income)$"),
     db: AsyncSession = Depends(get_db),
     user_id: UUID = Depends(get_current_user)
 ):
-    categories = await crud.get_categories(db, user_id=user_id)
+    categories = await crud.get_categories(db, user_id=user_id, kind=kind or "expense")
     return categories
 
 @router.post("/", response_model=schemas.CategoryResponse)
@@ -36,11 +37,12 @@ async def create_category(
 
 @router.post("/seed-defaults", response_model=List[schemas.CategoryResponse])
 async def restore_default_categories(
+    kind: Optional[str] = Query("expense", pattern="^(expense|income)$"),
     db: AsyncSession = Depends(get_db),
     user_id: UUID = Depends(get_current_user)
 ):
-    await crud.seed_default_categories(db, user_id=user_id, only_if_empty=False)
-    return await crud.get_categories(db, user_id=user_id)
+    await crud.seed_default_categories(db, user_id=user_id, only_if_empty=False, kind=kind or "expense")
+    return await crud.get_categories(db, user_id=user_id, kind=kind or "expense")
 
 @router.put("/{category_id}", response_model=schemas.CategoryResponse)
 async def update_category(

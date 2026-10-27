@@ -3,14 +3,21 @@ import { CheckCircle2, AlertCircle, AlertTriangle, Info } from 'lucide-react';
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
 
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 export interface ToastOptions {
   duration?: number;
+  action?: ToastAction;
 }
 
 export interface ToastItem {
   id: string;
   message: string;
   type: ToastType;
+  action?: ToastAction;
 }
 
 export interface ToastContextValue {
@@ -67,7 +74,7 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
       const id = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
       const duration = options?.duration ?? 3000;
 
-      setToasts((prev) => [...prev, { id, message, type }]);
+      setToasts((prev) => [...prev, { id, message, type, action: options?.action }]);
 
       if (duration > 0) {
         const timer = setTimeout(() => {
@@ -127,7 +134,26 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
               onClick={() => removeToast(toast.id)}
             >
               {renderIcon(toast.type)}
-              <span>{toast.message}</span>
+              <span style={{ flex: 1 }}>{toast.message}</span>
+              {toast.action && (
+                <button
+                  type="button"
+                  className="toast-action-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    try {
+                      toast.action?.onClick();
+                    } finally {
+                      removeToast(toast.id);
+                    }
+                  }}
+                  onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+                  onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                >
+                  {toast.action.label}
+                </button>
+              )}
             </div>
           ))}
         </div>

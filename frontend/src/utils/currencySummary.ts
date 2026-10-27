@@ -1,4 +1,4 @@
-import type { MainCurrencyPreference, RangeSummaryResponse, ExchangeRates, BudgetCategorySummaryOut } from '../types';
+import type { MainCurrencyPreference, RangeSummaryResponse, ExchangeRates, BudgetCategorySummaryOut, BCVRate } from '../types';
 
 export interface CurrencyConfig {
   code: MainCurrencyPreference;
@@ -101,6 +101,13 @@ export function formatCurrency(val: number, currency: MainCurrencyPreference): s
   }
 }
 
+export function formatSignedCurrency(val: number, currency: MainCurrencyPreference): string {
+  const formatted = formatCurrency(Math.abs(val), currency);
+  if (val > 0) return `+${formatted}`;
+  if (val < 0) return `-${formatted}`;
+  return formatted;
+}
+
 export function resolveCurrencyTotal(
   summary: { total_usd?: number | null; total_bs?: number | null; total_eur?: number | null; total_usdt?: number | null } | null | undefined,
   currency: MainCurrencyPreference,
@@ -136,6 +143,73 @@ export function resolveCurrencyTotal(
       return totalUsdt;
     }
   }
+}
+
+export function resolveIncomeTotal(
+  summary: RangeSummaryResponse | { income_total_usd?: number | null; income_total_bs?: number | null; income_total_eur?: number | null; income_total_usdt?: number | null } | null | undefined,
+  currency: MainCurrencyPreference,
+  rates?: BCVRate | null
+): number {
+  if (!summary) return 0;
+
+  const totalUsd = Number(summary.income_total_usd) || 0;
+  const totalBs = Number(summary.income_total_bs) || 0;
+  const totalEur = Number(summary.income_total_eur) || 0;
+  const totalUsdt = Number(summary.income_total_usdt) || 0;
+
+  switch (currency) {
+    case 'USD': {
+      if (totalUsd > 0) return totalUsd;
+      if (rates?.usd_bs && rates.usd_bs > 0 && totalBs > 0) return totalBs / rates.usd_bs;
+      return totalUsd;
+    }
+    case 'BS': {
+      if (totalBs > 0) return totalBs;
+      if (rates?.usd_bs && rates.usd_bs > 0 && totalUsd > 0) return totalUsd * rates.usd_bs;
+      return totalBs;
+    }
+    case 'EUR': {
+      if (totalEur > 0) return totalEur;
+      if (rates?.eur_bs && rates.eur_bs > 0 && totalBs > 0) return totalBs / rates.eur_bs;
+      return totalEur;
+    }
+    case 'USDT': {
+      if (totalUsdt > 0) return totalUsdt;
+      if (rates?.usdt_bs && rates.usdt_bs > 0 && totalBs > 0) return totalBs / rates.usdt_bs;
+      if (totalUsd > 0) return totalUsd;
+      return totalUsdt;
+    }
+  }
+}
+
+export function resolveBalanceTotal(
+  summary: RangeSummaryResponse | null | undefined,
+  currency: MainCurrencyPreference,
+  rates?: BCVRate | null
+): number {
+  if (!summary) return 0;
+
+  let balanceVal: number | undefined | null;
+  switch (currency) {
+    case 'USD':
+      balanceVal = summary.balance_usd;
+      break;
+    case 'BS':
+      balanceVal = summary.balance_bs;
+      break;
+    case 'EUR':
+      balanceVal = summary.balance_eur;
+      break;
+    case 'USDT':
+      balanceVal = summary.balance_usdt;
+      break;
+  }
+
+  if (balanceVal !== undefined && balanceVal !== null && !isNaN(Number(balanceVal))) {
+    return Number(balanceVal);
+  }
+
+  return resolveIncomeTotal(summary, currency, rates) - resolveCurrencyTotal(summary, currency, rates);
 }
 
 export function resolveCategoryTotal(

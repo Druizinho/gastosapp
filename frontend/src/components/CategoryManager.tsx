@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import type { Category } from '../types';
+import type { Category, CategoryKind } from '../types';
 import { useCategories } from '../context/CategoriesContext';
 import {
   createCategory,
@@ -28,16 +28,39 @@ import {
 import ListCard from './ListCard';
 import ListCardBottomSheet from './ListCardBottomSheet';
 import { SkeletonList } from './ui/Skeleton';
+import { SegmentedTabs } from './ui/SegmentedTabs';
 
 // Re-export visual helpers for backward compatibility
 export { ICON_MAP, CATEGORY_COLORS, DEFAULT_ICONS, resolveCategoryVisuals };
+
+export const isSystemCategory = (name: string, kind: CategoryKind): boolean => {
+  const norm = name.trim().toLowerCase();
+  if (kind === 'income') {
+    return norm === 'otros ingresos';
+  }
+  return norm === 'sin categoría' || norm === 'sin categoria';
+};
 
 interface CategoryManagerProps {
   onCategoriesChanged?: () => void;
 }
 
 export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesChanged }) => {
-  const { categories, loading: isContextLoading, refreshCategories, setCategories } = useCategories();
+  const {
+    categories: expenseCategories,
+    incomeCategories,
+    loading: isContextLoading,
+    refreshCategories,
+    setCategories,
+    setIncomeCategories,
+  } = useCategories();
+
+  // Active kind selector: 'expense' (Gastos) | 'income' (Ingresos)
+  const [activeKind, setActiveKind] = useState<CategoryKind>('expense');
+
+  const currentCategories = activeKind === 'income' ? incomeCategories : expenseCategories;
+  const setCurrentCategories = activeKind === 'income' ? setIncomeCategories : setCategories;
+  const defaultReassignTarget = activeKind === 'income' ? 'Otros ingresos' : 'Sin Categoría';
 
   // Search filter
   const [searchTerm, setSearchTerm] = useState('');
@@ -61,10 +84,10 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
 
   // Filtered categories in list
   const filteredCategories = useMemo(() => {
-    if (!searchTerm.trim()) return categories;
+    if (!searchTerm.trim()) return currentCategories;
     const q = searchTerm.toLowerCase();
-    return categories.filter((c) => c.name.toLowerCase().includes(q));
-  }, [categories, searchTerm]);
+    return currentCategories.filter((c) => c.name.toLowerCase().includes(q));
+  }, [currentCategories, searchTerm]);
 
   // Filtered icons in icon picker
   const filteredIcons = useMemo(() => {
@@ -118,14 +141,15 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
           color: catColor,
           icon: catIcon,
         });
-        setCategories((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+        setCurrentCategories((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
       } else {
         const created = await createCategory({
           name: trimmed,
           color: catColor,
           icon: catIcon,
+          kind: activeKind,
         });
-        setCategories((prev) => [...prev, created]);
+        setCurrentCategories((prev) => [...prev, created]);
       }
       await refreshCategories();
       onCategoriesChanged?.();
@@ -144,8 +168,8 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
     setIsSeeding(true);
     setErrorMessage('');
     try {
-      const seeded = await seedDefaultCategories();
-      setCategories(seeded);
+      const seeded = await seedDefaultCategories(activeKind);
+      setCurrentCategories(seeded);
       await refreshCategories();
       onCategoriesChanged?.();
     } catch (err: any) {
@@ -160,8 +184,9 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
     if (!deletingCategory) return;
     setIsDeleting(true);
     try {
-      await deleteCategory(deletingCategory.id, reassignTo || undefined);
-      setCategories((prev) => prev.filter((c) => c.id !== deletingCategory.id));
+      const target = reassignTo.trim() || defaultReassignTarget;
+      await deleteCategory(deletingCategory.id, target);
+      setCurrentCategories((prev) => prev.filter((c) => c.id !== deletingCategory.id));
       await refreshCategories();
       onCategoriesChanged?.();
       setDeletingCategory(null);
@@ -264,6 +289,24 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
           </div>
         </div>
 
+        {/* Kind Selector Tabs (Gastos / Ingresos) */}
+        <div style={{ marginBottom: '1rem' }}>
+          <SegmentedTabs<'expense' | 'income'>
+            tabs={[
+              { id: 'expense', label: 'Gastos', count: expenseCategories.length },
+              { id: 'income', label: 'Ingresos', count: incomeCategories.length },
+            ]}
+            activeTab={activeKind}
+            onChange={(tab) => {
+              setActiveKind(tab);
+              setSearchTerm('');
+              handleCancelForm();
+              setDeletingCategory(null);
+            }}
+            activeColor={activeKind === 'expense' ? 'var(--expense-color, #EF4444)' : 'var(--income-color, #10B981)'}
+          />
+        </div>
+
         {errorMessage && (
           <div
             style={{
@@ -297,7 +340,7 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                {editingCategory ? `Editar Categoría: ${editingCategory.name}` : 'Nueva Categoría'}
+                {editingCategory ? `Editar Categoría: ${editingCategory.name}` : `Nueva Categoría (${activeKind === 'income' ? 'Ingreso' : 'Gasto'})`}
               </span>
               <button
                 type="button"
@@ -567,7 +610,7 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
         )}
 
         {/* Search input when categories list is large */}
-        {categories.length > 5 && (
+        {currentCategories.length > 5 && (
           <div
             style={{
               display: 'flex',
@@ -617,7 +660,7 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           {isContextLoading ? (
             <div style={{ padding: '8px 0' }}><SkeletonList count={4} /></div>
-          ) : categories.length === 0 ? (
+          ) : currentCategories.length === 0 ? (
             <div
               style={{
                 textAlign: 'center',
@@ -626,22 +669,28 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
               }}
             >
               <Layers size={36} color="var(--text-tertiary)" style={{ margin: '0 auto 0.75rem' }} />
-              <p style={{ margin: '0 0 0.5rem', fontWeight: 600 }}>No tienes categorías personalizadas</p>
+              <p style={{ margin: '0 0 0.5rem', fontWeight: 600 }}>
+                No tienes categorías de {activeKind === 'income' ? 'ingresos' : 'gastos'} personalizadas
+              </p>
               <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-tertiary)' }}>
                 Toca &quot;Restaurar por defecto&quot; para cargar el set recomendado o crea una nueva.
               </p>
             </div>
           ) : filteredCategories.length === 0 ? (
             <p style={{ color: 'var(--text-tertiary)', textAlign: 'center', padding: '1.5rem 0' }}>
-              No se encontraron categorías que coincidan con &quot;{searchTerm}&quot;.
+              No se encontraron categorías de {activeKind === 'income' ? 'ingresos' : 'gastos'} que coincidan con &quot;{searchTerm}&quot;.
             </p>
           ) : (
             filteredCategories.map((c) => {
               const { IconComponent, hexColor } = resolveCategoryVisuals(c);
-              const totalUsage = c.usage_count ?? 0;
-              const isDefaultSinCat =
-                c.name.trim().toLowerCase() === 'sin categoría' ||
-                c.name.trim().toLowerCase() === 'sin categoria';
+              const isProtected = isSystemCategory(c.name, activeKind);
+              const isIncome = activeKind === 'income';
+              const usageCount = isIncome
+                ? (c.income_count ?? 0)
+                : (c.expense_count ?? c.usage_count ?? 0);
+              const usageLabel = isIncome
+                ? (usageCount === 1 ? '1 ingreso asociado' : `${usageCount} ingresos asociados`)
+                : (usageCount === 1 ? '1 registro asociado' : `${usageCount} registros asociados`);
 
               const subtitle = (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '0.15rem' }}>
@@ -651,21 +700,25 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
                       alignItems: 'center',
                       fontSize: '0.72rem',
                       fontWeight: 600,
-                      color: totalUsage > 0 ? 'var(--text-secondary)' : 'var(--text-tertiary)',
-                      background: totalUsage > 0 ? 'var(--surface-muted)' : 'transparent',
-                      padding: totalUsage > 0 ? '0.12rem 0.5rem' : 0,
+                      color: usageCount > 0 ? 'var(--text-secondary)' : 'var(--text-tertiary)',
+                      background: usageCount > 0 ? 'var(--surface-muted)' : 'transparent',
+                      padding: usageCount > 0 ? '0.12rem 0.5rem' : 0,
                       borderRadius: 'var(--radius-full)',
                       whiteSpace: 'nowrap',
                       lineHeight: 1.3,
                     }}
-                    title={`Gastos: ${c.expense_count || 0} · Gastos fijos: ${c.fixed_count || 0} · Deudas: ${c.debt_count || 0} · Metas: ${c.saving_count || 0} · Presupuestos: ${c.budget_count || 0} · Ingresos: ${c.income_count || 0}`}
+                    title={
+                      isIncome
+                        ? `Ingresos: ${c.income_count || 0}`
+                        : `Gastos: ${c.expense_count || 0} · Gastos fijos: ${c.fixed_count || 0} · Deudas: ${c.debt_count || 0} · Metas: ${c.saving_count || 0} · Presupuestos: ${c.budget_count || 0}`
+                    }
                   >
-                    {totalUsage === 1 ? '1 registro asociado' : `${totalUsage} registros asociados`}
+                    {usageLabel}
                   </span>
                 </div>
               );
 
-              const badges = isDefaultSinCat ? (
+              const badges = isProtected ? (
                 <span
                   style={{
                     fontSize: '0.68rem',
@@ -706,13 +759,13 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
                     <Pencil size={15} />
                   </button>
 
-                  {!isDefaultSinCat && (
+                  {!isProtected && (
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         setDeletingCategory(c);
-                        setReassignTo('');
+                        setReassignTo(defaultReassignTarget);
                       }}
                       style={{
                         width: '32px',
@@ -789,11 +842,23 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
 
             <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.45, margin: '0 0 1rem' }}>
               Estás a punto de eliminar <strong>&quot;{deletingCategory.name}&quot;</strong>.
-              {deletingCategory.usage_count && deletingCategory.usage_count > 0 ? (
-                <span>
-                  {' '}Esta categoría está asociada a <strong>{deletingCategory.usage_count}</strong> {deletingCategory.usage_count === 1 ? 'gasto asociado' : 'gastos asociados'} (gastos, deudas, gastos fijos, etc.).
-                </span>
-              ) : null}
+              {(() => {
+                const isIncome = activeKind === 'income';
+                const count = isIncome
+                  ? (deletingCategory.income_count ?? 0)
+                  : (deletingCategory.expense_count ?? deletingCategory.usage_count ?? 0);
+                const noun = isIncome ? 'ingreso asociado' : 'gasto asociado';
+                const nounPlural = isIncome ? 'ingresos asociados' : 'gastos asociados';
+                if (count > 0) {
+                  return (
+                    <span>
+                      {' '}Esta categoría está asociada a <strong>{count}</strong> {count === 1 ? noun : nounPlural}
+                      {isIncome ? ' (cobros, pagos recibidos, etc.).' : ' (gastos, deudas, gastos fijos, etc.).'}
+                    </span>
+                  );
+                }
+                return null;
+              })()}
             </p>
 
             <div style={{ marginBottom: '1.25rem' }}>
@@ -806,7 +871,7 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
                   marginBottom: '0.35rem',
                 }}
               >
-                Reasignar gastos asociados a:
+                Reasignar {activeKind === 'income' ? 'ingresos asociados' : 'gastos asociados'} a:
               </label>
               <select
                 value={reassignTo}
@@ -822,9 +887,9 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
                   outline: 'none',
                 }}
               >
-                <option value="">Sin Categoría</option>
-                {categories
-                  .filter((c) => c.id !== deletingCategory.id && c.name.toLowerCase() !== 'sin categoría')
+                <option value={defaultReassignTarget}>{defaultReassignTarget}</option>
+                {currentCategories
+                  .filter((c) => c.id !== deletingCategory.id && !isSystemCategory(c.name, activeKind))
                   .map((other) => (
                     <option key={other.id} value={other.name}>
                       {other.name}
@@ -832,7 +897,9 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
                   ))}
               </select>
               <p style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', margin: '0.35rem 0 0 0' }}>
-                Todos los gastos, deudas y presupuestos vinculados serán transferidos automáticamente.
+                {activeKind === 'income'
+                  ? 'Todos los ingresos vinculados serán transferidos automáticamente.'
+                  : 'Todos los gastos, deudas y presupuestos vinculados serán transferidos automáticamente.'}
               </p>
             </div>
 
@@ -882,18 +949,19 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
       {/* Mobile Bottom Sheet for Category Details & Breakdown */}
       {selectedCategoryForSheet && (() => {
         const { IconComponent, hexColor } = resolveCategoryVisuals(selectedCategoryForSheet);
-        const isDefaultSinCat =
-          selectedCategoryForSheet.name.trim().toLowerCase() === 'sin categoría' ||
-          selectedCategoryForSheet.name.trim().toLowerCase() === 'sin categoria';
+        const isProtected = isSystemCategory(selectedCategoryForSheet.name, activeKind);
 
-        const usageItems = [
-          { label: 'Gastos', count: selectedCategoryForSheet.expense_count || 0, color: 'var(--expense-color, #EF4444)' },
-          { label: 'Gastos Fijos', count: selectedCategoryForSheet.fixed_count || 0, color: 'var(--warning-color, #F59E0B)' },
-          { label: 'Deudas', count: selectedCategoryForSheet.debt_count || 0, color: '#8B5CF6' },
-          { label: 'Ahorros / Proyectos', count: selectedCategoryForSheet.saving_count || 0, color: 'var(--accent-color, #6366F1)' },
-          { label: 'Presupuestos', count: selectedCategoryForSheet.budget_count || 0, color: '#3B82F6' },
-          { label: 'Ingresos', count: selectedCategoryForSheet.income_count || 0, color: 'var(--income-color, #10B981)' },
-        ];
+        const usageItems = activeKind === 'income'
+          ? [
+              { label: 'Ingresos / Cobros', count: selectedCategoryForSheet.income_count || 0, color: 'var(--income-color, #10B981)' },
+            ]
+          : [
+              { label: 'Gastos', count: selectedCategoryForSheet.expense_count || 0, color: 'var(--expense-color, #EF4444)' },
+              { label: 'Gastos Fijos', count: selectedCategoryForSheet.fixed_count || 0, color: 'var(--warning-color, #F59E0B)' },
+              { label: 'Deudas', count: selectedCategoryForSheet.debt_count || 0, color: '#8B5CF6' },
+              { label: 'Ahorros / Proyectos', count: selectedCategoryForSheet.saving_count || 0, color: 'var(--accent-color, #6366F1)' },
+              { label: 'Presupuestos', count: selectedCategoryForSheet.budget_count || 0, color: '#3B82F6' },
+            ];
 
         return (
           <ListCardBottomSheet
@@ -929,7 +997,7 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
                   handleOpenEdit(target);
                 },
               },
-              ...(!isDefaultSinCat
+              ...(!isProtected
                 ? [
                     {
                       label: 'Eliminar',
@@ -939,7 +1007,7 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
                         const target = selectedCategoryForSheet;
                         setSelectedCategoryForSheet(null);
                         setDeletingCategory(target);
-                        setReassignTo('');
+                        setReassignTo(defaultReassignTarget);
                       },
                     },
                   ]

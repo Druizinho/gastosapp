@@ -253,6 +253,23 @@ async def trigger_notifications(
             if not has_paid:
                 await send_to_user(inc.user_id, "¿Te pagaron?", f"¿{inc.name} te pagó? Olvidaste avisarnos.", "notify_incomes")
 
+        # 4b. Pending partial income remainder due TODAY
+        stmt_partial = (
+            select(models.IncomeCheck, models.EstimatedIncome)
+            .join(models.EstimatedIncome, models.IncomeCheck.income_id == models.EstimatedIncome.id)
+            .where(
+                models.IncomeCheck.is_partial == True,
+                models.IncomeCheck.pending_date == today
+            )
+        )
+        for check, inc in (await db.execute(stmt_partial)).all():
+            await send_to_user(
+                inc.user_id,
+                "Cobro Pendiente Hoy",
+                f"Hoy te toca recibir el resto del pago de {inc.name} (/herramientas/ingresos?tab=por-cobrar)",
+                "notify_incomes"
+            )
+
         # 5. Debts due TODAY or OVERDUE
         stmt_debts = select(models.Debt).where(
             models.Debt.is_settled == False,

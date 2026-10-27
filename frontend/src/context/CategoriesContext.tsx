@@ -5,9 +5,11 @@ import { useAuth } from './AuthContext';
 
 interface CategoriesContextType {
   categories: Category[];
+  incomeCategories: Category[];
   loading: boolean;
   refreshCategories: () => Promise<Category[]>;
   setCategories: React.Dispatch<React.SetStateAction<Category[]>>;
+  setIncomeCategories: React.Dispatch<React.SetStateAction<Category[]>>;
   addCategoryLocally: (category: Category) => void;
 }
 
@@ -16,18 +18,24 @@ const CategoriesContext = createContext<CategoriesContextType | undefined>(undef
 export const CategoriesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { session } = useAuth();
   const [categories, setCategories] = useState<Category[]>([]);
+  const [incomeCategories, setIncomeCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
 
   const refreshCategories = useCallback(async (): Promise<Category[]> => {
     if (!session) {
       setCategories([]);
+      setIncomeCategories([]);
       return [];
     }
     setLoading(true);
     try {
-      const data = await getCategories();
-      setCategories(data);
-      return data;
+      const [expenseData, incomeData] = await Promise.all([
+        getCategories('expense'),
+        getCategories('income'),
+      ]);
+      setCategories(expenseData);
+      setIncomeCategories(incomeData);
+      return expenseData;
     } catch (err) {
       console.error('Error fetching categories in context:', err);
       return [];
@@ -37,12 +45,21 @@ export const CategoriesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [session]);
 
   const addCategoryLocally = useCallback((newCat: Category) => {
-    setCategories((prev) => {
-      if (prev.some((c) => c.id === newCat.id || c.name.toLowerCase() === newCat.name.toLowerCase())) {
-        return prev.map((c) => (c.id === newCat.id ? newCat : c));
-      }
-      return [...prev, newCat];
-    });
+    if (newCat.kind === 'income') {
+      setIncomeCategories((prev) => {
+        if (prev.some((c) => c.id === newCat.id || c.name.toLowerCase() === newCat.name.toLowerCase())) {
+          return prev.map((c) => (c.id === newCat.id ? newCat : c));
+        }
+        return [...prev, newCat];
+      });
+    } else {
+      setCategories((prev) => {
+        if (prev.some((c) => c.id === newCat.id || c.name.toLowerCase() === newCat.name.toLowerCase())) {
+          return prev.map((c) => (c.id === newCat.id ? newCat : c));
+        }
+        return [...prev, newCat];
+      });
+    }
   }, []);
 
   useEffect(() => {
@@ -50,6 +67,7 @@ export const CategoriesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       refreshCategories();
     } else {
       setCategories([]);
+      setIncomeCategories([]);
     }
   }, [session, refreshCategories]);
 
@@ -57,9 +75,11 @@ export const CategoriesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     <CategoriesContext.Provider
       value={{
         categories,
+        incomeCategories,
         loading,
         refreshCategories,
         setCategories,
+        setIncomeCategories,
         addCategoryLocally,
       }}
     >

@@ -403,6 +403,7 @@ async def get_or_clone_monthly_budgets(
     # Fetch prior budgets
     pb_res = await db.execute(
         select(models.MonthlyBudget)
+        .execution_options(populate_existing=True)
         .options(
             joinedload(models.MonthlyBudget.category_limits),
             noload(models.MonthlyBudget.linked_income)
@@ -1270,6 +1271,7 @@ async def get_monthly_budget_view(
             if type(db).__name__ == "AsyncSession" and all_owner_ids:
                 existing_budgets_res = await db.execute(
                     select(models.MonthlyBudget)
+                    .execution_options(populate_existing=True)
                     .options(
                         joinedload(models.MonthlyBudget.category_limits),
                         noload(models.MonthlyBudget.linked_income)
