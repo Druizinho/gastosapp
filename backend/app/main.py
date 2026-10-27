@@ -9,12 +9,25 @@ import datetime
 
 from .routers import expenses, categories, profiles, fixed_expenses, debts, incomes, push, notifications, connections, savings, shares, budgets
 from .database import engine, Base
+from .time_utils import vet_now
 
 import base64
 import json
 
 # ─── Self-Ping: mantiene el servidor despierto en Render Free Tier ───
 SELF_PING_INTERVAL = 600  # 10 minutos en segundos
+
+def is_self_ping_allowed(now_vet: datetime.datetime) -> bool:
+    """
+    Determina si el self-ping debe ejecutarse según la hora en Venezuela (UTC-4).
+    Ventana de reposo nocturno: 01:00 AM a 06:29 AM.
+    Activo: a partir de las 06:30 AM hasta las 00:59 AM.
+    """
+    # Inactivo si la hora está entre 1 y 5 (01:00 a 05:59)
+    # O si la hora es 6 y minutos < 30 (06:00 a 06:29)
+    if 1 <= now_vet.hour < 6 or (now_vet.hour == 6 and now_vet.minute < 30):
+        return False
+    return True
 
 async def _self_ping_loop():
     """
@@ -41,9 +54,14 @@ async def _self_ping_loop():
     async with httpx.AsyncClient(timeout=30) as client:
         while True:
             try:
+                now = vet_now()
+                if not is_self_ping_allowed(now):
+                    print(f"💤 Self-ping en reposo nocturno ({now.strftime('%H:%M:%S')} VET). No se realiza ping.")
+                    await asyncio.sleep(SELF_PING_INTERVAL)
+                    continue
+
                 response = await client.get(health_url)
-                now = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-4)))
-                print(f"🏓 Self-ping OK ({response.status_code}) a las {now.strftime('%H:%M:%S')}")
+                print(f"🏓 Self-ping OK ({response.status_code}) a las {now.strftime('%H:%M:%S')} VET")
             except Exception as e:
                 print(f"⚠️ Self-ping falló: {e}")
             await asyncio.sleep(SELF_PING_INTERVAL)
