@@ -19,6 +19,62 @@ const formatNumber = (val: number | null | undefined): string => {
   });
 };
 
+const SubRateDisplay: React.FC<{ value: number | null | undefined }> = ({ value }) => {
+  if (value === null || value === undefined || isNaN(value)) {
+    return (
+      <div
+        style={{
+          fontSize: '1.15rem',
+          fontWeight: 800,
+          color: 'var(--text-tertiary)',
+          lineHeight: 1.15,
+        }}
+      >
+        —
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'baseline',
+        whiteSpace: 'nowrap',
+        fontVariantNumeric: 'tabular-nums',
+        letterSpacing: '-0.02em',
+        minWidth: 0,
+      }}
+    >
+      <span
+        style={{
+          fontSize: '0.75rem',
+          fontWeight: 700,
+          color: 'var(--text-secondary)',
+          marginRight: '0.22rem',
+          flexShrink: 0,
+          lineHeight: 1,
+        }}
+      >
+        Bs.
+      </span>
+      <span
+        style={{
+          fontSize: 'clamp(1rem, 3.8vw, 1.3rem)',
+          fontWeight: 900,
+          color: 'var(--text-primary)',
+          letterSpacing: '-0.02em',
+          lineHeight: 1.15,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}
+      >
+        {formatNumber(value)}
+      </span>
+    </div>
+  );
+};
+
 const formatStatusText = (timestamp?: string | null): string => {
   if (!timestamp) return 'BCV Oficial · Hoy';
   try {
@@ -250,7 +306,29 @@ export const RatesPage: React.FC = () => {
           transform: scale(0.96) !important;
         }
         .sub-rate-card {
+          padding: 1rem 0.9rem;
+          min-height: 146px;
+          border-radius: var(--radius-lg);
+          background: var(--surface-color);
+          border: 1px solid var(--border-color);
+          cursor: pointer;
+          display: flex;
+          flex-direction: column;
+          justifyContent: space-between;
+          gap: 0.75rem;
+          box-sizing: border-box;
           transition: transform 150ms ease-out, box-shadow 150ms ease-out, border-color 150ms ease-out;
+        }
+        @media (min-width: 480px) {
+          .sub-rate-card {
+            padding: 1.15rem 1rem;
+            min-height: 154px;
+            gap: 0.85rem;
+          }
+        }
+        .sub-rate-card:focus-visible {
+          outline: 2px solid var(--info-color, #3B82F6);
+          outline-offset: 2px;
         }
         .sub-rate-card:hover {
           box-shadow: var(--shadow-md) !important;
@@ -258,6 +336,17 @@ export const RatesPage: React.FC = () => {
         }
         .sub-rate-card:active {
           transform: scale(0.96) !important;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .pulse-dot {
+            animation: none;
+          }
+          .spin-loading {
+            animation: none;
+          }
+          .better-press, .hero-rate-card, .sub-rate-card, .preset-chip-btn, .secondary-rate-card, .swap-btn {
+            transition: none !important;
+          }
         }
         .preset-chip-btn {
           transition: transform 150ms ease-out, background-color 150ms ease-out, border-color 150ms ease-out, box-shadow 150ms ease-out;
@@ -390,34 +479,40 @@ export const RatesPage: React.FC = () => {
           {/* Skeleton 2-Col Grid */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.85rem' }}>
             <div
+              className="sub-rate-card"
               style={{
-                padding: '1.15rem',
-                borderRadius: 'var(--radius-lg)',
-                background: 'var(--surface-color)',
-                border: '1px solid var(--border-color)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.75rem',
+                cursor: 'default',
+                pointerEvents: 'none',
+                boxShadow: 'var(--shadow-xs)',
               }}
             >
-              <Skeleton width={38} height={38} borderRadius="var(--radius-full)" />
-              <Skeleton width="70%" height="0.9rem" borderRadius="4px" />
-              <Skeleton width="85%" height="1.4rem" borderRadius="6px" />
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Skeleton width={36} height={36} borderRadius="var(--radius-full)" />
+                <Skeleton width={36} height={18} borderRadius="var(--radius-full)" />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                <Skeleton width="65%" height="0.85rem" borderRadius="4px" />
+                <Skeleton width="35%" height="0.7rem" borderRadius="4px" />
+                <Skeleton width="85%" height="1.25rem" borderRadius="6px" />
+              </div>
             </div>
             <div
+              className="sub-rate-card"
               style={{
-                padding: '1.15rem',
-                borderRadius: 'var(--radius-lg)',
-                background: 'var(--surface-color)',
-                border: '1px solid var(--border-color)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.75rem',
+                cursor: 'default',
+                pointerEvents: 'none',
+                boxShadow: 'var(--shadow-xs)',
               }}
             >
-              <Skeleton width={38} height={38} borderRadius="var(--radius-full)" />
-              <Skeleton width="70%" height="0.9rem" borderRadius="4px" />
-              <Skeleton width="85%" height="1.4rem" borderRadius="6px" />
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Skeleton width={36} height={36} borderRadius="var(--radius-full)" />
+                <Skeleton width={56} height={18} borderRadius="var(--radius-full)" />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                <Skeleton width="65%" height="0.85rem" borderRadius="4px" />
+                <Skeleton width="35%" height="0.7rem" borderRadius="4px" />
+                <Skeleton width="85%" height="1.25rem" borderRadius="6px" />
+              </div>
             </div>
           </div>
 
@@ -601,23 +696,14 @@ export const RatesPage: React.FC = () => {
                 className="sub-rate-card"
                 aria-label="Seleccionar Euro Oficial en la calculadora"
                 style={{
-                  padding: '1.15rem',
-                  borderRadius: 'var(--radius-lg)',
-                  background: 'var(--surface-color)',
-                  border: '1px solid var(--border-color)',
-                  boxShadow: '0 2px 8px -2px rgba(59, 130, 246, 0.08), var(--shadow-sm)',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                  gap: '0.85rem',
+                  boxShadow: '0 2px 10px -2px rgba(59, 130, 246, 0.1), var(--shadow-xs)',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.35rem' }}>
                   <div
                     style={{
-                      width: '38px',
-                      height: '38px',
+                      width: '36px',
+                      height: '36px',
                       borderRadius: 'var(--radius-full)',
                       background: 'linear-gradient(135deg, #3B82F6, #2563EB)',
                       display: 'flex',
@@ -625,21 +711,25 @@ export const RatesPage: React.FC = () => {
                       justifyContent: 'center',
                       color: '#FFFFFF',
                       fontWeight: 900,
-                      fontSize: '1.15rem',
-                      boxShadow: '0 3px 8px rgba(59, 130, 246, 0.3)',
+                      fontSize: '1.1rem',
+                      boxShadow: '0 3px 8px rgba(59, 130, 246, 0.25)',
+                      flexShrink: 0,
                     }}
                   >
                     €
                   </div>
                   <span
                     style={{
-                      fontSize: '0.65rem',
+                      fontSize: '0.62rem',
                       fontWeight: 800,
-                      padding: '0.12rem 0.45rem',
+                      padding: '0.15rem 0.42rem',
                       borderRadius: 'var(--radius-full)',
                       background: 'rgba(59, 130, 246, 0.12)',
                       color: '#2563EB',
                       letterSpacing: '0.04em',
+                      lineHeight: 1.2,
+                      whiteSpace: 'nowrap',
+                      flexShrink: 0,
                     }}
                   >
                     BCV
@@ -651,33 +741,29 @@ export const RatesPage: React.FC = () => {
                     style={{
                       fontWeight: 800,
                       color: 'var(--text-primary)',
-                      fontSize: '0.92rem',
+                      fontSize: '0.88rem',
                       letterSpacing: '-0.01em',
+                      lineHeight: 1.2,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
                     }}
                   >
                     Euro Oficial
                   </div>
                   <div
                     style={{
-                      fontSize: '0.72rem',
+                      fontSize: '0.70rem',
                       fontWeight: 600,
                       color: 'var(--text-tertiary)',
+                      marginTop: '0.12rem',
                       marginBottom: '0.35rem',
+                      lineHeight: 1.2,
                     }}
                   >
                     1 EUR
                   </div>
-                  <div
-                    style={{
-                      fontSize: '1.35rem',
-                      fontWeight: 900,
-                      color: 'var(--text-primary)',
-                      fontVariantNumeric: 'tabular-nums',
-                      letterSpacing: '-0.02em',
-                    }}
-                  >
-                    {formatRate(rates?.eur_bs)}
-                  </div>
+                  <SubRateDisplay value={rates?.eur_bs} />
                 </div>
               </div>
 
@@ -695,23 +781,14 @@ export const RatesPage: React.FC = () => {
                 className="sub-rate-card"
                 aria-label="Seleccionar Tether USDT en la calculadora"
                 style={{
-                  padding: '1.15rem',
-                  borderRadius: 'var(--radius-lg)',
-                  background: 'var(--surface-color)',
-                  border: '1px solid var(--border-color)',
-                  boxShadow: '0 2px 8px -2px rgba(245, 158, 11, 0.08), var(--shadow-sm)',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                  gap: '0.85rem',
+                  boxShadow: '0 2px 10px -2px rgba(245, 158, 11, 0.1), var(--shadow-xs)',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.35rem' }}>
                   <div
                     style={{
-                      width: '38px',
-                      height: '38px',
+                      width: '36px',
+                      height: '36px',
                       borderRadius: 'var(--radius-full)',
                       background: 'linear-gradient(135deg, #FACC15, #EAB308)',
                       display: 'flex',
@@ -719,8 +796,9 @@ export const RatesPage: React.FC = () => {
                       justifyContent: 'center',
                       color: '#78350F',
                       fontWeight: 900,
-                      fontSize: '1.15rem',
-                      boxShadow: '0 3px 8px rgba(234, 179, 8, 0.3)',
+                      fontSize: '1.1rem',
+                      boxShadow: '0 3px 8px rgba(234, 179, 8, 0.25)',
+                      flexShrink: 0,
                     }}
                   >
                     ₮
@@ -729,11 +807,14 @@ export const RatesPage: React.FC = () => {
                     style={{
                       fontSize: '0.62rem',
                       fontWeight: 800,
-                      padding: '0.12rem 0.45rem',
+                      padding: '0.15rem 0.42rem',
                       borderRadius: 'var(--radius-full)',
                       background: 'rgba(234, 179, 8, 0.15)',
                       color: '#B45309',
-                      letterSpacing: '0.04em',
+                      letterSpacing: '0.02em',
+                      lineHeight: 1.2,
+                      whiteSpace: 'nowrap',
+                      flexShrink: 0,
                     }}
                   >
                     Binance P2P
@@ -745,33 +826,29 @@ export const RatesPage: React.FC = () => {
                     style={{
                       fontWeight: 800,
                       color: 'var(--text-primary)',
-                      fontSize: '0.92rem',
+                      fontSize: '0.88rem',
                       letterSpacing: '-0.01em',
+                      lineHeight: 1.2,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
                     }}
                   >
                     Tether USDT
                   </div>
                   <div
                     style={{
-                      fontSize: '0.72rem',
+                      fontSize: '0.70rem',
                       fontWeight: 600,
                       color: 'var(--text-tertiary)',
+                      marginTop: '0.12rem',
                       marginBottom: '0.35rem',
+                      lineHeight: 1.2,
                     }}
                   >
                     1 USDT
                   </div>
-                  <div
-                    style={{
-                      fontSize: '1.35rem',
-                      fontWeight: 900,
-                      color: 'var(--text-primary)',
-                      fontVariantNumeric: 'tabular-nums',
-                      letterSpacing: '-0.02em',
-                    }}
-                  >
-                    {formatRate(rates?.usdt_bs)}
-                  </div>
+                  <SubRateDisplay value={rates?.usdt_bs} />
                 </div>
               </div>
             </div>
