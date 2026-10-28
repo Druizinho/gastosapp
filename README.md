@@ -193,9 +193,7 @@ gastosapp/
 │   │       ├── push.py           # Endpoints /api/push y webhook /cron
 │   │       ├── savings.py        # Endpoints /api/savings
 │   │       └── shares.py         # Endpoints /api/shares
-│   ├── check_notifs.py           # Script CLI de diagnóstico de notificaciones en BD
 │   ├── create_tables.py          # Script de inicialización de modelos SQLAlchemy
-│   ├── insert_notification.py    # Script CLI para emitir notificación de prueba
 │   └── requirements.txt          # Dependencias de Python congeladas
 │
 └── frontend/
