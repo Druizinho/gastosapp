@@ -2243,8 +2243,17 @@ body {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 0.75rem;
+  gap: 0.5rem 0.75rem;
   width: 100%;
+  flex-wrap: wrap;
+}
+
+.list-card-header-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  flex: 1 1 180px;
+  min-width: 140px;
 }
 
 .list-card-icon-container {
@@ -2261,7 +2270,7 @@ body {
 
 .list-card-spine {
   flex: 1;
-  min-width: 0;
+  min-width: 120px;
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
@@ -2271,7 +2280,8 @@ body {
   font-weight: 600;
   font-size: 0.95rem;
   line-height: 1.25;
-  word-break: break-word;
+  word-break: normal;
+  overflow-wrap: break-word;
   color: var(--text-primary);
 }
 
@@ -2283,7 +2293,8 @@ body {
 .list-card-subtitle {
   font-size: 0.8rem;
   line-height: 1.2;
-  word-break: break-word;
+  word-break: normal;
+  overflow-wrap: break-word;
   color: var(--text-tertiary);
   min-width: 0;
 }

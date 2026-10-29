@@ -335,6 +335,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
     budgetId: '',
     categoryName: '',
   });
+  const [isDeletingCategoryLimit, setIsDeletingCategoryLimit] = useState(false);
 
   const [leaveSharedBudgetConfirm, setLeaveSharedBudgetConfirm] = useState<SingleBudgetOut | null>(null);
   const [activeShareModalItem, setActiveShareModalItem] = useState<{ id: string; name: string } | null>(null);
@@ -601,38 +602,70 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
   };
 
   const handleDeleteBudget = async () => {
-    if (!confirmDeleteBudget.budgetId) return;
+    if (!confirmDeleteBudget.budgetId) {
+      setConfirmDeleteBudget({ isOpen: false, budgetId: '', budgetName: '' });
+      return;
+    }
+    const budgetId = confirmDeleteBudget.budgetId;
+    const budgetName = confirmDeleteBudget.budgetName;
+    // Dismiss confirmation modal immediately to avoid sticking on screen
+    setConfirmDeleteBudget({ isOpen: false, budgetId: '', budgetName: '' });
     try {
-      const updated = await deleteMonthlyBudgetById(confirmDeleteBudget.budgetId);
+      const updated = await deleteMonthlyBudgetById(budgetId);
       setBudgetResponse(updated);
-      if (selectedBudgetId === confirmDeleteBudget.budgetId) {
+      if (selectedBudgetId === budgetId) {
         setSelectedBudgetId(null);
       }
       invalidateMonthlyBudgetCache(currentMonthYear);
+      toast.success(`Grupo "${budgetName}" eliminado`);
       await fetchData(true);
     } catch (error) {
       console.error('Error deleting budget:', error);
       toast.error('Error al eliminar presupuesto');
-    } finally {
-      setConfirmDeleteBudget({ isOpen: false, budgetId: '', budgetName: '' });
     }
   };
 
   const handleDeleteCategoryLimit = async () => {
-    if (!confirmDeleteCategoryLimit.budgetId || !confirmDeleteCategoryLimit.categoryName) return;
+    const budgetId =
+      confirmDeleteCategoryLimit.budgetId ||
+      primaryBudget?.id ||
+      selectedBudget?.id ||
+      budgetResponse?.budgets?.find((b) => b.is_primary)?.id;
+    const catName = confirmDeleteCategoryLimit.categoryName;
+
+    // Immediately close confirmation dialog so it never lingers on screen
+    setConfirmDeleteCategoryLimit({ isOpen: false, budgetId: '', categoryName: '' });
+
+    // If categoryModal (the edit limit modal) is open, close it cleanly
+    if (categoryModal.isOpen) {
+      setCategoryModal((prev) => ({
+        ...prev,
+        isOpen: false,
+        limitAmount: '',
+        existingLimit: null,
+      }));
+    }
+
+    if (!budgetId || !catName) {
+      return;
+    }
+
+    setIsDeletingCategoryLimit(true);
     try {
-      const updated = await deleteCategoryLimitByBudgetId(
-        confirmDeleteCategoryLimit.budgetId,
-        confirmDeleteCategoryLimit.categoryName
-      );
+      const updated = await deleteCategoryLimitByBudgetId(budgetId, catName);
       setBudgetResponse(updated);
       invalidateMonthlyBudgetCache(currentMonthYear);
+      toast.success(
+        selectedBudget?.is_primary || !selectedBudget
+          ? `Límite de "${catName}" restablecido a 0`
+          : `Categoría "${catName}" quitada del grupo`
+      );
       await fetchData(true);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting category limit:', error);
-      toast.error('Error al eliminar límite de categoría');
+      toast.error(error?.response?.data?.detail || 'Error al eliminar límite de categoría');
     } finally {
-      setConfirmDeleteCategoryLimit({ isOpen: false, budgetId: '', categoryName: '' });
+      setIsDeletingCategoryLimit(false);
     }
   };
 
@@ -1853,18 +1886,49 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                   {categoryModal.categoryName} • Plan Maestro
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setCategoryModal((prev) => ({ ...prev, isOpen: false }))}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: 'var(--text-secondary)',
-                }}
-              >
-                <X size={20} />
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                {categoryModal.existingLimit && Number(categoryModal.existingLimit.limit_amount) > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const targetId = (primaryBudget || selectedBudget)?.id || '';
+                      setConfirmDeleteCategoryLimit({
+                        isOpen: true,
+                        budgetId: targetId,
+                        categoryName: categoryModal.categoryName,
+                      });
+                    }}
+                    title="Restablecer límite a 0"
+                    style={{
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: 'var(--radius-full)',
+                      background: 'var(--surface-muted)',
+                      border: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      color: 'var(--text-tertiary)',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <RotateCcw size={15} />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setCategoryModal((prev) => ({ ...prev, isOpen: false }))}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  <X size={20} />
+                </button>
+              </div>
             </div>
 
             {/* Sync explanation callout */}
@@ -1970,6 +2034,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
       {/* ConfirmDelete Category Limit Modal */}
       <ConfirmModal
         isOpen={confirmDeleteCategoryLimit.isOpen}
+        loading={isDeletingCategoryLimit}
         title={selectedBudget?.is_primary ? '¿Restablecer límite?' : '¿Quitar categoría del grupo?'}
         message={
           selectedBudget?.is_primary

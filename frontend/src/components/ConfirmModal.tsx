@@ -1,11 +1,11 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 interface ConfirmModalProps {
   isOpen: boolean;
   title: string;
   message: string;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
   onCancel: () => void;
   loading?: boolean;
 }
@@ -19,9 +19,17 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
   loading = false,
 }) => {
   const onCancelRef = useRef(onCancel);
-  onCancelRef.current = onCancel;
-  const loadingRef = useRef(loading);
-  loadingRef.current = loading;
+  const [internalLoading, setInternalLoading] = useState(false);
+  const isLoading = loading || internalLoading;
+  const loadingRef = useRef(isLoading);
+
+  useEffect(() => {
+    onCancelRef.current = onCancel;
+  }, [onCancel]);
+
+  useEffect(() => {
+    loadingRef.current = isLoading;
+  }, [isLoading]);
 
   // Escape key listener
   useEffect(() => {
@@ -43,10 +51,14 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
 
-    window.history.pushState({ modal: 'confirm' }, '');
+    window.history.pushState({ ...window.history.state, modal: 'confirm' }, '');
     let isPopped = false;
 
     const handlePopState = () => {
+      if (loadingRef.current) {
+        window.history.pushState({ ...window.history.state, modal: 'confirm' }, '');
+        return;
+      }
       isPopped = true;
       onCancelRef.current();
     };
@@ -63,12 +75,24 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
 
   if (!isOpen || typeof document === 'undefined') return null;
 
+  const handleConfirm = async () => {
+    if (isLoading) return;
+    try {
+      setInternalLoading(true);
+      await onConfirm();
+    } catch (err) {
+      console.error('ConfirmModal onConfirm error:', err);
+    } finally {
+      setInternalLoading(false);
+    }
+  };
+
   const modalContent = (
     <div
       className="modal-backdrop"
       style={{ zIndex: 1000 }}
       onClick={(e) => {
-        if (e.target === e.currentTarget && !loading) {
+        if (e.target === e.currentTarget && !isLoading) {
           onCancel();
         }
       }}
@@ -107,7 +131,7 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
           <button
             type="button"
             onClick={onCancel}
-            disabled={loading}
+            disabled={isLoading}
             style={{
               flex: 1,
               padding: '0.875rem',
@@ -116,16 +140,16 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
               background: 'var(--surface-muted)',
               color: 'var(--text-primary)',
               fontWeight: 600,
-              cursor: loading ? 'not-allowed' : 'pointer',
-              opacity: loading ? 0.6 : 1,
+              cursor: isLoading ? 'not-allowed' : 'pointer',
+              opacity: isLoading ? 0.6 : 1,
             }}
           >
             Cancelar
           </button>
           <button
             type="button"
-            onClick={onConfirm}
-            disabled={loading}
+            onClick={handleConfirm}
+            disabled={isLoading}
             style={{
               flex: 1,
               padding: '0.875rem',
@@ -134,11 +158,11 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
               background: 'var(--expense-color)',
               color: 'white',
               fontWeight: 600,
-              cursor: loading ? 'not-allowed' : 'pointer',
-              opacity: loading ? 0.6 : 1,
+              cursor: isLoading ? 'not-allowed' : 'pointer',
+              opacity: isLoading ? 0.6 : 1,
             }}
           >
-            {loading ? 'Procesando...' : 'Confirmar'}
+            {isLoading ? 'Procesando...' : 'Confirmar'}
           </button>
         </div>
       </div>

@@ -70,21 +70,23 @@ export const ListCard: React.FC<ListCardProps> = ({
     >
       {/* Tier 1 (.list-card-top) */}
       <div className="list-card-top">
-        {icon && (
-          <div
-            className="list-card-icon-container"
-            style={{
-              backgroundColor: iconBg || (statusColor !== 'transparent' ? `${statusColor}18` : 'var(--surface-muted)'),
-              color: iconColor || (statusColor !== 'transparent' ? statusColor : 'var(--text-primary)'),
-              border: statusColor !== 'transparent' ? `1px solid ${statusColor}33` : undefined,
-            }}
-          >
-            {icon}
+        <div className="list-card-header-left">
+          {icon && (
+            <div
+              className="list-card-icon-container"
+              style={{
+                backgroundColor: iconBg || (statusColor !== 'transparent' ? `${statusColor}18` : 'var(--surface-muted)'),
+                color: iconColor || (statusColor !== 'transparent' ? statusColor : 'var(--text-primary)'),
+                border: statusColor !== 'transparent' ? `1px solid ${statusColor}33` : undefined,
+              }}
+            >
+              {icon}
+            </div>
+          )}
+          <div className="list-card-spine">
+            <div className={`list-card-title ${isPaused ? 'strikethrough' : ''}`}>{title}</div>
+            {subtitle && <div className="list-card-subtitle">{subtitle}</div>}
           </div>
-        )}
-        <div className="list-card-spine">
-          <div className={`list-card-title ${isPaused ? 'strikethrough' : ''}`}>{title}</div>
-          {subtitle && <div className="list-card-subtitle">{subtitle}</div>}
         </div>
         {quickAction && (
           <div
