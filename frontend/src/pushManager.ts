@@ -1,6 +1,9 @@
 import { subscribeToPush, unsubscribeFromPush } from './api';
 import { messaging, getToken, onMessage } from './firebase';
 
+const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY;
+const getMessagingInstance = async () => messaging;
+
 export class NotSupportedError extends Error {
   constructor(message: string) {
     super(message);
@@ -28,7 +31,7 @@ export const checkPushSubscriptionStatus = async (): Promise<boolean> => {
   return !!storedToken;
 };
 
-export const enablePushNotifications = async (): Promise<boolean> => {
+export const enablePushNotifications = async (userId?: string): Promise<boolean> => {
   if (!('serviceWorker' in navigator) || !('PushManager' in window) || !messaging) {
     throw new NotSupportedError('Push notifications are not supported in this browser or context.');
   }
@@ -49,7 +52,7 @@ export const enablePushNotifications = async (): Promise<boolean> => {
 
   try {
     const registration = await navigator.serviceWorker.ready;
-    const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
+    const vapidKey = VAPID_KEY;
     
     if (!vapidKey) {
       console.warn("VITE_FIREBASE_VAPID_KEY is not defined. Notifications might fail to register on some browsers.");
@@ -63,6 +66,9 @@ export const enablePushNotifications = async (): Promise<boolean> => {
     if (currentToken) {
       await subscribeToPush({ fcm_token: currentToken });
       localStorage.setItem('fcm_token', currentToken);
+      if (userId) {
+        localStorage.setItem('fcm_token_user_id', userId);
+      }
       
       // Attempt to show a native notification for testing since we are in foreground
       if (Notification.permission === 'granted') {
@@ -80,8 +86,33 @@ export const enablePushNotifications = async (): Promise<boolean> => {
   }
 };
 
+export const syncPushSubscription = async (userId: string): Promise<void> => {
+  try {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    const savedToken = localStorage.getItem('fcm_token');
+    if (!savedToken) return; // El usuario no ha activado push en la app
+    const savedUserId = localStorage.getItem('fcm_token_user_id');
+    const messaging = await getMessagingInstance();
+    if (!messaging) return;
+    const registration = await navigator.serviceWorker.ready;
+    const currentToken = await getToken(messaging, {
+      vapidKey: VAPID_KEY,
+      serviceWorkerRegistration: registration,
+    });
+    if (currentToken && (currentToken !== savedToken || savedUserId !== userId)) {
+      await subscribeToPush({ fcm_token: currentToken });
+      localStorage.setItem('fcm_token', currentToken);
+      localStorage.setItem('fcm_token_user_id', userId);
+    }
+  } catch (err) {
+    console.warn('Silent push sync skipped:', err);
+  }
+};
+
 export const disablePushNotifications = async (): Promise<boolean> => {
   if (!('serviceWorker' in navigator) || !('PushManager' in window) || !messaging) {
+    localStorage.removeItem('fcm_token');
+    localStorage.removeItem('fcm_token_user_id');
     return false;
   }
 
@@ -89,12 +120,14 @@ export const disablePushNotifications = async (): Promise<boolean> => {
     const token = localStorage.getItem('fcm_token');
     if (token) {
       await unsubscribeFromPush(token);
-      localStorage.removeItem('fcm_token');
     }
     return true;
   } catch (error) {
     console.error('Failed to disable push notifications:', error);
     return false;
+  } finally {
+    localStorage.removeItem('fcm_token');
+    localStorage.removeItem('fcm_token_user_id');
   }
 };
 
@@ -124,7 +157,7 @@ export const setupForegroundMessageListener = (callback?: ForegroundMessageCallb
       const options = {
         body: payload.notification?.body || payload.data?.body,
         icon: '/pwa-192x192.png',
-        badge: '/favicon.svg',
+        badge: '/pwa-192x192.png',
         data: { url: payload.fcmOptions?.link || payload.data?.url || '/' },
       };
 

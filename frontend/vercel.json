@@ -1,18 +1,18 @@
 {
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/((?!api/|sw\\.js|workbox-.*\\.js|manifest\\.webmanifest).*)",
       "destination": "/index.html"
     }
   ],
   "crons": [
     {
-      "path": "/api/cron/notifications",
+      "path": "/api/cron/notifications?window=morning",
       "schedule": "0 13 * * *"
     },
     {
-      "path": "/api/cron/notifications",
-      "schedule": "0 0 * * *"
+      "path": "/api/cron/notifications?window=evening",
+      "schedule": "0 23 * * *"
     }
   ]
 }

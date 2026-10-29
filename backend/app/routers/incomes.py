@@ -51,7 +51,7 @@ async def check_income(
     db: AsyncSession = Depends(get_db),
     user_id: UUID = Depends(get_current_user)
 ):
-    rates = await bcv_service.get_all_rates()
+    rates = await bcv_service.get_rates_for_date(target_date=check.payment_date, db=db)
     currency_str = check.currency.value if hasattr(check.currency, "value") else str(check.currency or "BS")
     equivalents = bcv_service.convert_amount(
         amount=check.real_amount,
@@ -127,7 +127,7 @@ async def create_income(
     db: AsyncSession = Depends(get_db),
     user_id: UUID = Depends(get_current_user)
 ):
-    rates = await bcv_service.get_all_rates()
+    rates = await bcv_service.get_rates_for_date(target_date=income.date, db=db)
     currency_str = income.currency.value if hasattr(income.currency, "value") else str(income.currency or "BS")
     equivalents = bcv_service.convert_amount(
         amount=income.amount,
@@ -178,17 +178,26 @@ async def update_income(
     if not db_income:
         raise HTTPException(status_code=404, detail="Income not found")
 
-    amount = income.amount if income.amount is not None else db_income.amount
-    curr_val = income.currency.value if hasattr(income.currency, "value") else income.currency
-    currency = curr_val if curr_val is not None else db_income.currency
-
-    rates = await bcv_service.get_all_rates()
-    equivalents = bcv_service.convert_amount(
-        amount=amount,
-        currency=currency,
-        rates=rates,
-        manual_rate=income.manual_rate
-    )
+    equivalents = None
+    if income.amount is not None or income.currency is not None or income.date is not None or income.manual_rate is not None:
+        amount = income.amount if income.amount is not None else db_income.amount
+        curr_val = income.currency.value if hasattr(income.currency, "value") else income.currency
+        currency = curr_val if curr_val is not None else db_income.currency
+        currency_str = currency.value if hasattr(currency, "value") else str(currency or "BS")
+        target_date = income.date if income.date is not None else db_income.date
+        date_changed = (income.date is not None and income.date != db_income.date)
+        rates = await bcv_service.resolve_rates_for_update(
+            db_income, target_date=target_date, existing_date=db_income.date, db=db
+        )
+        eff_manual = bcv_service.resolve_manual_rate_for_update(
+            db_income, currency_str, income.manual_rate, date_changed=date_changed
+        )
+        equivalents = bcv_service.convert_amount(
+            amount=amount,
+            currency=currency_str,
+            rates=rates,
+            manual_rate=eff_manual
+        )
 
     updated_income = await crud_incomes.update_income(
         db, entry_id=income_id, income_update=income, user_id=user_id, extra_data=equivalents

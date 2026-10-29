@@ -19,6 +19,11 @@ interface ExpenseFormProps {
   onCategoriesChanged?: () => void;
 }
 
+const getLocalToday = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 const ExpenseForm: React.FC<ExpenseFormProps> = ({
   initialData,
   initialIncomeData,
@@ -48,7 +53,7 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
     return categories[0]?.name || 'Sin Categoría';
   });
   const [date, setDate] = useState<string>(
-    initialIncomeData ? initialIncomeData.date : (initialData?.date || new Date().toISOString().split('T')[0])
+    initialIncomeData ? initialIncomeData.date : (initialData?.date || getLocalToday())
   );
   const [currency, setCurrency] = useState<CurrencyType>(
     initialIncomeData ? initialIncomeData.currency : (initialData?.currency || 'BS')
@@ -122,16 +127,16 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
   useEffect(() => {
     const fetchRates = async () => {
       try {
-        const ratesData = await getRates();
-        setRates(ratesData);
-      } catch (error) {
-        console.error("Failed to fetch rates", error);
+        const currentRates = await getRates(date || undefined);
+        setRates(currentRates);
+      } catch (err) {
+        console.error('Failed to load exchange rates inside form', err);
       }
     };
     fetchRates();
-  }, []);
+  }, [date]);
 
-  const monthYear = date ? date.slice(0, 7) : new Date().toISOString().slice(0, 7);
+  const monthYear = date ? date.slice(0, 7) : getLocalToday().slice(0, 7);
 
   useEffect(() => {
     if (mode !== 'income' || initialIncomeData) {
@@ -312,12 +317,19 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
     }
   };
 
-  const currentRate = rates?.usd_bs;
+  const currentRate = currency === 'EUR_BCV' ? rates?.eur_bs : currency === 'USDT' ? rates?.usdt_bs : rates?.usd_bs;
   const isEditing = Boolean(initialData || initialIncomeData);
 
   return (
-    <div className="modal-backdrop">
-      <div className="expense-form-container">
+    <div
+      className="modal-backdrop"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onCancel();
+        }
+      }}
+    >
+      <div className="expense-form-container" onClick={(e) => e.stopPropagation()}>
         <h2>
           {mode === 'income'
             ? (initialIncomeData ? 'Editar Ingreso' : 'Nuevo Ingreso')
@@ -456,7 +468,7 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
                 const val = e.target.value.replace(/[^0-9.,]/g, '');
                 setManualRate(val);
               }}
-              placeholder={currentRate ? `Por defecto usa la del mercado` : "Ej. 36.50"}
+              placeholder={currentRate ? `Por defecto: Bs. ${Number(currentRate).toFixed(2)}` : "Ej. 36.50"}
             />
             <div
               style={{

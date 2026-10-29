@@ -6,9 +6,11 @@ import firebase_admin
 from firebase_admin import credentials
 import asyncio
 import datetime
+from typing import Optional
+from sqlalchemy import text
 
 from .routers import expenses, categories, profiles, fixed_expenses, debts, incomes, push, notifications, connections, savings, shares, budgets
-from .database import engine, Base
+from .database import engine, Base, SessionLocal as AsyncSessionLocal
 from .time_utils import vet_now
 
 import base64
@@ -66,6 +68,64 @@ async def _self_ping_loop():
                 print(f"⚠️ Self-ping falló: {e}")
             await asyncio.sleep(SELF_PING_INTERVAL)
 
+async def ensure_notifications_schema():
+    """Añade idempotentemente columnas para notificaciones y perfiles."""
+    statements = [
+        "ALTER TABLE profiles ADD COLUMN IF NOT EXISTS notify_budgets BOOLEAN NOT NULL DEFAULT true;",
+        "ALTER TABLE profiles ADD COLUMN IF NOT EXISTS notify_panas BOOLEAN NOT NULL DEFAULT true;",
+        "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS url VARCHAR DEFAULT '/';",
+        "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS is_resolved BOOLEAN NOT NULL DEFAULT false;",
+        "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS entity_type VARCHAR(50);",
+        "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS entity_id UUID;",
+    ]
+    for stmt in statements:
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text(stmt))
+        except Exception as e:
+            print(f"Aviso migración notificaciones: {e}")
+
+
+async def _notification_scheduler_loop():
+    """
+    Bucle en segundo plano que revisa cada 60 segundos si es momento de ejecutar
+    el resumen matutino (9:00 AM VET) o vespertino (7:00 PM / 19:00 VET).
+    """
+    from .routers.push import execute_scheduled_notifications
+    last_morning_date: Optional[datetime.date] = None
+    last_evening_date: Optional[datetime.date] = None
+
+    while True:
+        try:
+            now = vet_now()
+            today = now.date()
+
+            # Ventana matutina: 9:00 AM VET
+            if now.hour == 9 and last_morning_date != today:
+                try:
+                    async with AsyncSessionLocal() as db:
+                        await execute_scheduled_notifications(db, "morning", now_vet=now)
+                    last_morning_date = today
+                    print(f"⏰ Resumen matutino ejecutado exitosamente a las {now.strftime('%H:%M:%S')} VET")
+                except Exception as e:
+                    print(f"⚠️ Error en scheduler matutino: {e}")
+
+            # Ventana vespertina: 7:00 PM (19:00) VET
+            if now.hour == 19 and last_evening_date != today:
+                try:
+                    async with AsyncSessionLocal() as db:
+                        await execute_scheduled_notifications(db, "evening", now_vet=now)
+                    last_evening_date = today
+                    print(f"🌙 Resumen vespertino ejecutado exitosamente a las {now.strftime('%H:%M:%S')} VET")
+                except Exception as e:
+                    print(f"⚠️ Error en scheduler vespertino: {e}")
+
+        except Exception as e:
+            print(f"⚠️ Error en bucle del scheduler de notificaciones: {e}")
+
+        await asyncio.sleep(60)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Inicializar Firebase Admin
@@ -94,12 +154,22 @@ async def lifespan(app: FastAPI):
     ping_task = asyncio.create_task(_self_ping_loop())
     print("✅ Tarea de self-ping lanzada en segundo plano.")
 
+    # Lanzar el scheduler de notificaciones como tarea de fondo
+    scheduler_task = asyncio.create_task(_notification_scheduler_loop())
+    print("✅ Tarea de scheduler de notificaciones lanzada en segundo plano.")
+
     # Asegurar tablas base si no existen
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
     except Exception as e:
         print(f"Aviso metadata create_all: {e}")
+
+    # Asegurar migración de esquema para notificaciones
+    try:
+        await ensure_notifications_schema()
+    except Exception as e:
+        print(f"Error asegurando esquema de notificaciones: {e}")
 
     # Asegurar migración de esquema para presupuestos
     try:
@@ -117,12 +187,17 @@ async def lifespan(app: FastAPI):
     
     yield
     
-    # Cancelar el self-ping al apagar
+    # Cancelar tareas de fondo al apagar
     ping_task.cancel()
+    scheduler_task.cancel()
     try:
         await ping_task
     except asyncio.CancelledError:
         print("🛑 Self-ping detenido.")
+    try:
+        await scheduler_task
+    except asyncio.CancelledError:
+        print("🛑 Scheduler de notificaciones detenido.")
     await engine.dispose()
 
 app = FastAPI(title="GastosApp API", lifespan=lifespan)

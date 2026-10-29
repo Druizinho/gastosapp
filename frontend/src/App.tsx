@@ -119,6 +119,20 @@ const AppRoutes = () => {
   const { session, isRecovery } = useAuth();
   const navigate = useNavigate();
 
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    const handleSWMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'NOTIFICATION_CLICK' && typeof event.data?.url === 'string') {
+        navigate(event.data.url);
+        if (event.data.url.includes('notifications=open')) {
+          window.dispatchEvent(new CustomEvent('gastosapp:open-notifications'));
+        }
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', handleSWMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', handleSWMessage);
+  }, [navigate]);
+
   return (
     <Routes>
       <Route 

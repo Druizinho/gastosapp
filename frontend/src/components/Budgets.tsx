@@ -430,13 +430,13 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
       if (selectedBudgetId === target.id) {
         setSelectedBudgetId(null);
       }
-      setLeaveSharedBudgetConfirm(null);
       invalidateMonthlyBudgetCache(currentMonthYear);
       await fetchData(true);
     } catch (err: any) {
       console.error('Error al salir del presupuesto compartido:', err);
       toast.error(err?.response?.data?.detail || 'Error al salir del presupuesto compartido');
     } finally {
+      setLeaveSharedBudgetConfirm(null);
       setIsLeavingShare(false);
     }
   };
@@ -608,12 +608,13 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
       if (selectedBudgetId === confirmDeleteBudget.budgetId) {
         setSelectedBudgetId(null);
       }
-      setConfirmDeleteBudget({ isOpen: false, budgetId: '', budgetName: '' });
       invalidateMonthlyBudgetCache(currentMonthYear);
       await fetchData(true);
     } catch (error) {
       console.error('Error deleting budget:', error);
       toast.error('Error al eliminar presupuesto');
+    } finally {
+      setConfirmDeleteBudget({ isOpen: false, budgetId: '', budgetName: '' });
     }
   };
 
@@ -625,12 +626,13 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
         confirmDeleteCategoryLimit.categoryName
       );
       setBudgetResponse(updated);
-      setConfirmDeleteCategoryLimit({ isOpen: false, budgetId: '', categoryName: '' });
       invalidateMonthlyBudgetCache(currentMonthYear);
       await fetchData(true);
     } catch (error) {
       console.error('Error deleting category limit:', error);
       toast.error('Error al eliminar límite de categoría');
+    } finally {
+      setConfirmDeleteCategoryLimit({ isOpen: false, budgetId: '', categoryName: '' });
     }
   };
 
@@ -1814,9 +1816,18 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
 
       {/* CategoryLimitModal */}
       {categoryModal.isOpen && (
-        <div className="modal-backdrop" style={{ zIndex: 1000 }}>
+        <div
+          className="modal-backdrop"
+          style={{ zIndex: 1000 }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setCategoryModal((prev) => ({ ...prev, isOpen: false }));
+            }
+          }}
+        >
           <div
             className="expense-form-container soft-card"
+            onClick={(e) => e.stopPropagation()}
             style={{
               maxWidth: '420px',
               width: '90%',
@@ -1843,6 +1854,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => setCategoryModal((prev) => ({ ...prev, isOpen: false }))}
                 style={{
                   background: 'transparent',
@@ -1975,6 +1987,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
         message={`¿Estás seguro de salir de "${leaveSharedBudgetConfirm?.name || ''}"? Dejarás de ver este presupuesto compartido.`}
         onConfirm={handleConfirmLeaveSharedBudget}
         onCancel={() => setLeaveSharedBudgetConfirm(null)}
+        loading={isLeavingShare}
       />
 
       {/* ShareMembersModal for Sub-Budget */}
@@ -2155,9 +2168,18 @@ const BudgetFormModal: React.FC<BudgetFormModalProps> = ({
   };
 
   return (
-    <div className="modal-backdrop" style={{ zIndex: 1000 }}>
+    <div
+      className="modal-backdrop"
+      style={{ zIndex: 1000 }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
       <div
         className="expense-form-container soft-card"
+        onClick={(e) => e.stopPropagation()}
         style={{
           maxWidth: '450px',
           width: '90%',
@@ -2184,6 +2206,7 @@ const BudgetFormModal: React.FC<BudgetFormModalProps> = ({
             </p>
           </div>
           <button
+            type="button"
             onClick={onClose}
             style={{
               background: 'transparent',

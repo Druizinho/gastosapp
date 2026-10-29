@@ -172,7 +172,12 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
   );
 
   return (
-    <div className="modal-backdrop" onClick={onCancel}>
+    <div
+      className="modal-backdrop"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onCancel();
+      }}
+    >
       <div 
         className="expense-form-container" 
         onClick={(e) => e.stopPropagation()}

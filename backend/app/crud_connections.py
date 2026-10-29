@@ -10,7 +10,7 @@ import time
 from collections import defaultdict
 
 from . import models, schemas, sharing, crud_budgets
-from .push_service import send_push_notification, send_notification_to_user
+from .push_service import send_push_notification, send_notification_to_user, resolve_notifications_for_entity
 
 _connection_request_history = defaultdict(list)
 _RATE_LIMIT_WINDOW_SECONDS = 60
@@ -125,6 +125,7 @@ async def create_connection_request(db: AsyncSession, requester_id: UUID, target
         status='pending'
     )
     db.add(conn)
+    await db.flush()
     
     # Send notification
     requester_profile_res = await db.execute(select(models.Profile).where(models.Profile.id == requester_id))
@@ -132,7 +133,16 @@ async def create_connection_request(db: AsyncSession, requester_id: UUID, target
     req_name = requester_profile.display_name if requester_profile and requester_profile.display_name else "Alguien"
     
     await send_notification_to_user(
-        db, target.id, "Nueva solicitud de conexión", f"{req_name} quiere conectar contigo", "connection_request", url="/herramientas/panas"
+        db,
+        target.id,
+        "Nueva solicitud de conexión",
+        f"{req_name} quiere conectar contigo",
+        "connection_request",
+        url="/herramientas/panas",
+        send_push=True,
+        entity_type="connection",
+        entity_id=conn.id,
+        commit=False,
     )
     
     await db.commit()
@@ -161,8 +171,19 @@ async def accept_connection(db: AsyncSession, connection_id: UUID, user_id: UUID
     receiver_profile = receiver_profile_res.scalars().first()
     rec_name = receiver_profile.display_name if receiver_profile and receiver_profile.display_name else "Alguien"
     
+    await resolve_notifications_for_entity(db, "connection", conn.id, user_id=user_id, commit=False)
+
     await send_notification_to_user(
-        db, conn.requester_id, "Solicitud aceptada", f"{rec_name} aceptó tu solicitud de conexión", "connection_accepted", url="/herramientas/panas"
+        db,
+        conn.requester_id,
+        "Solicitud aceptada",
+        f"{rec_name} aceptó tu solicitud de conexión",
+        "connection_accepted",
+        url="/herramientas/panas",
+        send_push=False,
+        entity_type="connection",
+        entity_id=conn.id,
+        commit=False,
     )
     
     await db.commit()
@@ -185,8 +206,10 @@ async def reject_connection(db: AsyncSession, connection_id: UUID, user_id: UUID
     if not conn:
         return False
         
+    conn_id = conn.id
     conn.status = 'rejected'
     conn.updated_at = datetime.now(timezone.utc)
+    await resolve_notifications_for_entity(db, "connection", conn_id, user_id=user_id, commit=False)
     await db.commit()
     return True
 
@@ -288,7 +311,11 @@ async def create_connection_request_by_user_id(db: AsyncSession, requester_id: U
         title="Nueva solicitud de pana",
         body=f"{sender_name} te envió una solicitud para conectarse como panas",
         type="connection_request",
-        url="/herramientas/panas"
+        url="/herramientas/panas",
+        send_push=True,
+        entity_type="connection",
+        entity_id=conn.id,
+        commit=False,
     )
 
     await db.commit()

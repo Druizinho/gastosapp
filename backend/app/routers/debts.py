@@ -74,7 +74,7 @@ async def add_debt_payment(
     user_id: UUID = Depends(get_current_user)
 ):
     # Get rates for currency conversion at the time of payment
-    rates = await bcv_service.get_all_rates()
+    rates = await bcv_service.get_rates_for_date(target_date=payment.payment_date, db=db)
     equivalents = bcv_service.convert_amount(
         amount=payment.amount,
         currency=payment.currency.value if payment.currency else "BS",
@@ -103,14 +103,6 @@ async def update_debt_payment(
     user_id: UUID = Depends(get_current_user)
 ):
     equivalents = None
-    if payment_update.amount is not None and payment_update.currency is not None:
-        rates = await bcv_service.get_all_rates()
-        equivalents = bcv_service.convert_amount(
-            amount=payment_update.amount,
-            currency=payment_update.currency.value if hasattr(payment_update.currency, "value") else str(payment_update.currency),
-            rates=rates,
-            manual_rate=payment_update.manual_rate
-        )
     db_debt = await crud_debts.update_debt_payment(
         db=db,
         payment_id=payment_id,

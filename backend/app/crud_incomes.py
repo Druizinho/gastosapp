@@ -9,6 +9,7 @@ from datetime import datetime, timezone, timedelta, date
 import calendar
 from decimal import Decimal
 from . import models, schemas
+from .push_service import resolve_notifications_for_entity
 
 
 def _populate_income_template_info(inc: models.Income, template: Optional[models.EstimatedIncome] = None) -> models.Income:
@@ -300,6 +301,8 @@ async def check_income(db: AsyncSession, income_id: UUID, check: schemas.IncomeC
     await _recalculate_or_delete_income_check(
         db, db_check, template=db_est, delete_if_empty=False, allow_mark_partial=bool(check.is_partial)
     )
+    if not db_check.is_partial:
+        await resolve_notifications_for_entity(db, "estimated_income", income_id, user_id=user_id)
     await db.commit()
     await db.refresh(db_check)
     return db_check
@@ -411,6 +414,8 @@ async def create_income(
         await _recalculate_or_delete_income_check(
             db, db_check, template=db_est, delete_if_empty=False, allow_mark_partial=allow_mark
         )
+        if not db_check.is_partial:
+            await resolve_notifications_for_entity(db, "estimated_income", est_id, user_id=user_id)
 
     await db.commit()
     loaded = await get_income(db, db_income.id, user_id)

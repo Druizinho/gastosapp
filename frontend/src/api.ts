@@ -74,8 +74,10 @@ export const getExpenses = async (from?: string, to?: string): Promise<Expense[]
   return response.data;
 };
 
-export const getRates = async (): Promise<ExchangeRates> => {
-  const response = await api.get('/expenses/rates');
+export const getRates = async (targetDate?: string): Promise<ExchangeRates> => {
+  const response = await api.get('/expenses/rates', {
+    params: targetDate ? { target_date: targetDate } : undefined,
+  });
   return response.data;
 };
 
@@ -177,7 +179,16 @@ export const getProfile = async (): Promise<any> => {
   return response.data;
 };
 
-export const updateProfile = async (data: { display_name?: string; avatar_url?: string }): Promise<any> => {
+export const updateProfile = async (data: {
+  display_name?: string;
+  avatar_url?: string;
+  notify_fixed_expenses?: boolean;
+  notify_debts?: boolean;
+  notify_incomes?: boolean;
+  notify_inactivity?: boolean;
+  notify_budgets?: boolean;
+  notify_panas?: boolean;
+}): Promise<any> => {
   const response = await api.put('/profile/', data);
   return response.data;
 };
@@ -360,6 +371,10 @@ export const getNotifications = async (unreadOnly: boolean = false): Promise<any
 
 export const markNotificationsAsRead = async (): Promise<void> => {
   await api.patch('/notifications/mark-read');
+};
+
+export const markSingleNotificationRead = async (notificationId: string): Promise<void> => {
+  await api.patch(`/notifications/${notificationId}/read`);
 };
 
 // Connections

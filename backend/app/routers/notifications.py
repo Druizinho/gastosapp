@@ -6,6 +6,7 @@ from typing import List
 from uuid import UUID
 
 from .. import schemas, models, auth
+from ..auth import get_current_user
 from ..database import get_db
 
 router = APIRouter(
@@ -38,6 +39,24 @@ async def mark_notifications_read(
         models.Notification.is_read == False
     ).values(is_read=True)
     
+    await db.execute(stmt)
+    await db.commit()
+    return None
+
+@router.patch("/{notification_id}/read", status_code=204)
+async def mark_single_notification_read(
+    notification_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: UUID = Depends(get_current_user),
+):
+    stmt = (
+        update(models.Notification)
+        .where(
+            models.Notification.id == notification_id,
+            models.Notification.user_id == current_user,
+        )
+        .values(is_read=True)
+    )
     await db.execute(stmt)
     await db.commit()
     return None

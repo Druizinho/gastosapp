@@ -149,12 +149,12 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
       if (selectedGoal && selectedGoal.id === goal.id) {
         setSelectedGoal(null);
       }
-      setLeaveGoalModal({ isOpen: false, goal: null });
     } catch (err: any) {
       console.error('Error al desvincularse de la meta:', err);
       toast.error(err?.response?.data?.detail || err?.message || 'Error al desvincularse');
     } finally {
       setLeaveGoalLoading(false);
+      setLeaveGoalModal({ isOpen: false, goal: null });
     }
   };
 

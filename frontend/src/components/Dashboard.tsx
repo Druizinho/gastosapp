@@ -12,6 +12,7 @@ import ExpenseForm from './ExpenseForm';
 import ConfirmModal from './ConfirmModal';
 import { WakeUpLoader } from './WakeUpLoader';
 import { NotificationBell } from './NotificationBell';
+import { PushPermissionBanner } from './NotificationSettings';
 
 const Dashboard: React.FC = () => {
   const { displayName, avatarUrl } = useAuth();
@@ -201,11 +202,20 @@ const Dashboard: React.FC = () => {
   const handleConfirmDelete = async () => {
     try {
       await deleteExpense(confirmDelete.expenseId);
-      setConfirmDelete({ isOpen: false, expenseId: '' });
       await fetchData(true);
     } catch (error) {
       console.error('Error deleting expense:', error);
       alert('Failed to delete expense');
+    } finally {
+      setConfirmDelete({ isOpen: false, expenseId: '' });
+    }
+  };
+
+  const setShowExpenseForm = (show: boolean) => {
+    if (!show) {
+      handleCloseForm();
+    } else {
+      setIsFormOpen(true);
     }
   };
 
@@ -274,6 +284,7 @@ const Dashboard: React.FC = () => {
           <WakeUpLoader />
         ) : (
           <>
+            <PushPermissionBanner />
             <PeriodSelector filter={dateFilter} onChange={setDateFilter} />
             <Summary summary={summary} dateFilter={dateFilter} categories={categories} monthlyBudget={monthlyBudget} />
             <div className="list-header mt-8 mb-4" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -298,13 +309,20 @@ const Dashboard: React.FC = () => {
       />
 
       {isFormOpen && (
-        <ExpenseForm 
-          initialData={editingExpense}
-          onSubmit={handleCreateOrUpdate}
-          onIncomeSubmit={handleIncomeSubmit}
-          onCancel={handleCloseForm}
-          onCategoriesChanged={() => fetchData(true)}
-        />
+        <div
+          className="modal-backdrop-wrapper"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowExpenseForm(false);
+          }}
+        >
+          <ExpenseForm 
+            initialData={editingExpense}
+            onSubmit={handleCreateOrUpdate}
+            onIncomeSubmit={handleIncomeSubmit}
+            onCancel={handleCloseForm}
+            onCategoriesChanged={() => fetchData(true)}
+          />
+        </div>
       )}
     </div>
   );

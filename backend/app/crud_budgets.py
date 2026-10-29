@@ -117,16 +117,36 @@ BEGIN
 END $$;
 """)
 
-    try:
-        async with engine.begin() as conn:
-            await conn.execute(drop_shares_check)
-    except Exception:
-        pass
-    try:
-        async with engine.begin() as conn:
-            await conn.execute(drop_share_members_unique)
-    except Exception:
-        pass
+    drop_budget_category_limits_check = text("""
+DO $$
+DECLARE r RECORD;
+BEGIN
+    FOR r IN (
+        SELECT conname
+        FROM pg_constraint
+        WHERE conrelid = 'budget_category_limits'::regclass AND contype = 'c'
+    ) LOOP
+        EXECUTE 'ALTER TABLE budget_category_limits DROP CONSTRAINT IF EXISTS ' || quote_ident(r.conname);
+    END LOOP;
+END $$;
+""")
+
+    if getattr(engine.dialect, "name", "") != "sqlite":
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(drop_shares_check)
+        except Exception:
+            pass
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(drop_share_members_unique)
+        except Exception:
+            pass
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(drop_budget_category_limits_check)
+        except Exception:
+            pass
 
 
 async def get_available_budget_categories(db: AsyncSession, user_id: UUID) -> List[str]:
@@ -328,13 +348,18 @@ async def get_or_clone_monthly_budgets(
         if month_year == current_month and any(not b.notified_month_start and not b.is_confirmed for b in budgets):
             for b in budgets:
                 b.notified_month_start = True
+            db_sub = next((b for b in budgets if b.is_primary), budgets[0]) if budgets else None
             await send_notification_to_user(
                 db=db,
                 user_id=user_id,
                 title="Presupuesto del mes",
                 body=f"Revisa tus presupuestos de {month_year} y confirma o ajusta tus límites.",
                 type="budgets",
-                url="/herramientas/presupuestos"
+                url="/herramientas/presupuestos",
+                send_push=False,
+                entity_type="budget",
+                entity_id=db_sub.id if db_sub else None,
+                commit=False,
             )
             await db.commit()
             res = await db.execute(
@@ -505,13 +530,18 @@ async def get_or_clone_monthly_budgets(
     if cloned_budgets and month_year == current_month and any(not b.notified_month_start for b in cloned_budgets):
         for b in cloned_budgets:
             b.notified_month_start = True
+        db_sub = next((b for b in cloned_budgets if b.is_primary), cloned_budgets[0]) if cloned_budgets else None
         await send_notification_to_user(
             db=db,
             user_id=user_id,
             title="Presupuesto del mes",
             body=f"Tus presupuestos para {month_year} se clonaron del mes anterior. Revísalos y confirma tus límites.",
             type="budgets",
-            url="/herramientas/presupuestos"
+            url="/herramientas/presupuestos",
+            send_push=False,
+            entity_type="budget",
+            entity_id=db_sub.id if db_sub else None,
+            commit=False,
         )
         await db.commit()
         re_res = await db.execute(
@@ -2151,7 +2181,7 @@ async def delete_category_limit_by_budget_id(
 
     month_year = budget.month_year
     target_cat = category_name.strip().lower()
-    cl_to_delete = next((cl for cl in (budget.category_limits or []) if cl.category_name.lower() == target_cat), None)
+    cl_to_delete = next((cl for cl in (budget.category_limits or []) if cl.category_name.strip().lower() == target_cat), None)
     if cl_to_delete:
         if budget.is_primary:
             # In Primary, reset limit to 0 rather than deleting the category row
@@ -2175,10 +2205,13 @@ async def delete_category_limit_by_budget_id(
                 sb_cl = next((c for c in (sb.category_limits or []) if c.category_name.strip().lower() == target_cat), None)
                 if sb_cl:
                     sb_cl.limit_amount = Decimal("0")
+                    sb_cl.notified_80 = False
+                    sb_cl.notified_100 = False
         else:
             # In sub-budget, removing category removes it from this group
-            budget.category_limits.remove(cl_to_delete)
-            await db.delete(cl_to_delete)
+            if cl_to_delete in budget.category_limits:
+                budget.category_limits.remove(cl_to_delete)
+            await db.flush()
 
         await db.commit()
         db.expire_all()
@@ -2310,10 +2343,16 @@ async def delete_budget_category_limit(
     budgets = await get_or_clone_monthly_budgets(db, user_id, month_year)
     target_cat = category_name.strip().lower()
     for b in budgets:
-        cl = next((c for c in b.category_limits if c.category_name.lower() == target_cat), None)
+        cl = next((c for c in (b.category_limits or []) if c.category_name.strip().lower() == target_cat), None)
         if cl:
-            b.category_limits.remove(cl)
-            await db.delete(cl)
+            if b.is_primary:
+                cl.limit_amount = Decimal("0")
+                cl.notified_80 = False
+                cl.notified_100 = False
+            else:
+                if cl in b.category_limits:
+                    b.category_limits.remove(cl)
+                await db.flush()
 
     await db.commit()
     db.expire_all()
@@ -2376,6 +2415,7 @@ async def check_and_notify_budget_thresholds(
         # Query all budgets for this month
         res = await db.execute(
             select(models.MonthlyBudget)
+            .execution_options(populate_existing=True)
             .options(
                 joinedload(models.MonthlyBudget.category_limits),
                 noload(models.MonthlyBudget.linked_income)
@@ -2491,10 +2531,14 @@ async def check_and_notify_budget_thresholds(
                             await send_notification_to_user(
                                 db=db,
                                 user_id=user_id,
-                                title=f"Alerta de presupuesto: {cl.category_name}",
+                                title=f"Presupuesto al 80%: {cl.category_name}",
                                 body=f"Has alcanzado el {pct:.0f}% de tu presupuesto en {cl.category_name} ({spent:.2f} / {limit:.2f} {cl_curr}).",
                                 type="budgets",
-                                url="/herramientas/presupuestos"
+                                url="/herramientas/presupuestos",
+                                send_push=False,
+                                entity_type="budget",
+                                entity_id=b.id,
+                                commit=False,
                             )
                     else: # pct >= 100.0
                         if not cl.notified_100 and allow_notify:
@@ -2504,10 +2548,14 @@ async def check_and_notify_budget_thresholds(
                             await send_notification_to_user(
                                 db=db,
                                 user_id=user_id,
-                                title=f"¡Presupuesto excedido: {cl.category_name}!",
+                                title=f"Límite alcanzado: {cl.category_name}",
                                 body=f"Has superado el 100% de tu presupuesto en {cl.category_name} ({spent:.2f} / {limit:.2f} {cl_curr}).",
                                 type="budgets",
-                                url="/herramientas/presupuestos"
+                                url="/herramientas/presupuestos",
+                                send_push=True,
+                                entity_type="budget",
+                                entity_id=b.id,
+                                commit=False,
                             )
 
             # 2. Check global limit for this budget
@@ -2529,10 +2577,14 @@ async def check_and_notify_budget_thresholds(
                         await send_notification_to_user(
                             db=db,
                             user_id=user_id,
-                            title=f"Alerta de presupuesto mensual [{b.name}]",
+                            title=f"Presupuesto global al 80% ({b.name})",
                             body=f"Has alcanzado el {global_pct:.0f}% de tu presupuesto mensual total ({b_total_spent:.2f} / {effective_global:.2f} {b_curr}) en '{b.name}'.",
                             type="budgets",
-                            url="/herramientas/presupuestos"
+                            url="/herramientas/presupuestos",
+                            send_push=True,
+                            entity_type="budget",
+                            entity_id=b.id,
+                            commit=False,
                         )
                 else:
                     if not b.notified_global_100 and allow_notify:
@@ -2542,11 +2594,20 @@ async def check_and_notify_budget_thresholds(
                         await send_notification_to_user(
                             db=db,
                             user_id=user_id,
-                            title=f"¡Presupuesto mensual excedido [{b.name}]!",
+                            title=f"Presupuesto global al 100% ({b.name})",
                             body=f"Has superado el 100% de tu presupuesto mensual total ({b_total_spent:.2f} / {effective_global:.2f} {b_curr}) en '{b.name}'.",
                             type="budgets",
-                            url="/herramientas/presupuestos"
+                            url="/herramientas/presupuestos",
+                            send_push=True,
+                            entity_type="budget",
+                            entity_id=b.id,
+                            commit=False,
                         )
+            else:
+                if b.notified_global_80 or b.notified_global_100:
+                    b.notified_global_80 = False
+                    b.notified_global_100 = False
+                    dirty = True
 
         if dirty or not is_real_session:
             await db.commit()

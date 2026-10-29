@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import type { SavingDeposit, SavingDepositCreate, SavingDepositUpdate, CurrencyType, Category } from '../types';
+import type { SavingDeposit, SavingDepositCreate, SavingDepositUpdate, CurrencyType, Category, ExchangeRates } from '../types';
 import { CURRENCY_OPTIONS } from '../types';
-import { getCategories } from '../api';
+import { getCategories, getRates } from '../api';
+import { formatRateForInput } from '../utils/currencyFormat';
 import CategorySelect from './CategorySelect';
 
 interface SavingDepositFormProps {
@@ -17,6 +18,28 @@ interface SavingDepositFormProps {
   onCancel: () => void;
   loading: boolean;
 }
+
+const getLocalToday = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+const getInitialDepositRate = (data?: SavingDeposit): string => {
+  if (!data) return '';
+  if (data.currency === 'EUR_BCV' && data.rate_eur_bs) {
+    return formatRateForInput(data.rate_eur_bs);
+  }
+  if (data.currency === 'USDT' && data.rate_usdt_bs) {
+    return formatRateForInput(data.rate_usdt_bs);
+  }
+  if ((data.currency === 'USD_BCV' || data.currency === 'BS') && data.rate_usd_bs) {
+    return formatRateForInput(data.rate_usd_bs);
+  }
+  if (data.currency === 'USD_CASH' && Number(data.amount_bs) > 0 && Number(data.amount) > 0) {
+    return formatRateForInput(Number(data.amount_bs) / Number(data.amount));
+  }
+  return '';
+};
 
 const currencyLabels: Record<string, string> = {
   'USD_BCV': '$',
@@ -51,6 +74,7 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
   const remaining = hasTarget ? Math.max(targetNum - goalCurrentSaved, 0) : null;
 
   const [categories, setCategories] = useState<Category[]>([]);
+  const [rates, setRates] = useState<ExchangeRates | null>(null);
 
   useEffect(() => {
     getCategories()
@@ -63,12 +87,18 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
   const [formData, setFormData] = useState<SavingDepositCreate>({
     amount: (initialData ? initialData.amount : '') as any,
     currency: (initialData?.currency || goalCurrency) as CurrencyType,
-    deposit_date: initialData?.deposit_date || new Date().toISOString().split('T')[0],
+    deposit_date: initialData?.deposit_date || getLocalToday(),
     note: initialData?.note || '',
-    manual_rate: '' as any,
+    manual_rate: getInitialDepositRate(initialData) as any,
     register_as_expense: isProject,
     category: defaultCategory,
   });
+
+  useEffect(() => {
+    getRates(formData.deposit_date || undefined)
+      .then(setRates)
+      .catch((err) => console.error('Failed to load exchange rates', err));
+  }, [formData.deposit_date]);
 
   useEffect(() => {
     if (initialData) {
@@ -77,7 +107,7 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
         currency: initialData.currency,
         deposit_date: initialData.deposit_date,
         note: initialData.note || '',
-        manual_rate: '' as any,
+        manual_rate: getInitialDepositRate(initialData) as any,
         register_as_expense: Boolean(initialData.create_expense || initialData.expense_id),
         category: initialData.category || goalCategory || (isProject ? 'Proyectos' : 'Ahorro'),
       });
@@ -105,7 +135,8 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
     const submitData: any = { ...formData };
     submitData.amount = Number(submitData.amount);
     if (submitData.manual_rate) {
-      submitData.manual_rate = Number(submitData.manual_rate);
+      const parsed = parseFloat(String(submitData.manual_rate).replace(',', '.'));
+      submitData.manual_rate = !isNaN(parsed) && parsed > 0 ? parsed : undefined;
     } else {
       delete submitData.manual_rate;
     }
@@ -120,9 +151,15 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
   const currentAmount = Number(formData.amount) || 0;
   const isSameCurrency = formData.currency === goalCurrency;
   const willComplete = !isProject && !isEditing && isSameCurrency && remaining !== null && currentAmount >= remaining && remaining > 0;
+  const suggestedRate = formData.currency === 'EUR_BCV' ? rates?.eur_bs : formData.currency === 'USDT' ? rates?.usdt_bs : rates?.usd_bs;
 
   return (
-    <div className="modal-backdrop" onClick={onCancel}>
+    <div
+      className="modal-backdrop"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onCancel();
+      }}
+    >
       <div 
         className="expense-form-container" 
         onClick={(e) => e.stopPropagation()}
@@ -245,23 +282,21 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
             </div>
           </div>
 
-          {/* Tasa manual si es USD_CASH */}
-          {formData.currency === 'USD_CASH' && (
-            <div className="form-group">
-              <label style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>Tasa personalizada Bs./$</span>
-                <span className="form-hint-inline">(Opcional)</span>
-              </label>
-              <input
-                type="number"
-                step="any"
-                name="manual_rate"
-                placeholder="Dejar vacío para usar tasa de mercado"
-                value={formData.manual_rate || ''}
-                onChange={handleChange}
-              />
-            </div>
-          )}
+          {/* Tasa manual */}
+          <div className="form-group">
+            <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Tasa de Cambio</span>
+              <span className="form-hint-inline">(Opcional)</span>
+            </label>
+            <input
+              type="text"
+              inputMode="decimal"
+              name="manual_rate"
+              placeholder={suggestedRate ? `Por defecto: Bs. ${Number(suggestedRate).toFixed(2)}` : "Dejar vacío para usar tasa del día"}
+              value={formData.manual_rate || ''}
+              onChange={handleChange}
+            />
+          </div>
 
           {/* Fecha del Aporte / Pago */}
           <div className="form-group">

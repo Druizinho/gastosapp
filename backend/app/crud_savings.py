@@ -9,7 +9,7 @@ import datetime
 from fastapi import HTTPException
 
 from . import models, schemas, sharing, bcv_service
-from .push_service import send_notification_to_user
+from .push_service import send_notification_to_user, resolve_notifications_for_entity
 from .crud_budgets import check_and_notify_budget_thresholds
 
 
@@ -111,7 +111,10 @@ async def create_saving_goal(
             title=title_es,
             body=f"{req_name} creó {ent_desc}: {db_goal.name}",
             type="savings",
-            url="/herramientas/ahorros"
+            url="/herramientas/ahorros",
+            send_push=False,
+            entity_type="saving_goal",
+            entity_id=db_goal.id,
         )
 
         await db.commit()
@@ -249,7 +252,10 @@ async def update_saving_goal(
                     title=title_es,
                     body=f"{req_name} creó {ent_desc}: {db_goal.name}",
                     type="savings",
-                    url="/herramientas/ahorros"
+                    url="/herramientas/ahorros",
+                    send_push=False,
+                    entity_type="saving_goal",
+                    entity_id=db_goal.id,
                 )
 
     await db.commit()
@@ -285,7 +291,10 @@ async def delete_saving_goal(db: AsyncSession, goal_id: UUID, user_id: UUID) -> 
             title=f"{ent_noun.capitalize()} eliminado",
             body=f"{user_name} eliminó el {ent_noun} compartido '{db_goal.name}' para todos los integrantes",
             type="savings",
-            url="/herramientas/ahorros"
+            url="/herramientas/ahorros",
+            send_push=False,
+            entity_type="saving_goal",
+            entity_id=goal_id,
         )
 
         linked_exp_res = await db.execute(
@@ -313,6 +322,7 @@ async def delete_saving_goal(db: AsyncSession, goal_id: UUID, user_id: UUID) -> 
 
         await db.delete(db_goal)
 
+    await resolve_notifications_for_entity(db, "saving_goal", goal_id, commit=False)
     await db.commit()
     return True
 
@@ -418,7 +428,10 @@ async def add_saving_deposit(
                 title="🎉 ¡Meta de ahorro alcanzada!",
                 body=f"¡Felicidades! Se completó {ent_noun} compartido '{db_goal.name}' con un {dep_noun} de {user_name} de {data['amount']} {curr_label}!",
                 type="savings",
-                url="/herramientas/ahorros"
+                url="/herramientas/ahorros",
+                send_push=False,
+                entity_type="saving_goal",
+                entity_id=db_goal.id,
             )
         else:
             await sharing.notify_members(
@@ -428,7 +441,10 @@ async def add_saving_deposit(
                 title="Pago en proyecto compartido" if is_project else "Aporte a fondo compartido",
                 body=f"{user_name} {dep_verb} {data['amount']} {curr_label} {ent_label} '{db_goal.name}'",
                 type="savings",
-                url="/herramientas/ahorros"
+                url="/herramientas/ahorros",
+                send_push=False,
+                entity_type="saving_goal",
+                entity_id=db_goal.id,
             )
     else:
         is_project = db_goal.type == "project"
@@ -439,7 +455,11 @@ async def add_saving_deposit(
                 title="🎉 ¡Meta de ahorro alcanzada!",
                 body=f"¡Felicidades! Has completado tu meta '{db_goal.name}'.",
                 type="savings",
-                url="/herramientas/ahorros"
+                url="/herramientas/ahorros",
+                send_push=False,
+                entity_type="saving_goal",
+                entity_id=db_goal.id,
+                commit=False,
             )
 
     await db.commit()
@@ -514,16 +534,23 @@ async def update_saving_deposit(
             if not sharing.can_edit_child(member, deposit.paid_by_user_id):
                 raise HTTPException(status_code=403, detail="Solo puedes editar tus propios aportes o debes ser administrador")
 
-    if extra_data is None and ('amount' in update_dict or 'currency' in update_dict or manual_rate is not None):
+    if extra_data is None and ('amount' in update_dict or 'currency' in update_dict or 'deposit_date' in update_dict or manual_rate is not None):
         new_amount = update_dict.get('amount', deposit.amount)
         raw_curr = update_dict.get('currency', deposit.currency)
         new_curr = raw_curr.value if hasattr(raw_curr, "value") else str(raw_curr)
-        rates = await bcv_service.get_all_rates()
+        new_date = update_dict.get('deposit_date', deposit.deposit_date)
+        date_changed = ('deposit_date' in update_dict and update_dict['deposit_date'] != deposit.deposit_date)
+        rates = await bcv_service.resolve_rates_for_update(
+            deposit, target_date=new_date, existing_date=deposit.deposit_date, db=db
+        )
+        eff_manual = bcv_service.resolve_manual_rate_for_update(
+            deposit, new_curr, manual_rate, date_changed=date_changed
+        )
         extra_data = bcv_service.convert_amount(
             amount=new_amount,
             currency=new_curr,
             rates=rates,
-            manual_rate=manual_rate
+            manual_rate=eff_manual
         )
 
     if extra_data:
@@ -672,7 +699,10 @@ async def delete_saving_deposit(db: AsyncSession, deposit_id: UUID, user_id: UUI
             title=f"{dep_noun.capitalize()} eliminado de {ent_noun}",
             body=f"{user_name} eliminó un {dep_noun} de {amount_label} del {ent_noun} '{goal_name}'",
             type="savings",
-            url="/herramientas/ahorros"
+            url="/herramientas/ahorros",
+            send_push=False,
+            entity_type="saving_goal",
+            entity_id=goal_id,
         )
     else:
         if linked_expense_id:

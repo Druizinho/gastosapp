@@ -15,3 +15,15 @@ createRoot(document.getElementById('root')!).render(
     </ErrorBoundary>
   </StrictMode>,
 )
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    const swUrl = import.meta.env.DEV ? '/dev-sw.js?dev-sw' : '/sw.js';
+    navigator.serviceWorker
+      .register(swUrl, { type: 'classic' })
+      .catch((err) => {
+        console.warn('Service Worker registration warning:', err);
+      });
+  });
+}
+

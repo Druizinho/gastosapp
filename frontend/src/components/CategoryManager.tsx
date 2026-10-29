@@ -29,6 +29,7 @@ import ListCard from './ListCard';
 import ListCardBottomSheet from './ListCardBottomSheet';
 import { SkeletonList } from './ui/Skeleton';
 import { SegmentedTabs } from './ui/SegmentedTabs';
+import { useToast } from './ui/Toast';
 
 // Re-export visual helpers for backward compatibility
 export { ICON_MAP, CATEGORY_COLORS, DEFAULT_ICONS, resolveCategoryVisuals };
@@ -46,6 +47,7 @@ interface CategoryManagerProps {
 }
 
 export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesChanged }) => {
+  const toast = useToast();
   const {
     categories: expenseCategories,
     incomeCategories,
@@ -185,6 +187,11 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
     }
   };
 
+  const handleCancelDelete = () => {
+    setDeletingCategory(null);
+    setReassignTo('');
+  };
+
   const handleConfirmDelete = async () => {
     if (!deletingCategory) return;
     setIsDeleting(true);
@@ -194,13 +201,17 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
       setCurrentCategories((prev) => prev.filter((c) => c.id !== deletingCategory.id));
       await refreshCategories();
       onCategoriesChanged?.();
-      setDeletingCategory(null);
-      setReassignTo('');
+      toast.success('Categoría eliminada');
     } catch (err: any) {
       console.error('Error deleting category:', err);
-      setErrorMessage('Error al eliminar la categoría');
+      const detail = err?.response?.data?.detail;
+      const msg = typeof detail === 'string' ? detail : err?.message || 'Error al eliminar la categoría';
+      setErrorMessage(msg);
+      toast.error(msg);
     } finally {
       setIsDeleting(false);
+      setDeletingCategory(null);
+      setReassignTo('');
     }
   };
 
@@ -814,7 +825,13 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
 
       {/* Reassignment Delete Modal */}
       {deletingCategory && (
-        <div className="modal-backdrop" style={{ zIndex: 1100 }}>
+        <div
+          className="modal-backdrop"
+          style={{ zIndex: 1100 }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isDeleting) handleCancelDelete();
+          }}
+        >
           <div
             className="expense-form-container soft-card"
             style={{
@@ -911,7 +928,7 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
               <button
                 type="button"
-                onClick={() => setDeletingCategory(null)}
+                onClick={handleCancelDelete}
                 disabled={isDeleting}
                 style={{
                   flex: 1,

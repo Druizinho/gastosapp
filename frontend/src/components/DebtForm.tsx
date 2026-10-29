@@ -115,7 +115,12 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
   const themeColor = currentType === 'owed' ? 'var(--expense-color)' : 'var(--income-color)';
 
   return (
-    <div className="modal-backdrop" onClick={onCancel}>
+    <div
+      className="modal-backdrop"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onCancel();
+      }}
+    >
       <div
         className="expense-form-container"
         onClick={(e) => e.stopPropagation()}

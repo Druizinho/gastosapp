@@ -114,7 +114,7 @@ async def add_saving_deposit(
     db: AsyncSession = Depends(get_db),
     user_id: UUID = Depends(get_current_user)
 ):
-    rates = await bcv_service.get_all_rates()
+    rates = await bcv_service.get_rates_for_date(target_date=deposit.deposit_date, db=db)
     currency_val = deposit.currency.value if hasattr(deposit.currency, "value") else str(deposit.currency)
     equivalents = bcv_service.convert_amount(
         amount=deposit.amount,
@@ -141,15 +141,6 @@ async def update_saving_deposit(
     user_id: UUID = Depends(get_current_user)
 ):
     equivalents = None
-    if deposit_update.amount is not None and deposit_update.currency is not None:
-        rates = await bcv_service.get_all_rates()
-        curr_val = deposit_update.currency.value if hasattr(deposit_update.currency, "value") else str(deposit_update.currency)
-        equivalents = bcv_service.convert_amount(
-            amount=deposit_update.amount,
-            currency=curr_val,
-            rates=rates,
-            manual_rate=deposit_update.manual_rate
-        )
     db_goal = await crud_savings.update_saving_deposit(
         db=db,
         deposit_id=deposit_id,

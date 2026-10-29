@@ -9,7 +9,7 @@ from decimal import Decimal
 from datetime import datetime, timezone, date
 
 from . import models, schemas, sharing, bcv_service
-from .push_service import send_notification_to_user
+from .push_service import send_notification_to_user, resolve_notifications_for_entity
 from .crud_budgets import check_and_notify_budget_thresholds
 
 
@@ -100,7 +100,10 @@ async def create_debt(db: AsyncSession, debt: schemas.DebtCreate, user_id: UUID)
             title="Nueva deuda compartida",
             body=f"{req_name} creó una deuda compartida: {debt.concept}",
             type="shared_debt_created",
-            url=_debt_url(db_debt.type)
+            url=_debt_url(db_debt.type),
+            send_push=True,
+            entity_type="debt",
+            entity_id=db_debt.id,
         )
 
     await db.commit()
@@ -154,6 +157,7 @@ async def update_debt(db: AsyncSession, debt_id: UUID, debt: schemas.DebtUpdate,
                 await sharing.recompute_settlement(db, "debt", [debt_id])
 
             if changing_fields.get('is_settled') is True:
+                await resolve_notifications_for_entity(db, "debt", db_debt.id)
                 user_prof_res = await db.execute(select(models.Profile).where(models.Profile.id == user_id))
                 user_prof = user_prof_res.scalars().first()
                 user_name = user_prof.display_name if user_prof and user_prof.display_name else "Usuario"
@@ -161,10 +165,13 @@ async def update_debt(db: AsyncSession, debt_id: UUID, debt: schemas.DebtUpdate,
                     db=db,
                     share_id=share.id,
                     exclude_user_id=user_id,
-                    title="¡Deuda saldada!",
-                    body=f"🎉 {user_name} marcó la deuda '{db_debt.concept}' como saldada",
+                    title="Deuda saldada",
+                    body=f"{user_name} marcó la deuda '{db_debt.concept}' como saldada",
                     type="shared_debt_settled",
-                    url=_debt_url(db_debt.type)
+                    url=_debt_url(db_debt.type),
+                    send_push=False,
+                    entity_type="debt",
+                    entity_id=db_debt.id,
                 )
     else:
         # Debt was not shared previously
@@ -174,6 +181,9 @@ async def update_debt(db: AsyncSession, debt_id: UUID, debt: schemas.DebtUpdate,
 
         if 'total_amount' in update_data or 'currency' in update_data:
             await sharing.recompute_settlement(db, "debt", [debt_id])
+
+        if update_data.get('is_settled') is True:
+            await resolve_notifications_for_entity(db, "debt", db_debt.id)
 
         # If user is now sharing it
         if shared_with_ids:
@@ -200,7 +210,10 @@ async def update_debt(db: AsyncSession, debt_id: UUID, debt: schemas.DebtUpdate,
                     title="Nueva deuda compartida",
                     body=f"{user_name} compartió una deuda contigo: {db_debt.concept}",
                     type="shared_debt_created",
-                    url=_debt_url(db_debt.type)
+                    url=_debt_url(db_debt.type),
+                    send_push=True,
+                    entity_type="debt",
+                    entity_id=db_debt.id,
                 )
 
     await db.commit()
@@ -214,6 +227,8 @@ async def delete_debt(db: AsyncSession, debt_id: UUID, user_id: UUID):
     db_debt = await get_debt(db, debt_id, user_id)
     if not db_debt:
         return False
+
+    await resolve_notifications_for_entity(db, "debt", debt_id)
 
     membership = await sharing.get_membership(db, debt_id, user_id)
 
@@ -235,7 +250,10 @@ async def delete_debt(db: AsyncSession, debt_id: UUID, user_id: UUID):
             title="Deuda compartida eliminada",
             body=f"{user_name} eliminó la deuda compartida '{concept}' para todos los integrantes",
             type="shared_debt_deleted",
-            url=_debt_url(debt_type)
+            url=_debt_url(debt_type),
+            send_push=True,
+            entity_type="debt",
+            entity_id=debt_id,
         )
 
         # Purge linked expenses before deleting debt and payments
@@ -334,6 +352,8 @@ async def add_debt_payment(db: AsyncSession, debt_id: UUID, user_id: UUID, payme
         db_payment.expense_id = db_expense.id
 
     await sharing.recompute_settlement(db, "debt", [debt_id])
+    if db_debt.is_settled:
+        await resolve_notifications_for_entity(db, "debt", debt_id)
 
     if membership:
         share, member = membership
@@ -344,10 +364,13 @@ async def add_debt_payment(db: AsyncSession, debt_id: UUID, user_id: UUID, payme
                 db=db,
                 share_id=share.id,
                 exclude_user_id=user_id,
-                title="¡Deuda saldada!",
-                body=f"🎉 ¡La deuda '{db_debt.concept}' fue saldada por {payer_name} con un abono de {payment.amount} {curr_label}!",
+                title="Deuda saldada",
+                body=f"La deuda '{db_debt.concept}' fue saldada por {payer_name} con un abono de {payment.amount} {curr_label}",
                 type="shared_debt_settled",
-                url=_debt_url(db_debt.type)
+                url=_debt_url(db_debt.type),
+                send_push=True,
+                entity_type="debt",
+                entity_id=debt_id,
             )
         else:
             await sharing.notify_members(
@@ -357,7 +380,10 @@ async def add_debt_payment(db: AsyncSession, debt_id: UUID, user_id: UUID, payme
                 title="Nuevo abono en deuda compartida",
                 body=f"{payer_name} abonó {payment.amount} {curr_label} a la deuda '{db_debt.concept}'",
                 type="shared_debt_payment",
-                url=_debt_url(db_debt.type)
+                url=_debt_url(db_debt.type),
+                send_push=True,
+                entity_type="debt",
+                entity_id=debt_id,
             )
 
     await db.commit()
@@ -433,16 +459,23 @@ async def update_debt_payment(
             if not sharing.can_edit_child(member, payment.paid_by_user_id):
                 raise HTTPException(status_code=403, detail="Solo puedes editar tus propios abonos o debes ser administrador")
 
-    if extra_data is None and ('amount' in update_dict or 'currency' in update_dict or manual_rate is not None):
+    if extra_data is None and ('amount' in update_dict or 'currency' in update_dict or 'payment_date' in update_dict or manual_rate is not None):
         new_amount = update_dict.get('amount', payment.amount)
         raw_curr = update_dict.get('currency', payment.currency)
         new_curr = raw_curr.value if hasattr(raw_curr, "value") else str(raw_curr)
-        rates = await bcv_service.get_all_rates()
+        new_date = update_dict.get('payment_date', payment.payment_date)
+        date_changed = ('payment_date' in update_dict and update_dict['payment_date'] != payment.payment_date)
+        rates = await bcv_service.resolve_rates_for_update(
+            payment, target_date=new_date, existing_date=payment.payment_date, db=db
+        )
+        eff_manual = bcv_service.resolve_manual_rate_for_update(
+            payment, new_curr, manual_rate, date_changed=date_changed
+        )
         extra_data = bcv_service.convert_amount(
             amount=new_amount,
             currency=new_curr,
             rates=rates,
-            manual_rate=manual_rate
+            manual_rate=eff_manual
         )
 
     if extra_data:
@@ -577,7 +610,10 @@ async def delete_debt_payment(db: AsyncSession, payment_id: UUID, user_id: UUID)
             title="Abono eliminado",
             body=f"{user_name} eliminó un abono de {amount_label} en la deuda '{concept}'",
             type="shared_debt_payment",
-            url=_debt_url(debt_type)
+            url=_debt_url(debt_type),
+            send_push=True,
+            entity_type="debt",
+            entity_id=debt_id,
         )
     else:
         await db.delete(payment)

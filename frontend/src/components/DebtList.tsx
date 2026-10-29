@@ -157,12 +157,12 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
         setSelectedDebt(null);
       }
       setSelectedDebtForSheet(null);
-      setLeaveDebtModal({ isOpen: false, debt: null });
     } catch (err: any) {
       console.error('Error al desvincularse de la deuda:', err);
       toast.error(err?.response?.data?.detail || err?.message || 'Error al desvincularse de la deuda');
     } finally {
       setLeaveDebtLoading(false);
+      setLeaveDebtModal({ isOpen: false, debt: null });
     }
   };
 

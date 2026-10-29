@@ -27,7 +27,7 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
     try {
       const data = await getNotifications();
       setNotifications(data);
-      setUnreadCount(data.filter((n: Notification) => !n.is_read).length);
+      setUnreadCount(data.filter((n: Notification) => !n.is_read && !n.is_resolved).length);
     } catch (error) {
       console.error('Failed to fetch notifications:', error);
     }
@@ -48,14 +48,33 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
     if (isAuthenticated) {
       fetchNotifications();
 
+      // Check if page loaded with notifications=open
+      if (typeof window !== 'undefined' && window.location.search.includes('notifications=open')) {
+        window.dispatchEvent(new CustomEvent('gastosapp:open-notifications'));
+      }
+
       // Listen for foreground FCM messages to update unread count
       const unsubscribe = setupForegroundMessageListener((_payload) => {
         // We received a push notification while the app is open!
         fetchNotifications();
       });
 
+      // Listen for messages from the Service Worker (e.g. background notification clicks)
+      const handleSwMessage = (event: MessageEvent) => {
+        if (event.data?.type === 'NOTIFICATION_CLICK') {
+          fetchNotifications();
+          const targetUrl = event.data?.url || '';
+          if (targetUrl.includes('notifications=open') || (typeof window !== 'undefined' && window.location.search.includes('notifications=open'))) {
+            window.dispatchEvent(new CustomEvent('gastosapp:open-notifications'));
+          }
+        }
+      };
+
+      navigator.serviceWorker?.addEventListener('message', handleSwMessage);
+
       return () => {
         if (unsubscribe) unsubscribe();
+        navigator.serviceWorker?.removeEventListener('message', handleSwMessage);
       };
     } else {
       setNotifications([]);

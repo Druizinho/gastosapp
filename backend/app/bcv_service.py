@@ -4,11 +4,17 @@ from pyDolarVenezuela import Monitor
 from cachetools import TTLCache
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, timedelta
 from decimal import Decimal
+from typing import Optional, Any
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.time_utils import vet_today
 
 # Cache for 30 minutes (1800 seconds)
 rates_cache = TTLCache(maxsize=1, ttl=1800)
+# Cache for historical rates (24 hours = 86400 seconds)
+historical_rates_cache = TTLCache(maxsize=365, ttl=86400)
 _last_valid_rates = {
     "usd_bs": None,
     "eur_bs": None,
@@ -142,9 +148,9 @@ def convert_amount(amount: Decimal, currency: str, rates: dict, manual_rate: Dec
     amount_eur = None
     amount_usdt = None
     
-    usd_bs = rates.get("usd_bs")
-    eur_bs = rates.get("eur_bs")
-    usdt_bs = rates.get("usdt_bs")
+    usd_bs = Decimal(str(rates.get("usd_bs") or rates.get("usd_bcv") or 0))
+    eur_bs = Decimal(str(rates.get("eur_bs") or rates.get("eur_bcv") or 0))
+    usdt_bs = Decimal(str(rates.get("usdt_bs") or rates.get("usdt_binance") or 0))
     
     # Si se provee tasa manual, aplica a la tasa primaria de la divisa
     if manual_rate and manual_rate > 0:
@@ -214,3 +220,203 @@ def convert_amount(amount: Decimal, currency: str, rates: dict, manual_rate: Dec
         "rate_eur_bs": eur_bs,
         "rate_usdt_bs": usdt_bs
     }
+
+
+async def fetch_historical_bcv_api(target_date: date) -> Optional[Decimal]:
+    url = "https://ve.dolarapi.com/v1/historicos/dolares"
+    try:
+        async with httpx.AsyncClient(timeout=4.0) as client:
+            resp = await client.get(url)
+            if resp.status_code != 200:
+                return None
+            data = resp.json()
+            if not isinstance(data, list):
+                return None
+
+            target_str = target_date.isoformat()
+            valid_items = [
+                item for item in data
+                if isinstance(item, dict)
+                and item.get("fuente") in (None, "oficial")
+                and item.get("fecha")
+            ]
+
+            # Exact match first
+            for item in valid_items:
+                if str(item["fecha"])[:10] == target_str:
+                    val = item.get("promedio") if item.get("promedio") is not None else item.get("valor")
+                    if val is not None:
+                        dec_val = Decimal(str(val))
+                        if dec_val > 0:
+                            return dec_val
+
+            # Closest prior date
+            prior_items = [
+                item for item in valid_items
+                if str(item["fecha"])[:10] <= target_str
+            ]
+            if prior_items:
+                prior_items.sort(key=lambda x: str(x["fecha"])[:10], reverse=True)
+                for item in prior_items:
+                    val = item.get("promedio") if item.get("promedio") is not None else item.get("valor")
+                    if val is not None:
+                        dec_val = Decimal(str(val))
+                        if dec_val > 0:
+                            return dec_val
+
+            return None
+    except Exception as e:
+        logging.getLogger(__name__).warning("Error fetching historical BCV API for %s: %s", target_date, e)
+        return None
+
+
+async def _query_db_rates_for_date(db: AsyncSession, target_date: date) -> Optional[dict]:
+    try:
+        from app import models
+
+        checks = [
+            (models.Expense, models.Expense.date),
+            (models.Income, models.Income.date),
+            (models.DebtPayment, models.DebtPayment.payment_date),
+            (models.FixedExpenseCheck, models.FixedExpenseCheck.paid_date),
+            (models.SavingDeposit, models.SavingDeposit.deposit_date),
+        ]
+
+        # First pass: exact date
+        for model_cls, date_col in checks:
+            stmt = (
+                select(model_cls)
+                .where(date_col == target_date, model_cls.rate_usd_bs > 0)
+                .order_by(model_cls.id.desc())
+                .limit(1)
+            )
+            result = await db.execute(stmt)
+            rec = result.scalars().first()
+            if rec:
+                return {
+                    "usd_bs": Decimal(str(rec.rate_usd_bs)),
+                    "eur_bs": Decimal(str(rec.rate_eur_bs)) if getattr(rec, "rate_eur_bs", None) and Decimal(str(rec.rate_eur_bs)) > 0 else None,
+                    "usdt_bs": Decimal(str(rec.rate_usdt_bs)) if getattr(rec, "rate_usdt_bs", None) and Decimal(str(rec.rate_usdt_bs)) > 0 else None,
+                }
+
+        # Second pass: within 7 days prior
+        min_date = target_date - timedelta(days=7)
+        candidates = []
+        for model_cls, date_col in checks:
+            stmt = (
+                select(model_cls)
+                .where(
+                    date_col <= target_date,
+                    date_col >= min_date,
+                    model_cls.rate_usd_bs > 0,
+                )
+                .order_by(date_col.desc(), model_cls.id.desc())
+                .limit(1)
+            )
+            result = await db.execute(stmt)
+            rec = result.scalars().first()
+            if rec:
+                rec_date = getattr(rec, getattr(date_col, "key", "date"), target_date)
+                candidates.append((rec_date, rec))
+
+        if candidates:
+            candidates.sort(key=lambda c: c[0], reverse=True)
+            rec = candidates[0][1]
+            return {
+                "usd_bs": Decimal(str(rec.rate_usd_bs)),
+                "eur_bs": Decimal(str(rec.rate_eur_bs)) if getattr(rec, "rate_eur_bs", None) and Decimal(str(rec.rate_eur_bs)) > 0 else None,
+                "usdt_bs": Decimal(str(rec.rate_usdt_bs)) if getattr(rec, "rate_usdt_bs", None) and Decimal(str(rec.rate_usdt_bs)) > 0 else None,
+            }
+        return None
+    except Exception as e:
+        logging.getLogger(__name__).warning("Error querying DB rates for date %s: %s", target_date, e)
+        return None
+
+
+async def get_rates_for_date(target_date: Optional[date] = None, db: Optional[AsyncSession] = None) -> dict:
+    if target_date is None or target_date >= vet_today():
+        return await get_all_rates()
+
+    cache_key = target_date.isoformat()
+    if cache_key in historical_rates_cache:
+        return historical_rates_cache[cache_key]
+
+    live = await get_all_rates()
+    db_rates = await _query_db_rates_for_date(db, target_date) if db is not None else None
+    api_usd = None
+    if not (db_rates and db_rates.get("usd_bs")):
+        api_usd = await fetch_historical_bcv_api(target_date)
+
+    hist_usd = (db_rates and db_rates.get("usd_bs")) or api_usd
+    live_usd = Decimal(str(live.get("usd_bs") or 1))
+    live_eur = Decimal(str(live.get("eur_bs") or live_usd))
+    live_usdt = Decimal(str(live.get("usdt_bs") or live_usd))
+
+    usd_bs = hist_usd if (hist_usd and hist_usd > 0) else live_usd
+
+    if db_rates and db_rates.get("eur_bs"):
+        eur_bs = db_rates["eur_bs"]
+    elif hist_usd and hist_usd > 0 and live_usd > 0:
+        eur_bs = round(usd_bs * (live_eur / live_usd), 4)
+    else:
+        eur_bs = live_eur
+
+    if db_rates and db_rates.get("usdt_bs"):
+        usdt_bs = db_rates["usdt_bs"]
+    elif hist_usd and hist_usd > 0 and live_usd > 0:
+        usdt_bs = round(usd_bs * (live_usdt / live_usd), 4)
+    else:
+        usdt_bs = live_usdt
+
+    result = {"usd_bs": usd_bs, "eur_bs": eur_bs, "usdt_bs": usdt_bs}
+    historical_rates_cache[cache_key] = result
+    return result
+
+
+async def resolve_rates_for_update(
+    existing_record: Any,
+    target_date: Optional[date] = None,
+    existing_date: Optional[date] = None,
+    db: Optional[AsyncSession] = None
+) -> dict:
+    date_changed = (target_date is not None and existing_date is not None and target_date != existing_date)
+    if not date_changed and existing_record is not None:
+        r_usd = getattr(existing_record, "rate_usd_bs", None)
+        r_eur = getattr(existing_record, "rate_eur_bs", None)
+        r_usdt = getattr(existing_record, "rate_usdt_bs", None)
+        if r_usd is not None and Decimal(str(r_usd)) > 0:
+            fallback = None
+            if not (r_eur and Decimal(str(r_eur)) > 0) or not (r_usdt and Decimal(str(r_usdt)) > 0):
+                fallback = await get_rates_for_date(existing_date or target_date, db=db)
+            return {
+                "usd_bs": Decimal(str(r_usd)),
+                "eur_bs": Decimal(str(r_eur)) if (r_eur and Decimal(str(r_eur)) > 0) else Decimal(str(fallback["eur_bs"])),
+                "usdt_bs": Decimal(str(r_usdt)) if (r_usdt and Decimal(str(r_usdt)) > 0) else Decimal(str(fallback["usdt_bs"])),
+            }
+    return await get_rates_for_date(target_date or existing_date, db=db)
+
+
+def resolve_manual_rate_for_update(
+    existing_record: Any,
+    new_currency: Any,
+    explicit_manual_rate: Optional[Decimal],
+    date_changed: bool
+) -> Optional[Decimal]:
+    if explicit_manual_rate is not None and Decimal(str(explicit_manual_rate)) > 0:
+        return Decimal(str(explicit_manual_rate))
+    if not date_changed and existing_record is not None:
+        old_curr = getattr(existing_record, "currency", None)
+        old_curr_str = old_curr.value if hasattr(old_curr, "value") else str(old_curr or "")
+        new_curr_str = new_currency.value if hasattr(new_currency, "value") else str(new_currency or "")
+        if new_curr_str == "USD_CASH" and old_curr_str == "USD_CASH":
+            base_amount = (
+                getattr(existing_record, "amount", None)
+                or getattr(existing_record, "paid_amount", None)
+                or getattr(existing_record, "target_amount", None)
+                or getattr(existing_record, "real_amount", None)
+            )
+            rec_bs = getattr(existing_record, "amount_bs", None)
+            if base_amount and rec_bs and Decimal(str(base_amount)) > 0 and Decimal(str(rec_bs)) > 0:
+                return round(Decimal(str(rec_bs)) / Decimal(str(base_amount)), 4)
+    return None
+

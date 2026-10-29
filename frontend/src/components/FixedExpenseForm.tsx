@@ -140,7 +140,12 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
   const currentRate = rates?.usd_bs;
 
   return (
-    <div className="modal-backdrop">
+    <div
+      className="modal-backdrop"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onCancel();
+      }}
+    >
       <div className="expense-form-container">
         <h2>{initialData ? 'Editar Gasto Fijo' : 'Nuevo Gasto Fijo'}</h2>
 

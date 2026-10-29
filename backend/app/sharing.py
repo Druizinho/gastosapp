@@ -603,7 +603,11 @@ async def notify_members(
     title: str,
     body: str,
     type: str,
-    url: str
+    url: str,
+    send_push: bool = True,
+    entity_type: Optional[str] = None,
+    entity_id: Optional[UUID] = None,
+    commit: bool = False,
 ):
     members = await get_members(db, share_id)
     for m in members:
@@ -615,7 +619,11 @@ async def notify_members(
             title=title,
             body=body,
             type=type,
-            url=url
+            url=url,
+            send_push=send_push,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            commit=commit,
         )
 
 

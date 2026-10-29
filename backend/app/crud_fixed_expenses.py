@@ -9,7 +9,7 @@ from . import models, schemas, sharing, bcv_service
 from decimal import Decimal
 from datetime import datetime, timezone, timedelta
 import calendar
-from .push_service import send_notification_to_user
+from .push_service import send_notification_to_user, resolve_notifications_for_entity
 
 
 async def create_fixed_expense(db: AsyncSession, expense: schemas.FixedExpenseCreate, user_id: UUID, extra_data: dict = None):
@@ -49,7 +49,10 @@ async def create_fixed_expense(db: AsyncSession, expense: schemas.FixedExpenseCr
             title="Nuevo gasto fijo compartido",
             body=f"{req_name} compartió un gasto fijo contigo: {expense.name}",
             type="shared_fe_created",
-            url="/herramientas/gastos-fijos"
+            url="/herramientas/gastos-fijos",
+            send_push=False,
+            entity_type="fixed_expense",
+            entity_id=db_expense.id,
         )
 
     await db.commit()
@@ -174,7 +177,10 @@ async def update_fixed_expense(db: AsyncSession, expense_id: UUID, expense: sche
                     title="Nuevo gasto fijo compartido",
                     body=f"{user_name} compartió un gasto fijo contigo: {db_expense.name}",
                     type="shared_fe_created",
-                    url="/herramientas/gastos-fijos"
+                    url="/herramientas/gastos-fijos",
+                    send_push=False,
+                    entity_type="fixed_expense",
+                    entity_id=db_expense.id,
                 )
     
     await db.commit()
@@ -188,6 +194,8 @@ async def delete_fixed_expense(db: AsyncSession, expense_id: UUID, user_id: UUID
     db_expense = await get_fixed_expense(db, expense_id, user_id)
     if not db_expense:
         return False
+
+    await resolve_notifications_for_entity(db, "fixed_expense", expense_id)
 
     membership = await sharing.get_membership(db, expense_id, user_id)
     if membership:
@@ -234,7 +242,10 @@ async def delete_fixed_expense(db: AsyncSession, expense_id: UUID, user_id: UUID
                 title="Gasto fijo compartido eliminado",
                 body=f"{user_name} eliminó el gasto fijo compartido '{expense_name}' para todos los integrantes",
                 type="shared_fe_deleted",
-                url="/herramientas/gastos-fijos"
+                url="/herramientas/gastos-fijos",
+                send_push=False,
+                entity_type="fixed_expense",
+                entity_id=db_expense.id,
             )
 
             await db.delete(db_expense)
@@ -263,7 +274,10 @@ async def delete_fixed_expense(db: AsyncSession, expense_id: UUID, user_id: UUID
                 title="Gasto fijo compartido finalizado",
                 body=f"{user_name} dio de baja el gasto fijo compartido '{expense_name}' a partir de {month_year}",
                 type="shared_fe_deleted",
-                url="/herramientas/gastos-fijos"
+                url="/herramientas/gastos-fijos",
+                send_push=False,
+                entity_type="fixed_expense",
+                entity_id=db_expense.id,
             )
 
         await db.commit()
@@ -374,6 +388,8 @@ async def check_fixed_expense(
     if fe:
         fe.last_paid_month = check_data.month_year
 
+    await resolve_notifications_for_entity(db, "fixed_expense", fixed_expense_id)
+
     membership = await sharing.get_membership(db, fixed_expense_id, user_id)
 
     if membership:
@@ -386,7 +402,10 @@ async def check_fixed_expense(
             title="Gasto fijo pagado",
             body=f"{payer_name} pagó '{expense_name}' de {check_data.month_year}",
             type="shared_fe_paid",
-            url="/herramientas/gastos-fijos"
+            url="/herramientas/gastos-fijos",
+            send_push=False,
+            entity_type="fixed_expense",
+            entity_id=fixed_expense_id,
         )
 
     await db.commit()
@@ -428,16 +447,23 @@ async def update_fixed_expense_check(
     update_dict = check_update.model_dump(exclude_unset=True)
     manual_rate = update_dict.pop('manual_rate', None)
 
-    if extra_data is None and ('paid_amount' in update_dict or 'currency' in update_dict):
+    if extra_data is None and ('paid_amount' in update_dict or 'currency' in update_dict or 'paid_date' in update_dict or manual_rate is not None):
         new_amount = update_dict.get('paid_amount', check.paid_amount)
         raw_curr = update_dict.get('currency', check.currency)
         new_curr = raw_curr.value if hasattr(raw_curr, "value") else str(raw_curr)
-        rates = await bcv_service.get_all_rates()
+        new_date = update_dict.get('paid_date', check.paid_date)
+        date_changed = ('paid_date' in update_dict and update_dict['paid_date'] != check.paid_date)
+        rates = await bcv_service.resolve_rates_for_update(
+            check, target_date=new_date, existing_date=check.paid_date, db=db
+        )
+        eff_manual = bcv_service.resolve_manual_rate_for_update(
+            check, new_curr, manual_rate, date_changed=date_changed
+        )
         extra_data = bcv_service.convert_amount(
             amount=new_amount,
             currency=new_curr,
             rates=rates,
-            manual_rate=manual_rate
+            manual_rate=eff_manual
         )
 
     if extra_data:
@@ -455,6 +481,8 @@ async def update_fixed_expense_check(
                 linked_exp.amount = update_dict['paid_amount']
             if 'currency' in update_dict:
                 linked_exp.currency = update_dict['currency'].value if hasattr(update_dict['currency'], 'value') else str(update_dict['currency'])
+            if 'paid_date' in update_dict and update_dict['paid_date'] is not None:
+                linked_exp.date = update_dict['paid_date']
             for key in ["amount_usd", "amount_bs", "amount_eur", "amount_usdt", "rate_usd_bs", "rate_eur_bs", "rate_usdt_bs"]:
                 if key in update_dict:
                     setattr(linked_exp, key, update_dict[key])

@@ -1,9 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { Users } from 'lucide-react';
-import type { DebtPayment, DebtPaymentCreate, DebtPaymentUpdate } from '../types';
+import type { DebtPayment, DebtPaymentCreate, DebtPaymentUpdate, ExchangeRates } from '../types';
 import { CURRENCY_OPTIONS } from '../types';
+import { getRates } from '../api';
+import { formatRateForInput } from '../utils/currencyFormat';
 import ConfirmModal from './ConfirmModal';
 import CategorySelect from './CategorySelect';
+
+const getLocalToday = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
 interface DebtPaymentFormProps {
   initialData?: DebtPayment;
@@ -53,11 +60,13 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
   const [formData, setFormData] = useState<DebtPaymentCreate & { register_as_expense?: boolean; category?: string }>({
     amount: (initialData ? initialData.amount : '') as any,
     currency: (initialData?.currency || debtCurrency) as any,
-    payment_date: initialData?.payment_date || new Date().toISOString().split('T')[0],
+    payment_date: initialData?.payment_date || getLocalToday(),
     note: initialData?.note || '',
     register_as_expense: initialRegExpense,
     category: initialCategory,
   });
+  const [rates, setRates] = useState<ExchangeRates | null>(null);
+  const [manualRate, setManualRate] = useState<string>('');
   const [showConfirm, setShowConfirm] = useState(false);
 
   useEffect(() => {
@@ -70,8 +79,30 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
         register_as_expense: Boolean(initialData.create_expense || initialData.expense_id),
         category: initialData.category || debtCategory || '',
       });
+
+      if (initialData.currency === 'EUR_BCV' && initialData.rate_eur_bs) {
+        setManualRate(formatRateForInput(initialData.rate_eur_bs));
+      } else if (initialData.currency === 'USDT' && initialData.rate_usdt_bs) {
+        setManualRate(formatRateForInput(initialData.rate_usdt_bs));
+      } else if ((initialData.currency === 'USD_BCV' || initialData.currency === 'BS') && initialData.rate_usd_bs) {
+        setManualRate(formatRateForInput(initialData.rate_usd_bs));
+      } else if (initialData.currency === 'USD_CASH' && initialData.amount && initialData.amount_bs) {
+        setManualRate(formatRateForInput(Number(initialData.amount_bs) / Number(initialData.amount)));
+      } else {
+        setManualRate('');
+      }
+    } else {
+      setManualRate('');
     }
   }, [initialData, debtCategory]);
+
+  useEffect(() => {
+    getRates(formData.payment_date || undefined)
+      .then(setRates)
+      .catch((err) => console.error('Failed to load exchange rates', err));
+  }, [formData.payment_date]);
+
+  const suggestedRate = formData.currency === 'EUR_BCV' ? rates?.eur_bs : formData.currency === 'USDT' ? rates?.usdt_bs : rates?.usd_bs;
 
   // Check if user is paying in the same currency as the debt
   const isSameCurrency = formData.currency === debtCurrency;
@@ -90,9 +121,13 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const submitData: any = { ...formData };
-    submitData.amount = Number(submitData.amount);
-    submitData.category = submitData.register_as_expense ? (submitData.category || debtCategory || 'Sin Categoría') : null;
+    const parsedRate = manualRate ? parseFloat(manualRate.replace(',', '.')) : undefined;
+    const submitData: DebtPaymentCreate = {
+      ...formData,
+      amount: Number(formData.amount),
+      category: formData.register_as_expense ? (formData.category || debtCategory || 'Sin Categoría') : null,
+      manual_rate: parsedRate && !isNaN(parsedRate) && parsedRate > 0 ? parsedRate : undefined,
+    };
     
     if (!isEditing && isSameCurrency && submitData.amount > remaining) {
       setShowConfirm(true);
@@ -104,16 +139,25 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
 
   const handleConfirmSubmit = () => {
     setShowConfirm(false);
-    const submitData: any = { ...formData };
-    submitData.amount = Number(submitData.amount);
-    submitData.category = submitData.register_as_expense ? (submitData.category || debtCategory || 'Sin Categoría') : null;
+    const parsedRate = manualRate ? parseFloat(manualRate.replace(',', '.')) : undefined;
+    const submitData: DebtPaymentCreate = {
+      ...formData,
+      amount: Number(formData.amount),
+      category: formData.register_as_expense ? (formData.category || debtCategory || 'Sin Categoría') : null,
+      manual_rate: parsedRate && !isNaN(parsedRate) && parsedRate > 0 ? parsedRate : undefined,
+    };
     onSubmit(submitData);
   };
 
   const themeColor = type === 'owed' ? 'var(--expense-color)' : 'var(--income-color)';
 
   return (
-    <div className="modal-backdrop" onClick={onCancel}>
+    <div
+      className="modal-backdrop"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onCancel();
+      }}
+    >
       <div
         className="expense-form-container"
         onClick={(e) => e.stopPropagation()}
@@ -222,6 +266,21 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
                 ))}
               </select>
             </div>
+          </div>
+
+          <div className="form-group">
+            <label>Tasa de Cambio en Bs (Opcional)</label>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={manualRate}
+              onChange={(e) => {
+                const val = e.target.value.replace(/[^0-9.,]/g, '');
+                const parts = val.split(/[.,]/);
+                if (parts.length <= 2) setManualRate(val);
+              }}
+              placeholder={suggestedRate ? `Por defecto: Bs. ${Number(suggestedRate).toFixed(2)}` : 'Por defecto usa la tasa del día'}
+            />
           </div>
 
           <div className="form-group">

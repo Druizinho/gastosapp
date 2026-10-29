@@ -82,16 +82,18 @@ async def update_fixed_expense(
     if not db_expense:
         raise HTTPException(status_code=404, detail="Fixed expense not found")
     
-    amount = expense.amount if expense.amount is not None else db_expense.amount
-    currency = expense.currency.value if expense.currency is not None else db_expense.currency
-    
-    rates = await bcv_service.get_all_rates()
-    equivalents = bcv_service.convert_amount(
-        amount=amount,
-        currency=currency,
-        rates=rates,
-        manual_rate=expense.manual_rate
-    )
+    equivalents = None
+    if expense.amount is not None or expense.currency is not None or expense.manual_rate is not None:
+        amount = expense.amount if expense.amount is not None else db_expense.amount
+        currency = expense.currency.value if expense.currency is not None else db_expense.currency
+        
+        rates = await bcv_service.get_all_rates()
+        equivalents = bcv_service.convert_amount(
+            amount=amount,
+            currency=currency,
+            rates=rates,
+            manual_rate=expense.manual_rate
+        )
     
     return await crud_fixed_expenses.update_fixed_expense(
         db, expense_id=expense_id, expense=expense, user_id=user_id, extra_data=equivalents
@@ -126,7 +128,7 @@ async def check_fixed_expense(
         raise HTTPException(status_code=404, detail="Fixed expense not found")
 
     # Convert the paid amount
-    rates = await bcv_service.get_all_rates()
+    rates = await bcv_service.get_rates_for_date(target_date=check_data.paid_date, db=db)
     equivalents = bcv_service.convert_amount(
         amount=check_data.paid_amount,
         currency=check_data.currency.value if check_data.currency else "BS",
@@ -230,14 +232,6 @@ async def update_fixed_expense_check(
 ):
     """Update a fixed expense check (amount, currency, notes, etc.)."""
     equivalents = None
-    if check_update.paid_amount is not None and check_update.currency is not None:
-        rates = await bcv_service.get_all_rates()
-        equivalents = bcv_service.convert_amount(
-            amount=check_update.paid_amount,
-            currency=check_update.currency.value if hasattr(check_update.currency, "value") else str(check_update.currency),
-            rates=rates,
-            manual_rate=check_update.manual_rate,
-        )
     updated = await crud_fixed_expenses.update_fixed_expense_check(
         db, check_id=check_id, check_update=check_update, user_id=user_id, extra_data=equivalents
     )

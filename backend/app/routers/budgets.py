@@ -89,7 +89,7 @@ async def upsert_budget_category_limit(
     return await crud_budgets.upsert_budget_category_limit(db, user_id, month_year, payload)
 
 
-@router.delete("/monthly/{month_year}/category/{category_name}", response_model=schemas.MonthlyBudgetResponse)
+@router.delete("/monthly/{month_year}/category/{category_name:path}", response_model=schemas.MonthlyBudgetResponse)
 async def delete_budget_category_limit(
     month_year: str,
     category_name: str,
@@ -167,7 +167,7 @@ async def upsert_category_limit_by_budget_id(
     return await crud_budgets.upsert_category_limit_by_budget_id(db, user_id, budget_id, payload)
 
 
-@router.delete("/{budget_id}/category/{category_name}", response_model=schemas.MonthlyBudgetResponse)
+@router.delete("/{budget_id}/category/{category_name:path}", response_model=schemas.MonthlyBudgetResponse)
 async def delete_category_limit_by_budget_id(
     budget_id: UUID,
     category_name: str,

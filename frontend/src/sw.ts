@@ -45,47 +45,58 @@ const firebaseConfig = {
 const messaging = (self as any).firebase.messaging();
 
 messaging.onBackgroundMessage((payload: any) => {
-  console.log('[sw.ts] Received background message', payload);
-  
-  // NOTIF-06: Prevenir notificaciones duplicadas en Android y navegadores de escritorio.
-  // Si el mensaje incluye 'notification', WebPush lo renderiza automáticamente a nivel de sistema operativo.
-  // Solo mostramos manualmente si es un mensaje de solo datos (data-only).
-  const isDataOnly = !payload.notification && payload.data;
-  const title = payload.notification?.title || payload.data?.title || 'GastosApp';
-  const body = payload.notification?.body || payload.data?.body || '';
-  const url = payload.fcmOptions?.link || payload.data?.url || '/';
-  const tag = payload.data?.tag || payload.data?.notification_id || payload.messageId || 'gastosapp-alert';
-
+  console.log('[sw.ts] Mensaje en segundo plano recibido:', payload);
+  const isDataOnly = !payload.notification && !!payload.data;
   if (isDataOnly) {
-    self.registration.showNotification(title, {
-      body,
+    const notificationTitle = payload.data.title || 'GastosApp';
+    const notificationOptions = {
+      body: payload.data.body || '',
       icon: '/pwa-192x192.png',
-      badge: '/favicon.svg',
-      tag,
-      data: { url },
-    });
+      badge: '/pwa-192x192.png',
+      tag: payload.data.tag || 'gastosapp-alert',
+      data: {
+        url: payload.data.url || '/',
+      },
+    };
+    self.registration.showNotification(notificationTitle, notificationOptions);
   }
 });
 
-self.addEventListener('notificationclick', (event: any) => {
+self.addEventListener('notificationclick', (event: NotificationEvent) => {
   event.notification.close();
 
-  // URL comes from the data object we set in showNotification above,
-  // or from FCM's fcm_options.link field on auto-displayed notifications.
-  const targetUrl = event.notification.data?.url || '/';
+  const notifData = event.notification?.data || {};
+  const rawUrl =
+    notifData.url ||
+    notifData.FCM_MSG?.data?.url ||
+    notifData.FCM_MSG?.fcmOptions?.link ||
+    '/';
+
+  const resolvedUrl = new URL(rawUrl, self.location.origin).href;
+  const relativeUrl = new URL(rawUrl, self.location.origin).pathname + new URL(rawUrl, self.location.origin).search;
 
   event.waitUntil(
-    (self as any).clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList: any[]) => {
-      // If there's already a window open with this app, focus it and navigate
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clientList) => {
       for (const client of clientList) {
-        if ('focus' in client) {
-          client.focus();
-          if ('navigate' in client) client.navigate(targetUrl);
+        if (client.url.startsWith(self.location.origin) && 'focus' in client) {
+          await client.focus();
+          client.postMessage({
+            type: 'NOTIFICATION_CLICK',
+            url: relativeUrl,
+          });
+          if ('navigate' in client && client.url !== resolvedUrl) {
+            try {
+              await client.navigate(resolvedUrl);
+            } catch {
+              // Fallback relies on postMessage listener in app
+            }
+          }
           return;
         }
       }
-      // Otherwise open a new window
-      return (self as any).clients.openWindow(targetUrl);
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(resolvedUrl);
+      }
     })
   );
 });

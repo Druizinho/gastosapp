@@ -1,11 +1,23 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Bell } from 'lucide-react';
 import { useNotifications } from '../context/NotificationContext';
 import { NotificationSheet } from './NotificationSheet';
 
 export const NotificationBell = () => {
   const { unreadCount } = useNotifications();
-  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [isSheetOpen, setIsSheetOpen] = useState(() => {
+    return typeof window !== 'undefined' && window.location.search.includes('notifications=open');
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleOpen = () => setIsSheetOpen(true);
+    window.addEventListener('gastosapp:open-notifications', handleOpen);
+    return () => {
+      window.removeEventListener('gastosapp:open-notifications', handleOpen);
+    };
+  }, []);
 
   return (
     <>

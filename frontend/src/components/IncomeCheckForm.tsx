@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
-import { checkIncome } from '../api';
-import type { EstimatedIncome, IncomeCheckCreate, CurrencyType } from '../types';
+import { checkIncome, getRates } from '../api';
+import type { EstimatedIncome, IncomeCheckCreate, CurrencyType, ExchangeRates } from '../types';
 import { CURRENCY_OPTIONS } from '../types';
 
 interface IncomeCheckFormProps {
@@ -10,6 +10,11 @@ interface IncomeCheckFormProps {
   onClose: () => void;
   onSaved: () => void;
 }
+
+const getLocalToday = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
 const IncomeCheckForm: React.FC<IncomeCheckFormProps> = ({ income, monthYear, onClose, onSaved }) => {
   const isPreviouslyPartial = Boolean(income.checks?.[0]?.is_partial);
@@ -20,10 +25,17 @@ const IncomeCheckForm: React.FC<IncomeCheckFormProps> = ({ income, monthYear, on
   const [isPartial, setIsPartial] = useState(false);
   const [realAmount, setRealAmount] = useState(remainingAmount);
   const [currency, setCurrency] = useState<CurrencyType>(income.currency);
+  const [paymentDate, setPaymentDate] = useState<string>(getLocalToday());
+  const [manualRate, setManualRate] = useState<string>('');
+  const [rates, setRates] = useState<ExchangeRates | null>(null);
   const [pendingDate, setPendingDate] = useState('');
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    getRates(paymentDate || undefined).then(setRates).catch(console.error);
+  }, [paymentDate]);
 
   useEffect(() => {
     if (!isPartial) {
@@ -54,6 +66,8 @@ const IncomeCheckForm: React.FC<IncomeCheckFormProps> = ({ income, monthYear, on
         month_year: monthYear,
         real_amount: amountNum,
         currency,
+        payment_date: paymentDate,
+        manual_rate: manualRate ? parseFloat(manualRate.replace(',', '.')) : undefined,
         is_partial: isPartial,
         pending_date: isPartial && pendingDate ? pendingDate : null,
         notes: notes || undefined,
@@ -68,6 +82,8 @@ const IncomeCheckForm: React.FC<IncomeCheckFormProps> = ({ income, monthYear, on
       setIsSubmitting(false);
     }
   };
+
+  const suggestedRate = currency === 'EUR_BCV' ? rates?.eur_bs : currency === 'USDT' ? rates?.usdt_bs : rates?.usd_bs;
 
   return (
     <div className="modal-backdrop">
@@ -123,6 +139,33 @@ const IncomeCheckForm: React.FC<IncomeCheckFormProps> = ({ income, monthYear, on
                 ))}
               </select>
             </div>
+          </div>
+
+          <div className="form-group">
+            <label>Fecha de Cobro</label>
+            <input
+              type="date"
+              value={paymentDate}
+              onChange={(e) => setPaymentDate(e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="form-group">
+            <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Tasa de Cambio en Bs</span>
+              <span className="form-hint-inline">(Opcional)</span>
+            </label>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={manualRate}
+              onChange={(e) => {
+                const val = e.target.value.replace(/[^0-9.,]/g, '');
+                setManualRate(val);
+              }}
+              placeholder={suggestedRate ? `Por defecto: Bs. ${Number(suggestedRate).toFixed(2)}` : "Dejar vacío para usar tasa del día"}
+            />
           </div>
 
           {isPartial && (

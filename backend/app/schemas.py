@@ -55,6 +55,8 @@ class ProfileResponse(BaseModel):
     notify_debts: bool = True
     notify_incomes: bool = True
     notify_inactivity: bool = True
+    notify_budgets: bool = True
+    notify_panas: bool = True
     updated_at: Optional[datetime.datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -66,6 +68,8 @@ class ProfileUpdate(BaseModel):
     notify_debts: Optional[bool] = None
     notify_incomes: Optional[bool] = None
     notify_inactivity: Optional[bool] = None
+    notify_budgets: Optional[bool] = None
+    notify_panas: Optional[bool] = None
 
 class CategoryKind(str, Enum):
     expense = "expense"
@@ -564,6 +568,10 @@ class NotificationResponse(BaseModel):
     body: str
     type: str
     is_read: bool
+    url: Optional[str] = "/"
+    is_resolved: bool = False
+    entity_type: Optional[str] = None
+    entity_id: Optional[UUID] = None
     created_at: datetime.datetime
 
     model_config = ConfigDict(from_attributes=True)

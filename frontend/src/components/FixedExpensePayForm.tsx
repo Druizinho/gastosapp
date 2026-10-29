@@ -14,6 +14,11 @@ interface FixedExpensePayFormProps {
   onCancel: () => void;
 }
 
+const getLocalToday = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 const FixedExpensePayForm: React.FC<FixedExpensePayFormProps> = ({
   expense,
   fixedExpense,
@@ -23,6 +28,7 @@ const FixedExpensePayForm: React.FC<FixedExpensePayFormProps> = ({
   onCancel,
 }) => {
   const activeExpense = expense || fixedExpense;
+  const [paidDate, setPaidDate] = useState<string>(getLocalToday());
   const [paidAmount, setPaidAmount] = useState<string>(activeExpense ? activeExpense.amount.toString() : '0');
   const [currency, setCurrency] = useState<CurrencyType>(activeExpense ? activeExpense.currency : 'USD_BCV');
   const [category, setCategory] = useState<string>(activeExpense?.category || 'Gastos Fijos');
@@ -33,8 +39,8 @@ const FixedExpensePayForm: React.FC<FixedExpensePayFormProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    getRates().then(setRates).catch(() => {});
-  }, []);
+    getRates(paidDate || undefined).then(setRates).catch(console.error);
+  }, [paidDate]);
 
   if (!activeExpense) return null;
 
@@ -54,7 +60,7 @@ const FixedExpensePayForm: React.FC<FixedExpensePayFormProps> = ({
           month_year: effectiveMonthYear,
           paid_amount: parseFloat(paidAmount.replace(',', '.')),
           currency,
-          paid_date: new Date().toISOString().split('T')[0],
+          paid_date: paidDate,
           create_expense: createExpense,
           category: chosenCategory,
           notes: notes || undefined,
@@ -76,10 +82,15 @@ const FixedExpensePayForm: React.FC<FixedExpensePayFormProps> = ({
     return `${months[parseInt(m, 10) - 1]} ${y}`;
   })();
 
-  const currentRate = rates?.usd_bs;
+  const currentRate = currency === 'EUR_BCV' ? rates?.eur_bs : currency === 'USDT' ? rates?.usdt_bs : rates?.usd_bs;
 
   return (
-    <div className="modal-backdrop">
+    <div
+      className="modal-backdrop"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onCancel();
+      }}
+    >
       <div className="expense-form-container">
         <h2>Marcar como Pagado</h2>
         <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '-0.5rem 0 1rem' }}>
@@ -123,7 +134,17 @@ const FixedExpensePayForm: React.FC<FixedExpensePayFormProps> = ({
                 const val = e.target.value.replace(/[^0-9.,]/g, '');
                 setManualRate(val);
               }}
-              placeholder={currentRate ? `Por defecto usa la del mercado` : "Ej. 36.50"}
+              placeholder={currentRate ? `Por defecto: Bs. ${Number(currentRate).toFixed(2)}` : "Ej. 36.50"}
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Fecha de Pago</label>
+            <input
+              type="date"
+              value={paidDate}
+              onChange={(e) => setPaidDate(e.target.value)}
+              required
             />
           </div>
 

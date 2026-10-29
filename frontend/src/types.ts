@@ -534,6 +534,10 @@ export interface Notification {
   body: string;
   type: string;
   is_read: boolean;
+  is_resolved?: boolean;
+  url?: string | null;
+  entity_type?: string | null;
+  entity_id?: string | null;
   created_at: string;
 }
 

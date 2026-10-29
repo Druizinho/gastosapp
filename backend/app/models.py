@@ -16,6 +16,8 @@ class Profile(Base):
     notify_debts = Column(Boolean, nullable=False, server_default='true')
     notify_incomes = Column(Boolean, nullable=False, server_default='true')
     notify_inactivity = Column(Boolean, nullable=False, server_default='true')
+    notify_budgets = Column(Boolean, nullable=False, default=True, server_default='true')
+    notify_panas = Column(Boolean, nullable=False, default=True, server_default='true')
     updated_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class Category(Base):
@@ -306,6 +308,10 @@ class Notification(Base):
     body = Column(String, nullable=False)
     type = Column(String, nullable=False)
     is_read = Column(Boolean, nullable=False, server_default='false')
+    url = Column(String, nullable=True, default='/', server_default='/')
+    is_resolved = Column(Boolean, nullable=False, default=False, server_default='false')
+    entity_type = Column(String(50), nullable=True)
+    entity_id = Column(UUID(as_uuid=True), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class Connection(Base):

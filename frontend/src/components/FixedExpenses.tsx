@@ -98,12 +98,12 @@ const FixedExpenses: React.FC = () => {
       toast.success('Te has desvinculado del gasto fijo compartido');
       setExpenses((prev) => prev.filter((e) => e.id !== expense.id));
       setSelectedExpenseForSheet(null);
-      setLeaveExpenseModal({ isOpen: false, expense: null });
     } catch (err: any) {
       console.error('Error al desvincularse del gasto fijo:', err);
       toast.error(err?.response?.data?.detail || err?.message || 'Error al desvincularse del gasto fijo');
     } finally {
       setLeaveExpenseLoading(false);
+      setLeaveExpenseModal({ isOpen: false, expense: null });
     }
   };
   const [localCategoryModal, setLocalCategoryModal] = useState<{
@@ -336,11 +336,12 @@ const FixedExpenses: React.FC = () => {
     try {
       await deleteFixedExpense(confirmDelete.expenseId, currentMonth);
       setExpenses((prev) => prev.filter((e) => e.id !== confirmDelete.expenseId));
-      setConfirmDelete({ isOpen: false, expenseId: '' });
       await fetchData(true);
     } catch (error) {
       console.error('Error deleting:', error);
-      alert('Error al dar de baja el gasto fijo');
+      toast.error('Error al dar de baja el gasto fijo');
+    } finally {
+      setConfirmDelete({ isOpen: false, expenseId: '' });
     }
   };
 

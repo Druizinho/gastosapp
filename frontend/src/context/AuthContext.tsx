@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../supabaseClient';
 import { getProfile } from '../api';
+import { disablePushNotifications, syncPushSubscription } from '../pushManager';
 
 interface AuthContextType {
   session: Session | null;
@@ -83,7 +84,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     return () => subscription.unsubscribe();
   }, []);
 
+  useEffect(() => {
+    if (session?.user?.id) {
+      syncPushSubscription(session.user.id);
+    }
+  }, [session?.user?.id]);
+
   const signOut = async () => {
+    try {
+      if (localStorage.getItem('fcm_token')) {
+        await disablePushNotifications();
+      }
+    } catch (e) {
+      console.warn('Error unsubscribing push on signOut:', e);
+    }
     await supabase.auth.signOut();
   };
 

@@ -12,10 +12,15 @@ export default async function handler(
   }
 
   try {
+    const requestedWindow = typeof request.query?.window === 'string' ? request.query.window : undefined;
+    const utcHour = new Date().getUTCHours();
+    const inferredWindow = (utcHour >= 12 && utcHour <= 16) ? 'morning' : ((utcHour >= 22 || utcHour <= 2) ? 'evening' : '');
+    const windowParam = requestedWindow || inferredWindow;
+
     const backendUrl = process.env.BACKEND_API_URL || process.env.VITE_API_URL || 'http://localhost:8000/api';
     const apiUrl = backendUrl.endsWith('/api') ? backendUrl : `${backendUrl}/api`;
     
-    console.log(`Disparando cron de notificaciones en: ${apiUrl}/push/cron`);
+    console.log(`Disparando cron de notificaciones en: ${apiUrl}/push/cron (window: ${windowParam || 'all'})`);
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
@@ -24,9 +29,14 @@ export default async function handler(
     }
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8500); // Timeout de 8.5s para no exceder los 10s de Vercel
+    const timeout = setTimeout(() => controller.abort(), 9500); // Timeout de 9.5s para no exceder los 10s de Vercel
 
-    const targetUrl = `${apiUrl}/push/cron${cronSecret ? `?token=${encodeURIComponent(cronSecret)}` : ''}`;
+    const params = new URLSearchParams();
+    if (cronSecret) params.set('token', cronSecret);
+    if (windowParam) params.set('window', windowParam);
+    const queryString = params.toString();
+    const targetUrl = `${apiUrl}/push/cron${queryString ? `?${queryString}` : ''}`;
+
     const result = await fetch(targetUrl, {
       method: 'POST',
       headers,
@@ -44,6 +54,7 @@ export default async function handler(
     return response.status(200).json({ 
       success: true, 
       message: 'Notificaciones procesadas exitosamente',
+      window: windowParam || 'all',
       backend_response: data 
     });
   } catch (error) {

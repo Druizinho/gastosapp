@@ -14,6 +14,16 @@ router = APIRouter(
 )
 
 
+def _share_target_url(entity_type: str) -> str:
+    mapping = {
+        "debt": "/herramientas/deudas",
+        "fixed_expense": "/herramientas/gastos-fijos",
+        "saving_goal": "/herramientas/ahorros",
+        "sub_budget": "/herramientas/presupuestos",
+    }
+    return mapping.get(entity_type, "/panas")
+
+
 @router.get("/by-entity/{entity_id}", response_model=schemas.ShareInfoOut)
 async def get_share_by_entity(
     entity_id: UUID,
@@ -68,12 +78,8 @@ async def add_share_members(
         "sub_budget": "un sub-presupuesto compartido"
     }.get(share.entity_type, "un ítem compartido")
 
-    url_by_type = {
-        "debt": "/deudas",
-        "fixed_expense": "/gastos-fijos",
-        "saving_goal": "/herramientas/ahorros",
-        "sub_budget": "/herramientas/presupuestos"
-    }.get(share.entity_type, "/dashboard")
+    share.entity_id = caller.entity_id if caller else (members[0].entity_id if members else None)
+    target_url = _share_target_url(share.entity_type)
 
     for tid in payload.user_ids:
         if tid != user_id:
@@ -83,7 +89,11 @@ async def add_share_members(
                 title="Nuevo ítem compartido",
                 body=f"{actor_name} te agregó a {item_type_label}",
                 type=f"shared_{share.entity_type}_created",
-                url=url_by_type
+                url=target_url,
+                send_push=(share.entity_type == "debt"),
+                entity_type=share.entity_type,
+                entity_id=share.entity_id,
+                commit=False,
             )
 
     await db.commit()
@@ -115,6 +125,8 @@ async def update_member_role(
     sharing.assert_can_change_role(share, caller, target, payload.role.value, all_members=members)
     target.role = payload.role.value
 
+    share.entity_id = caller.entity_id if caller else (members[0].entity_id if members else None)
+    target_url = _share_target_url(share.entity_type)
     role_label = "Administrador" if payload.role.value == "admin" else "Miembro común"
     await sharing.send_notification_to_user(
         db=db,
@@ -122,7 +134,11 @@ async def update_member_role(
         title="Rol actualizado",
         body=f"Tu rol en el ítem compartido fue cambiado a {role_label}",
         type=f"shared_{share.entity_type}_role",
-        url="/dashboard"
+        url=target_url,
+        send_push=False,
+        entity_type=share.entity_type,
+        entity_id=share.entity_id,
+        commit=False,
     )
 
     await db.commit()
@@ -165,6 +181,9 @@ async def remove_share_member(
         "sub_budget": "el sub-presupuesto compartido"
     }.get(share.entity_type, "el ítem compartido")
 
+    share.entity_id = caller.entity_id if caller else (members[0].entity_id if members else None)
+    target_url = _share_target_url(share.entity_type)
+
     if is_voluntary:
         await sharing.notify_members(
             db=db,
@@ -173,7 +192,11 @@ async def remove_share_member(
             title="Un integrante salió",
             body=f"{caller_name} abandonó {item_type_label}",
             type=f"shared_{share.entity_type}_leave",
-            url="/dashboard"
+            url=target_url,
+            send_push=False,
+            entity_type=share.entity_type,
+            entity_id=share.entity_id,
+            commit=False,
         )
     else:
         await sharing.send_notification_to_user(
@@ -182,7 +205,11 @@ async def remove_share_member(
             title="Fuiste removido",
             body=f"{caller_name} te retiró de {item_type_label}",
             type=f"shared_{share.entity_type}_kick",
-            url="/dashboard"
+            url=target_url,
+            send_push=False,
+            entity_type=share.entity_type,
+            entity_id=share.entity_id,
+            commit=False,
         )
         await sharing.notify_members(
             db=db,
@@ -191,7 +218,11 @@ async def remove_share_member(
             title="Integrante removido",
             body=f"{caller_name} retiró a {target_name} de {item_type_label}",
             type=f"shared_{share.entity_type}_kick",
-            url="/dashboard"
+            url=target_url,
+            send_push=False,
+            entity_type=share.entity_type,
+            entity_id=share.entity_id,
+            commit=False,
         )
 
     share_deleted = await sharing.remove_member(db, share, target_user_id)
