@@ -7,7 +7,6 @@ import {
   Trash2,
   SlidersHorizontal,
   Layers,
-  Sparkles,
   X,
   Star,
   Check,
@@ -27,7 +26,6 @@ import type {
 import {
   getMonthlyBudget,
   getCachedMonthlyBudget,
-  confirmMonthlyBudget,
   createMonthlyBudget,
   updateMonthlyBudgetById,
   deleteMonthlyBudgetById,
@@ -277,7 +275,6 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
   // Data states
   const [budgetResponse, setBudgetResponse] = useState<MonthlyBudgetResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isConfirmingBudget, setIsConfirmingBudget] = useState<boolean>(false);
   const [panas, setPanas] = useState<{ partner_id: string; partner_name: string }[]>([]);
 
   // Currency cycling for hero card (usd, bs, eur, usdt)
@@ -504,21 +501,6 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
     setDisplayCurrency(order[(idx + 1) % order.length]);
   };
 
-  const handleConfirmBudget = async () => {
-    setIsConfirmingBudget(true);
-    try {
-      const res = await confirmMonthlyBudget(currentMonthYear);
-      setBudgetResponse(res);
-      invalidateMonthlyBudgetCache(currentMonthYear);
-      await fetchData(true);
-    } catch (error) {
-      console.error('Error confirming budget:', error);
-      toast.error('Error al confirmar presupuesto del mes');
-    } finally {
-      setIsConfirmingBudget(false);
-    }
-  };
-
   const handleManageCategories = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (primaryBudget) {
@@ -679,12 +661,6 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
     return <IconComponent size={18} color={hexColor} />;
   };
 
-  // Check if any budget is unconfirmed
-  const hasUnconfirmedBudgets = useMemo(() => {
-    if (!budgetResponse || !budgetResponse.exists || !budgetResponse.budgets) return false;
-    return budgetResponse.budgets.some((b) => !b.is_confirmed);
-  }, [budgetResponse]);
-
   const monthNavigator = (
     <div
       style={{
@@ -818,50 +794,6 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
             rightAction={monthNavigator}
             actionColor="var(--tool-budgets, #6366F1)"
           />
-
-          {/* Auto-clone unconfirmed banner */}
-          {hasUnconfirmedBudgets && (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                flexWrap: 'wrap',
-                gap: '0.75rem',
-                padding: '0.85rem 1rem',
-                borderRadius: 'var(--radius-md)',
-                background: 'rgba(245, 158, 11, 0.08)',
-                border: '1px solid rgba(245, 158, 11, 0.25)',
-                marginBottom: '1.25rem',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', minWidth: 0, flex: 1 }}>
-                <Sparkles size={18} color="#F59E0B" style={{ flexShrink: 0 }} />
-                <span style={{ fontSize: '0.825rem', color: 'var(--text-primary)', fontWeight: 500 }}>
-                  Presupuestos clonados del mes anterior. Revísalos y confirma tus límites.
-                </span>
-              </div>
-              <button
-                onClick={handleConfirmBudget}
-                disabled={isConfirmingBudget}
-                style={{
-                  padding: '0.4rem 0.85rem',
-                  borderRadius: 'var(--radius-full)',
-                  background: '#F59E0B',
-                  border: 'none',
-                  color: '#FFFFFF',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  cursor: isConfirmingBudget ? 'not-allowed' : 'pointer',
-                  whiteSpace: 'nowrap',
-                  opacity: isConfirmingBudget ? 0.7 : 1,
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                {isConfirmingBudget ? 'Confirmando...' : 'Confirmar mes'}
-              </button>
-            </div>
-          )}
 
           {/* Hero Card: Presupuesto Principal (Plan Maestro) */}
           <BudgetHeroCard

@@ -345,15 +345,15 @@ async def get_or_clone_monthly_budgets(
             budgets.sort(key=lambda b: (not b.is_primary, b.name.lower()))
 
         # Check start-of-month notification
-        if month_year == current_month and any(not b.notified_month_start and not b.is_confirmed for b in budgets):
+        if month_year == current_month and any(not b.notified_month_start for b in budgets):
             for b in budgets:
                 b.notified_month_start = True
             db_sub = next((b for b in budgets if b.is_primary), budgets[0]) if budgets else None
             await send_notification_to_user(
                 db=db,
                 user_id=user_id,
-                title="Presupuesto del mes",
-                body=f"Revisa tus presupuestos de {month_year} y confirma o ajusta tus límites.",
+                title="Nuevo mes: Presupuestos activos",
+                body="Tus límites del mes anterior siguen activos. Puedes revisarlos o ajustarlos cuando lo desees.",
                 type="budgets",
                 url="/herramientas/presupuestos",
                 send_push=False,
@@ -457,7 +457,7 @@ async def get_or_clone_monthly_budgets(
             income_mode=pb.income_mode,
             linked_income_id=pb.linked_income_id,
             manual_global_limit=pb.manual_global_limit,
-            is_confirmed=False,
+            is_confirmed=True,
             is_primary=is_prim,
             notified_month_start=False,
             notified_global_80=False,
@@ -534,8 +534,8 @@ async def get_or_clone_monthly_budgets(
         await send_notification_to_user(
             db=db,
             user_id=user_id,
-            title="Presupuesto del mes",
-            body=f"Tus presupuestos para {month_year} se clonaron del mes anterior. Revísalos y confirma tus límites.",
+            title="Nuevo mes: Presupuestos activos",
+            body="Tus límites del mes anterior siguen activos. Puedes revisarlos o ajustarlos cuando lo desees.",
             type="budgets",
             url="/herramientas/presupuestos",
             send_push=False,
