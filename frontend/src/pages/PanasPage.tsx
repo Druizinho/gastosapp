@@ -124,7 +124,7 @@ export const PanasPage: React.FC = () => {
         actionLabel="Invitar pana"
         actionIcon={<UserPlus size={16} />}
         onAction={() => setIsInviteModalOpen(true)}
-        actionColor="var(--primary-color, #6366F1)"
+        actionColor="var(--tool-panas, #EC4899)"
       />
 
       {error && (
@@ -152,7 +152,7 @@ export const PanasPage: React.FC = () => {
           badgeIcon={<Users size={13} />}
           mainAmount={String(activePanas.length)}
           statusSubtext={activePanas.length === 1 ? '1 pana conectado sincronizando finanzas' : `${activePanas.length} panas conectados sincronizando finanzas`}
-          accentColor="var(--primary-color, #6366F1)"
+          accentColor="var(--tool-panas, #EC4899)"
           metrics={[
             {
               label: 'Gastos Fijos',
@@ -186,7 +186,7 @@ export const PanasPage: React.FC = () => {
       <SegmentedTabs<'panas' | 'requests'>
         activeTab={activeTab}
         onChange={setActiveTab}
-        activeColor="var(--primary-color, #6366F1)"
+        activeColor="var(--tool-panas, #EC4899)"
         tabs={[
           {
             id: 'panas',
@@ -246,7 +246,7 @@ export const PanasPage: React.FC = () => {
               actionLabel={activePanas.length === 0 ? 'Invitar a tu primer Pana' : undefined}
               actionIcon={activePanas.length === 0 ? <UserPlus size={16} /> : undefined}
               onAction={activePanas.length === 0 ? () => setIsInviteModalOpen(true) : undefined}
-              actionColor="var(--primary-color, #6366F1)"
+              actionColor="var(--tool-panas, #EC4899)"
             />
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>

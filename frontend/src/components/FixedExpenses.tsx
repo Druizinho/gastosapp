@@ -45,6 +45,7 @@ import { AttributionBadge } from './ui/AttributionBadge';
 import { SkeletonList } from './ui/Skeleton';
 import ListCard from './ListCard';
 import ListCardBottomSheet from './ListCardBottomSheet';
+import { colorWithOpacity } from '../utils/toolColors';
 
 const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
@@ -605,7 +606,7 @@ const FixedExpenses: React.FC = () => {
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '0.35rem',
-                background: '#F59E0B',
+                background: 'var(--tool-fixed, #F59E0B)',
                 color: '#FFFFFF',
                 border: 'none',
                 borderRadius: 'var(--radius-md, 12px)',
@@ -613,7 +614,7 @@ const FixedExpenses: React.FC = () => {
                 fontSize: '0.82rem',
                 fontWeight: 600,
                 cursor: 'pointer',
-                boxShadow: '0 3px 10px rgba(245, 158, 11, 0.35)',
+                boxShadow: `0 3px 10px ${colorWithOpacity('var(--tool-fixed, #F59E0B)', 35)}`,
                 transition: 'transform 150ms ease-out',
                 flexShrink: 0,
               }}
@@ -643,7 +644,7 @@ const FixedExpenses: React.FC = () => {
         isLoading={isLoading}
         currencyHintText="Toca para alternar moneda"
         onCycleCurrency={cycleDisplayCurrency}
-        accentColor="#F59E0B"
+        accentColor="var(--tool-fixed, #F59E0B)"
         metrics={[
           {
             label: 'PAGADO',

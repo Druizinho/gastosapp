@@ -1,5 +1,6 @@
 import React from 'react';
 import { ArrowLeft, Plus } from 'lucide-react';
+import { colorWithOpacity } from '../../utils/toolColors';
 
 export interface PageHeaderProps {
   title: string;
@@ -20,7 +21,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   actionLabel,
   actionIcon,
   onAction,
-  actionColor = '#6366F1',
+  actionColor = 'var(--tool-budgets, #6366F1)',
 }) => {
   return (
     <header style={{
@@ -110,7 +111,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
               fontSize: '0.85rem',
               fontWeight: 600,
               cursor: 'pointer',
-              boxShadow: `0 4px 14px ${actionColor}40`,
+              boxShadow: `0 4px 14px ${colorWithOpacity(actionColor, '40')}`,
               transition: 'transform 150ms ease-out, box-shadow 150ms ease-out',
             }}
             onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}

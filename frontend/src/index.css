@@ -18,6 +18,20 @@
   --expense-color: #EF4444;
   --expense-bg: rgba(239, 68, 68, 0.08);
 
+  /* Tool Identity Accents */
+  --tool-budgets: #6366F1;
+  --tool-budgets-bg: rgba(99, 102, 241, 0.1);
+  --tool-fixed: #F59E0B;
+  --tool-fixed-bg: rgba(245, 158, 11, 0.1);
+  --tool-income: #3B82F6;
+  --tool-income-bg: rgba(59, 130, 246, 0.1);
+  --tool-debts: #8B5CF6;
+  --tool-debts-bg: rgba(139, 92, 246, 0.1);
+  --tool-savings: #10B981;
+  --tool-savings-bg: rgba(16, 185, 129, 0.1);
+  --tool-panas: #EC4899;
+  --tool-panas-bg: rgba(236, 72, 153, 0.1);
+
   /* UI Accents */
   --accent-color: #111827;
   --accent-hover: #1F2937;

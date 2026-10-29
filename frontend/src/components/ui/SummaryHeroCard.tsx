@@ -1,5 +1,6 @@
 import React from 'react';
 import { Skeleton } from './Skeleton';
+import { colorWithOpacity } from '../../utils/toolColors';
 
 export interface SummaryMetricItem {
   label: string;
@@ -13,6 +14,7 @@ export interface SummaryHeroCardProps {
   eyebrow: string;
   badgeText?: string;
   badgeIcon?: React.ReactNode;
+  badgeColor?: string;
   mainAmount: string;
   mainAmountColor?: string;
   statusSubtext?: string;
@@ -34,6 +36,7 @@ export const SummaryHeroCard: React.FC<SummaryHeroCardProps> = ({
   eyebrow,
   badgeText,
   badgeIcon,
+  badgeColor,
   mainAmount,
   mainAmountColor,
   statusSubtext,
@@ -63,9 +66,9 @@ export const SummaryHeroCard: React.FC<SummaryHeroCardProps> = ({
         marginBottom: '1.5rem',
         padding: '1.35rem 1.45rem',
         borderRadius: '20px',
-        background: `linear-gradient(135deg, ${accentColor}0f 0%, var(--surface-color, #FFFFFF) 100%)`,
-        border: '1px solid var(--border-color, rgba(0, 0, 0, 0.06))',
-        boxShadow: 'var(--shadow-sm, 0 2px 8px rgba(0,0,0,0.04))',
+        background: `linear-gradient(140deg, ${colorWithOpacity(accentColor, '1a')} 0%, ${colorWithOpacity(accentColor, '06')} 45%, var(--surface-color, #FFFFFF) 100%)`,
+        border: `1px solid ${colorWithOpacity(accentColor, '25')}`,
+        boxShadow: `0 4px 20px -2px ${colorWithOpacity(accentColor, '14')}, var(--shadow-sm, 0 2px 8px rgba(0,0,0,0.04))`,
         cursor: isInteractive ? 'pointer' : 'default',
         transition: 'transform 150ms ease-out, box-shadow 150ms ease-out',
         position: 'relative',
@@ -91,8 +94,8 @@ export const SummaryHeroCard: React.FC<SummaryHeroCardProps> = ({
       }}>
         <span style={{
           fontSize: '0.78rem',
-          color: 'var(--text-tertiary, #64748B)',
-          fontWeight: 600,
+          color: colorWithOpacity(accentColor, 'b0') || 'var(--text-tertiary, #64748B)',
+          fontWeight: 700,
           textTransform: 'uppercase',
           letterSpacing: '0.05em',
         }}>
@@ -106,8 +109,8 @@ export const SummaryHeroCard: React.FC<SummaryHeroCardProps> = ({
             gap: '0.35rem',
             padding: '0.2rem 0.6rem',
             borderRadius: '9999px',
-            background: `${accentColor}18`,
-            color: accentColor,
+            background: `${colorWithOpacity(badgeColor || accentColor, '18')}`,
+            color: badgeColor || accentColor,
             fontSize: '0.72rem',
             fontWeight: 700,
             whiteSpace: 'nowrap',
@@ -252,7 +255,7 @@ export const SummaryHeroCard: React.FC<SummaryHeroCardProps> = ({
             <div style={{
               height: '100%',
               borderRadius: '9999px',
-              background: progress.color || `linear-gradient(90deg, ${accentColor}, ${accentColor}cc)`,
+              background: progress.color || `linear-gradient(90deg, ${accentColor}, ${colorWithOpacity(accentColor, 'cc')})`,
               width: `${Math.min(100, Math.max(0, progress.percent))}%`,
               transition: 'width 300ms ease-out',
             }} />

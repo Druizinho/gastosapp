@@ -212,11 +212,12 @@ export const BudgetHeroCard: React.FC<BudgetHeroCardProps> = ({
       eyebrow={eyebrow || title || 'PRESUPUESTO'}
       badgeText={badgeText || (typeof badge === 'string' ? badge : undefined)}
       badgeIcon={badgeIcon}
+      badgeColor={lightColor}
       mainAmount={isLoading ? '...' : spentStr}
       statusSubtext={hasLimit ? `de ${limitStr} límite mensual` : 'Sin límite mensual fijado'}
       currencyHintText={`Toca para alternar (${displayCurrency.toUpperCase()})`}
       onCycleCurrency={onCycleCurrency}
-      accentColor={lightColor}
+      accentColor="var(--tool-budgets, #6366F1)"
       metrics={metrics}
       progress={
         showProgress
@@ -815,6 +816,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
             subtitle="Planificación y techos mensuales"
             onBack={handleBack}
             rightAction={monthNavigator}
+            actionColor="var(--tool-budgets, #6366F1)"
           />
 
           {/* Auto-clone unconfirmed banner */}

@@ -50,6 +50,7 @@ import {
   convertItemAmountToMainCurrency,
 } from '../utils/currencyFormat';
 import { resolveCategoryVisuals } from '../utils/categoryVisuals';
+import { colorWithOpacity } from '../utils/toolColors';
 import { PageHeader } from './ui/PageHeader';
 import { SummaryHeroCard } from './ui/SummaryHeroCard';
 import { SegmentedTabs } from './ui/SegmentedTabs';
@@ -825,7 +826,7 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '0.35rem',
-                  background: '#3B82F6',
+                  background: 'var(--tool-income, #3B82F6)',
                   color: '#FFFFFF',
                   border: 'none',
                   borderRadius: 'var(--radius-md, 12px)',
@@ -833,7 +834,7 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
                   fontSize: '0.82rem',
                   fontWeight: 600,
                   cursor: 'pointer',
-                  boxShadow: '0 3px 10px rgba(59, 130, 246, 0.35)',
+                  boxShadow: `0 3px 10px ${colorWithOpacity('var(--tool-income, #3B82F6)', 35)}`,
                   transition: 'transform 150ms ease-out',
                   flexShrink: 0,
                 }}
@@ -866,10 +867,10 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
         badgeIcon={<Wallet size={14} />}
         mainAmount={isLoading ? '...' : formatCurrencyAmount(received, displayCurrency)}
         isLoading={isLoading}
-        mainAmountColor="#3B82F6"
+        mainAmountColor="var(--tool-income, #3B82F6)"
         currencyHintText="Toca para alternar moneda"
         onCycleCurrency={cycleCurrency}
-        accentColor="#3B82F6"
+        accentColor="var(--tool-income, #3B82F6)"
         metrics={[
           {
             label: 'ESPERADO',
@@ -885,7 +886,7 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
           percent: progressPercent,
           leftLabel: 'Progreso de cobro',
           rightLabel: `${Math.round(progressPercent)}% (${fullyConfirmedCount}/${activeEstimatedCount})`,
-          color: '#3B82F6',
+          color: 'var(--tool-income, #3B82F6)',
         }}
       />
 

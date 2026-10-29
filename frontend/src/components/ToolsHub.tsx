@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Receipt, Wallet, ChevronRight, Lock, Users, PiggyBank, Target, ArrowLeftRight } from 'lucide-react';
+import { TOOL_COLORS } from '../utils/toolColors';
 
 interface ToolCard {
   id: string;
@@ -27,8 +28,8 @@ const toolSections: ToolSection[] = [
         title: 'Presupuestos',
         description: 'Límites mensuales globales y por categoría',
         icon: <Target size={28} />,
-        color: '#6366F1',
-        bgColor: 'rgba(99, 102, 241, 0.1)',
+        color: TOOL_COLORS.budgets.solid,
+        bgColor: TOOL_COLORS.budgets.bg,
         path: '/herramientas/presupuestos',
         enabled: true,
       },
@@ -37,8 +38,8 @@ const toolSections: ToolSection[] = [
         title: 'Gastos Fijos',
         description: 'Gastos recurrentes cada mes',
         icon: <Receipt size={28} />,
-        color: '#F59E0B',
-        bgColor: 'rgba(245, 158, 11, 0.1)',
+        color: TOOL_COLORS.fixedExpenses.solid,
+        bgColor: TOOL_COLORS.fixedExpenses.bg,
         path: '/herramientas/gastos-fijos',
         enabled: true,
       },
@@ -47,8 +48,8 @@ const toolSections: ToolSection[] = [
         title: 'Ingresos',
         description: 'Ingresos recibidos y cobros del mes',
         icon: <Wallet size={28} />,
-        color: '#3B82F6',
-        bgColor: 'rgba(59, 130, 246, 0.1)',
+        color: TOOL_COLORS.income.solid,
+        bgColor: TOOL_COLORS.income.bg,
         path: '/herramientas/ingresos',
         enabled: true,
       },
@@ -62,8 +63,8 @@ const toolSections: ToolSection[] = [
         title: 'Deudas y Préstamos',
         description: 'Lo que debes y lo que te deben con balance neto',
         icon: <ArrowLeftRight size={28} />,
-        color: '#8B5CF6',
-        bgColor: 'rgba(139, 92, 246, 0.1)',
+        color: TOOL_COLORS.debts.solid,
+        bgColor: TOOL_COLORS.debts.bg,
         path: '/herramientas/deudas',
         enabled: true,
       },
@@ -72,8 +73,8 @@ const toolSections: ToolSection[] = [
         title: 'Proyectos / Ahorros',
         description: 'Fondos de reserva y cuentas por proyecto',
         icon: <PiggyBank size={28} />,
-        color: '#10B981',
-        bgColor: 'rgba(16, 185, 129, 0.1)',
+        color: TOOL_COLORS.savings.solid,
+        bgColor: TOOL_COLORS.savings.bg,
         path: '/herramientas/ahorros',
         enabled: true,
       },
@@ -87,8 +88,8 @@ const toolSections: ToolSection[] = [
         title: 'Panas',
         description: 'Gastos fijos, deudas y metas compartidas',
         icon: <Users size={28} />,
-        color: '#EC4899',
-        bgColor: 'rgba(236, 72, 153, 0.1)',
+        color: TOOL_COLORS.panas.solid,
+        bgColor: TOOL_COLORS.panas.bg,
         path: '/herramientas/panas',
         enabled: true,
       },
@@ -144,6 +145,15 @@ export const ToolsHub: React.FC = () => {
                   className="tool-card"
                   onClick={() => tool.enabled && navigate(tool.path)}
                   disabled={!tool.enabled}
+                  onMouseDown={(e) => {
+                    if (tool.enabled) e.currentTarget.style.transform = 'scale(0.96)';
+                  }}
+                  onMouseUp={(e) => {
+                    if (tool.enabled) e.currentTarget.style.transform = 'scale(1)';
+                  }}
+                  onMouseLeave={(e) => {
+                    if (tool.enabled) e.currentTarget.style.transform = 'scale(1)';
+                  }}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -157,7 +167,7 @@ export const ToolsHub: React.FC = () => {
                     cursor: tool.enabled ? 'pointer' : 'default',
                     textAlign: 'left',
                     fontFamily: 'inherit',
-                    transition: 'all 0.2s ease',
+                    transition: 'transform 150ms ease-out, box-shadow 150ms ease-out, opacity 150ms ease-out',
                     opacity: tool.enabled ? 1 : 0.7,
                     position: 'relative',
                     overflow: 'hidden',

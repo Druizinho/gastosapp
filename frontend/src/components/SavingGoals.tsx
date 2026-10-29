@@ -1354,20 +1354,20 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
   let heroAmount = totalAllInMain;
   let heroBadgeText = `${activeGoalsCount} activos (${activeSavings.length} ahorros, ${activeProjects.length} proyectos)`;
   let heroBadgeIcon = <PiggyBank size={14} />;
-  let heroAccentColor = '#10B981';
+  let heroAccentColor = 'var(--tool-savings, #10B981)';
   let heroMetrics = [
     {
       label: 'EN AHORROS',
       value: loading ? '...' : formatVal(totalSavingsInMain),
       subtext: `${activeSavings.length} activos`,
-      valueColor: '#10B981',
+      valueColor: 'var(--tool-savings, #10B981)',
       icon: <PiggyBank size={14} />,
     },
     {
       label: 'EN PROYECTOS',
       value: loading ? '...' : formatVal(totalProjectsInMain),
       subtext: `${activeProjects.length} activos`,
-      valueColor: '#3B82F6',
+      valueColor: 'var(--info-color, #3B82F6)',
       icon: <FolderKanban size={14} />,
     },
   ];
@@ -1377,13 +1377,13 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
     heroAmount = totalSavingsInMain;
     heroBadgeText = `${activeSavings.length} ${activeSavings.length === 1 ? 'fondo activo' : 'fondos activos'}`;
     heroBadgeIcon = <PiggyBank size={14} />;
-    heroAccentColor = '#10B981';
+    heroAccentColor = 'var(--tool-savings, #10B981)';
     heroMetrics = [
       {
         label: 'CON META FIJADA',
         value: loading ? '...' : formatVal(targetedSavingsMetrics),
         subtext: `${targetedSavings.length} con meta`,
-        valueColor: '#10B981',
+        valueColor: 'var(--tool-savings, #10B981)',
         icon: <PiggyBank size={14} />,
       },
       {
@@ -1399,13 +1399,13 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
     heroAmount = totalProjectsInMain;
     heroBadgeText = `${activeProjects.length} ${activeProjects.length === 1 ? 'proyecto activo' : 'proyectos activos'}`;
     heroBadgeIcon = <FolderKanban size={14} />;
-    heroAccentColor = '#3B82F6';
+    heroAccentColor = 'var(--info-color, #3B82F6)';
     heroMetrics = [
       {
         label: 'CON TOPE / META',
         value: loading ? '...' : formatVal(targetedProjectsMetrics),
         subtext: `${targetedProjects.length} con tope`,
-        valueColor: '#3B82F6',
+        valueColor: 'var(--info-color, #3B82F6)',
         icon: <FolderKanban size={14} />,
       },
       {
@@ -1428,7 +1428,7 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
         actionLabel="Nuevo"
         actionIcon={<Plus size={18} />}
         onAction={() => { setEditingGoal(undefined); setShowGoalForm(true); }}
-        actionColor={typeTab === 'projects' ? '#3B82F6' : 'var(--income-color)'}
+        actionColor={typeTab === 'projects' ? 'var(--info-color, #3B82F6)' : 'var(--tool-savings, #10B981)'}
       />
 
       {/* Summary Card */}
@@ -1454,7 +1454,7 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
         ]}
         activeTab={typeTab}
         onChange={(tab) => setTypeTab(tab as 'all' | 'projects' | 'savings')}
-        activeColor={typeTab === 'projects' ? '#3B82F6' : 'var(--income-color)'}
+        activeColor={typeTab === 'projects' ? 'var(--info-color, #3B82F6)' : 'var(--tool-savings, #10B981)'}
         style={{ marginBottom: '0.65rem' }}
       />
 

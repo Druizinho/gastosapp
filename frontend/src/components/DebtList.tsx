@@ -57,6 +57,7 @@ import {
   isSameCurrency,
   toNumeric
 } from '../utils/currencyFormat';
+import { colorWithOpacity } from '../utils/toolColors';
 import { PageHeader } from './ui/PageHeader';
 import { SummaryHeroCard } from './ui/SummaryHeroCard';
 import { SegmentedTabs } from './ui/SegmentedTabs';
@@ -789,7 +790,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '0.5rem',
-                boxShadow: (remaining <= 0 || selectedDebt.is_settled) ? 'none' : `0 4px 14px ${accentHex}44`,
+                boxShadow: (remaining <= 0 || selectedDebt.is_settled) ? 'none' : `0 4px 14px ${colorWithOpacity(accentHex, '44')}`,
                 transition: 'transform 150ms ease-out',
               }}
               onMouseDown={(e) => {
@@ -1088,7 +1089,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
         actionLabel="Nueva Deuda"
         actionIcon={<Plus size={18} />}
         onAction={() => { setEditingDebt(undefined); setShowForm(true); }}
-        actionColor="var(--accent-color, #8B5CF6)"
+        actionColor="var(--tool-debts, #8B5CF6)"
       />
 
       {/* Summary Net Balance Card */}
@@ -1102,7 +1103,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
         statusSubtext={metrics.isNetPositive ? '(A tu favor)' : '(En contra)'}
         currencyHintText={`Toca para alternar moneda (${mainCurrency})`}
         onCycleCurrency={cycleDisplayCurrency}
-        accentColor="#8B5CF6"
+        accentColor="var(--tool-debts, #8B5CF6)"
         metrics={[
           {
             label: 'TE DEBEN',
