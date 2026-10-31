@@ -299,17 +299,31 @@ async def add_debt_payment(db: AsyncSession, debt_id: UUID, user_id: UUID, payme
     create_exp_flag = data.pop('create_expense', None)
     should_create_expense = bool(register_as_expense or create_exp_flag)
 
+    tx_type = data.get("transaction_type") or "payment"
+    data["transaction_type"] = tx_type
+
+    if tx_type == "increase":
+        should_create_expense = False
+        data["create_expense"] = False
+
     membership = await sharing.get_membership(db, debt_id, user_id)
     payment_cat = data.get("category")
     if payment_cat and str(payment_cat).strip():
         chosen_cat = str(payment_cat).strip()
         if membership:
+            is_owner = (membership[0].owner_id == user_id)
             membership[1].local_category = chosen_cat
+            if is_owner and db_debt.user_id == user_id:
+                db_debt.category = chosen_cat
         elif db_debt.user_id == user_id:
             db_debt.category = chosen_cat
         effective_category = chosen_cat
     else:
-        effective_category = (membership[1].local_category if (membership and membership[1].local_category) else None) or db_debt.category or "Deudas"
+        if membership:
+            is_owner = (membership[0].owner_id == user_id)
+            effective_category = (membership[1].local_category if membership[1].local_category else None) or (db_debt.category if is_owner else None) or "Sin Categoría"
+        else:
+            effective_category = db_debt.category or "Deudas"
     data["category"] = effective_category
     data["create_expense"] = should_create_expense
 
@@ -359,7 +373,20 @@ async def add_debt_payment(db: AsyncSession, debt_id: UUID, user_id: UUID, payme
         share, member = membership
         await db.refresh(db_debt)
         curr_label = payment.currency.value if hasattr(payment.currency, "value") else str(payment.currency)
-        if db_debt.is_settled:
+        if tx_type == "increase":
+            await sharing.notify_members(
+                db=db,
+                share_id=share.id,
+                exclude_user_id=user_id,
+                title="Aumento en deuda compartida",
+                body=f"{payer_name} aumentó {payment.amount} {curr_label} a la deuda '{db_debt.concept}'",
+                type="shared_debt_payment",
+                url=_debt_url(db_debt.type),
+                send_push=True,
+                entity_type="debt",
+                entity_id=debt_id,
+            )
+        elif db_debt.is_settled:
             await sharing.notify_members(
                 db=db,
                 share_id=share.id,
@@ -428,6 +455,10 @@ async def update_debt_payment(
     if register_as_expense is None and create_exp_flag is not None:
         register_as_expense = create_exp_flag
 
+    eff_tx_type = update_dict.get("transaction_type", getattr(payment, "transaction_type", "payment")) or "payment"
+    if eff_tx_type == "increase":
+        register_as_expense = False
+
     if 'category' in update_dict:
         raw_cat = update_dict.pop('category')
         if raw_cat and str(raw_cat).strip():
@@ -485,6 +516,8 @@ async def update_debt_payment(
         setattr(payment, k, v)
 
     target_create_expense = payment.create_expense if register_as_expense is None else bool(register_as_expense)
+    if eff_tx_type == "increase":
+        target_create_expense = False
     payment.create_expense = target_create_expense
     effective_cat = payment.category or db_debt.category or "Sin Categoría"
     if not payment.category:

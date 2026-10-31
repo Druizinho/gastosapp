@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Plus,
+  Minus,
   PiggyBank,
   Calendar,
   CheckCircle2,
@@ -104,6 +105,7 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
   const [showGoalForm, setShowGoalForm] = useState(false);
   const [editingGoal, setEditingGoal] = useState<SavingGoal | undefined>(undefined);
   const [depositGoal, setDepositGoal] = useState<SavingGoal | null>(null);
+  const [depositModalMode, setDepositModalMode] = useState<'deposit' | 'withdrawal'>('deposit');
   const [editingDeposit, setEditingDeposit] = useState<SavingDeposit | undefined>(undefined);
   const [selectedDepositForSheet, setSelectedDepositForSheet] = useState<SavingDeposit | null>(null);
   const [activeShareModalItem, setActiveShareModalItem] = useState<{ id: string; name: string } | null>(null);
@@ -116,6 +118,13 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
     isOpen: false,
     goal: null,
   });
+
+  const getGoalVisuals = useCallback((goalItem: SavingGoal) => {
+    const isProject = goalItem.type === 'project';
+    const targetCatName = goalItem.category || (isProject ? 'Proyectos' : 'Ahorro');
+    const matchedCat = categories.find(c => c.name.toLowerCase() === targetCatName.toLowerCase());
+    return resolveCategoryVisuals(matchedCat, targetCatName);
+  }, [categories]);
 
   const handleConfirmLeaveGoal = async () => {
     const goal = leaveGoalModal.goal;
@@ -250,7 +259,10 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
   // Calculate total saved for a goal in its currency
   const calculateGoalSaved = (goal: SavingGoal): number => {
     if (!goal.deposits || goal.deposits.length === 0) return 0;
-    return goal.deposits.reduce((acc, d) => acc + calcDepositInGoalCurrency(d, goal), 0);
+    return goal.deposits.reduce((acc, d) => {
+      const val = calcDepositInGoalCurrency(d, goal);
+      return acc + (d.transaction_type === 'withdrawal' ? -val : val);
+    }, 0);
   };
 
   const cycleDisplayCurrency = () => {
@@ -416,7 +428,8 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
     return goalList.reduce((acc, g) => {
       if (!g.deposits || g.deposits.length === 0) return acc;
       return acc + g.deposits.reduce((dAcc, d) => {
-        return dAcc + convertItemAmountToMainCurrency(
+        const sign = d.transaction_type === 'withdrawal' ? -1 : 1;
+        return dAcc + (convertItemAmountToMainCurrency(
           {
             amount: Number(d.amount),
             currency: d.currency,
@@ -427,7 +440,7 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
           },
           mainCurrency,
           rates
-        );
+        ) * sign);
       }, 0);
     }, 0);
   };
@@ -453,10 +466,7 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
     const remaining = hasTarget ? Math.max(target - saved, 0) : null;
     const isOverBudget = isProject && hasTarget && saved > target;
 
-    const matchedCat = categories.find(c => c.name.toLowerCase() === (selectedGoal.category || '').toLowerCase());
-    const fallbackCat = selectedGoal.category || (isProject ? 'Proyectos' : 'Ahorro');
-    const { IconComponent: HeaderIcon, hexColor: headerHexColor } = resolveCategoryVisuals(matchedCat, fallbackCat);
-    const color = selectedGoal.color && selectedGoal.color.startsWith('#') ? selectedGoal.color : headerHexColor;
+    const { IconComponent: HeaderIcon, hexColor: color } = getGoalVisuals(selectedGoal);
 
     const savedInMain = convertItemAmountToMainCurrency({ amount: saved, currency: selectedGoal.currency }, mainCurrency, rates);
     const targetInMain = hasTarget ? convertItemAmountToMainCurrency({ amount: target, currency: selectedGoal.currency }, mainCurrency, rates) : null;
@@ -627,7 +637,7 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
               </div>
             )}
 
-            {selectedGoal.category ? (
+            {selectedGoal.category && selectedGoal.category.trim().toLowerCase() !== 'sin categoría' ? (
               <span
                 onClick={(e) => {
                   e.stopPropagation();
@@ -686,7 +696,7 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
                 onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
               >
                 <Tag size={12} />
-                <span>Mi categoría</span>
+                <span>{selectedGoal.category?.trim() ? selectedGoal.category : 'Mi categoría'}</span>
               </span>
             )}
 
@@ -865,14 +875,15 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
               if (!byContributor[key]) {
                 byContributor[key] = { amount: 0, isMe };
               }
-              byContributor[key].amount += depAmount;
+              const sign = d.transaction_type === 'withdrawal' ? -1 : 1;
+              byContributor[key].amount += depAmount * sign;
             });
 
             const entries = Object.entries(byContributor);
             const memberStats = entries.map(([name, data], idx) => ({
               name,
               amount: data.amount,
-              pct: saved > 0 ? Math.round((data.amount / saved) * 100) : 0,
+              pct: saved > 0 ? Math.round((Math.max(0, data.amount) / saved) * 100) : 0,
               color: palette[idx % palette.length],
               isMe: data.isMe
             }));
@@ -945,37 +956,114 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
 
           {/* Action buttons */}
           <div style={{ display: 'flex', gap: '0.65rem', marginTop: '1.25rem', flexWrap: 'wrap' }}>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setEditingDeposit(undefined);
-                setDepositGoal(selectedGoal);
-              }}
-              style={{
-                flex: 1,
-                minWidth: '180px',
-                padding: '0.85rem',
-                background: color,
-                border: 'none',
-                borderRadius: 'var(--radius-md)',
-                color: 'white',
-                fontSize: '0.92rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '0.5rem',
-                boxShadow: `0 4px 14px ${color}44`,
-                transition: 'transform 150ms ease-out',
-              }}
-              onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
-              onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-            >
-              <Plus size={18} />
-              {isProject ? 'Registrar Pago' : 'Hacer Aporte'}
-            </button>
+            {!isProject ? (
+              <>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDepositModalMode('deposit');
+                    setEditingDeposit(undefined);
+                    setDepositGoal(selectedGoal);
+                  }}
+                  style={{
+                    flex: 1,
+                    minWidth: '140px',
+                    padding: '0.85rem',
+                    background: color,
+                    border: 'none',
+                    borderRadius: 'var(--radius-md)',
+                    color: 'white',
+                    fontSize: '0.92rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem',
+                    boxShadow: `0 4px 14px ${color}44`,
+                    transition: 'transform 150ms ease-out',
+                  }}
+                  onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+                  onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                >
+                  <Plus size={18} />
+                  Hacer Aporte
+                </button>
+
+                <button
+                  type="button"
+                  disabled={saved <= 0}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (saved <= 0) return;
+                    setDepositModalMode('withdrawal');
+                    setEditingDeposit(undefined);
+                    setDepositGoal(selectedGoal);
+                  }}
+                  title={saved <= 0 ? 'Sin saldo disponible para retirar' : 'Retirar fondos'}
+                  style={{
+                    flex: 1,
+                    minWidth: '140px',
+                    padding: '0.85rem',
+                    background: 'transparent',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 'var(--radius-md)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.92rem',
+                    fontWeight: 700,
+                    cursor: saved <= 0 ? 'not-allowed' : 'pointer',
+                    opacity: saved <= 0 ? 0.45 : 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem',
+                    transition: 'transform 150ms ease-out',
+                  }}
+                  onMouseDown={(e) => { if (saved > 0) e.currentTarget.style.transform = 'scale(0.96)'; }}
+                  onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                >
+                  <Minus size={18} />
+                  Retirar
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDepositModalMode('deposit');
+                  setEditingDeposit(undefined);
+                  setDepositGoal(selectedGoal);
+                }}
+                style={{
+                  flex: 1,
+                  minWidth: '180px',
+                  padding: '0.85rem',
+                  background: color,
+                  border: 'none',
+                  borderRadius: 'var(--radius-md)',
+                  color: 'white',
+                  fontSize: '0.92rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.5rem',
+                  boxShadow: `0 4px 14px ${color}44`,
+                  transition: 'transform 150ms ease-out',
+                }}
+                onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+                onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+              >
+                <Plus size={18} />
+                Registrar Pago
+              </button>
+            )}
 
             <button
               onClick={(e) => {
@@ -1083,6 +1171,7 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
               actionLabel={isProject ? 'Registrar Pago' : 'Hacer Aporte'}
               actionIcon={<Plus size={16} />}
               onAction={() => {
+                setDepositModalMode('deposit');
                 setEditingDeposit(undefined);
                 setDepositGoal(selectedGoal);
               }}
@@ -1099,6 +1188,7 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
                   return bCreated - aCreated;
                 })
                 .map((d) => {
+                  const isWithdrawal = d.transaction_type === 'withdrawal';
                   const myUserId = selectedGoal.shared_members?.find(m => m.is_me)?.user_id;
                   const isMeDeposit = myUserId ? d.paid_by_user_id === myUserId : !d.paid_by_name;
 
@@ -1117,6 +1207,23 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
                         <Calendar size={11} />
                         {formatDate(d.deposit_date)}
                       </span>
+
+                      {isWithdrawal && (
+                        <span style={{
+                          fontSize: '0.7rem',
+                          fontWeight: 600,
+                          color: '#F59E0B',
+                          background: 'rgba(245, 158, 11, 0.14)',
+                          border: '1px solid rgba(245, 158, 11, 0.3)',
+                          padding: '0.12rem 0.5rem',
+                          borderRadius: 'var(--radius-full)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.25rem',
+                        }}>
+                          Retiro
+                        </span>
+                      )}
 
                       <span style={{
                         fontSize: '0.7rem',
@@ -1138,7 +1245,7 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
                         <AttributionBadge
                           name={d.paid_by_name || undefined}
                           isMe={isMeDeposit}
-                          label={isMeDeposit ? 'Aporte tuyo' : undefined}
+                          label={isMeDeposit ? (isWithdrawal ? 'Retiro tuyo' : 'Aporte tuyo') : undefined}
                           icon={isMeDeposit ? 'user' : 'users'}
                         />
                       )}
@@ -1166,14 +1273,14 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
                   return (
                     <ListCard
                       key={d.id}
-                      statusColor={dHexColor}
+                      statusColor={isWithdrawal ? '#F59E0B' : dHexColor}
                       icon={<DIcon size={18} />}
-                      iconBg={`${dHexColor}18`}
-                      iconColor={dHexColor}
-                      title={d.note || (isProject ? `Pago de ${formatDate(d.deposit_date)}` : `Aporte de ${formatDate(d.deposit_date)}`)}
+                      iconBg={isWithdrawal ? 'rgba(245, 158, 11, 0.14)' : `${dHexColor}18`}
+                      iconColor={isWithdrawal ? '#F59E0B' : dHexColor}
+                      title={d.note || (isWithdrawal ? `Retiro de ${formatDate(d.deposit_date)}` : (isProject ? `Pago de ${formatDate(d.deposit_date)}` : `Aporte de ${formatDate(d.deposit_date)}`))}
                       subtitle={d.note ? formatDate(d.deposit_date) : undefined}
                       badges={badgesNode}
-                      primaryAmount={amounts.primaryAmount}
+                      primaryAmount={isWithdrawal ? `- ${amounts.primaryAmount}` : amounts.primaryAmount}
                       secondaryAmount={amounts.secondaryAmount}
                       onClick={() => setSelectedDepositForSheet(d)}
                     />
@@ -1184,91 +1291,112 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
         </div>
 
         {/* Deposit Bottom Sheet */}
-        <ListCardBottomSheet
-          isOpen={!!selectedDepositForSheet}
-          onClose={() => setSelectedDepositForSheet(null)}
-          title={isProject ? 'Detalle del Pago' : 'Detalle del Aporte'}
-          subtitle={selectedDepositForSheet ? formatDate(selectedDepositForSheet.deposit_date) : undefined}
-          secondaryActions={selectedDepositForSheet && selectedDepositForSheet.can_edit !== false ? [
-            {
-              label: isProject ? 'Editar Pago' : 'Editar Aporte',
-              icon: <Edit3 size={15} />,
-              onClick: () => {
-                const dep = selectedDepositForSheet;
-                setSelectedDepositForSheet(null);
-                setEditingDeposit(dep);
-                setDepositGoal(selectedGoal);
+        {(() => {
+          const isSheetWithdrawal = selectedDepositForSheet?.transaction_type === 'withdrawal';
+          return (
+            <ListCardBottomSheet
+              isOpen={!!selectedDepositForSheet}
+              onClose={() => setSelectedDepositForSheet(null)}
+              title={isSheetWithdrawal ? 'Detalle del Retiro' : (isProject ? 'Detalle del Pago' : 'Detalle del Aporte')}
+              subtitle={selectedDepositForSheet ? formatDate(selectedDepositForSheet.deposit_date) : undefined}
+              headerExtra={
+                selectedDepositForSheet && isSheetWithdrawal ? (
+                  <span style={{
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    color: '#F59E0B',
+                    background: 'rgba(245, 158, 11, 0.14)',
+                    border: '1px solid rgba(245, 158, 11, 0.3)',
+                    padding: '0.15rem 0.55rem',
+                    borderRadius: 'var(--radius-full)',
+                  }}>
+                    - {formatCurrency(Number(selectedDepositForSheet.amount), selectedDepositForSheet.currency)}
+                  </span>
+                ) : undefined
               }
-            },
-            {
-              label: isProject ? 'Eliminar Pago' : 'Eliminar Aporte',
-              icon: <Trash2 size={15} />,
-              danger: true,
-              onClick: () => {
-                const dep = selectedDepositForSheet;
-                setSelectedDepositForSheet(null);
-                setConfirmDelete({
-                  isOpen: true,
-                  depositId: dep.id,
-                  title: isProject ? '¿Eliminar Pago?' : '¿Eliminar Aporte?',
-                  message: selectedGoal.is_shared
-                    ? `Se eliminará el registro de ${formatCurrency(Number(dep.amount), dep.currency)} y se sincronizará con todos los miembros.`
-                    : `Se eliminará el registro de ${formatCurrency(Number(dep.amount), dep.currency)}.`,
-                });
-              }
-            }
-          ] : undefined}
-        >
-          {selectedDepositForSheet && (
-            <div>
-              <CurrencyBreakdownCard
-                originalAmount={Number(selectedDepositForSheet.amount)}
-                originalCurrency={selectedDepositForSheet.currency}
-                amountBs={selectedDepositForSheet.amount_bs}
-                amountUsd={selectedDepositForSheet.amount_usd}
-                amountEur={selectedDepositForSheet.amount_eur}
-                amountUsdt={selectedDepositForSheet.amount_usdt}
-                rateUsdBs={selectedDepositForSheet.rate_usd_bs}
-                rateEurBs={selectedDepositForSheet.rate_eur_bs}
-                rateUsdtBs={selectedDepositForSheet.rate_usdt_bs}
-                fallbackRates={rates}
-              />
+              secondaryActions={selectedDepositForSheet && selectedDepositForSheet.can_edit !== false ? [
+                {
+                  label: isSheetWithdrawal ? 'Editar Retiro' : (isProject ? 'Editar Pago' : 'Editar Aporte'),
+                  icon: <Edit3 size={15} />,
+                  onClick: () => {
+                    const dep = selectedDepositForSheet;
+                    setSelectedDepositForSheet(null);
+                    setDepositModalMode(dep.transaction_type || 'deposit');
+                    setEditingDeposit(dep);
+                    setDepositGoal(selectedGoal);
+                  }
+                },
+                {
+                  label: isSheetWithdrawal ? 'Eliminar Retiro' : (isProject ? 'Eliminar Pago' : 'Eliminar Aporte'),
+                  icon: <Trash2 size={15} />,
+                  danger: true,
+                  onClick: () => {
+                    const dep = selectedDepositForSheet;
+                    setSelectedDepositForSheet(null);
+                    setConfirmDelete({
+                      isOpen: true,
+                      depositId: dep.id,
+                      title: isSheetWithdrawal ? '¿Eliminar Retiro?' : (isProject ? '¿Eliminar Pago?' : '¿Eliminar Aporte?'),
+                      message: selectedGoal.is_shared
+                        ? `Se eliminará el registro de ${isSheetWithdrawal ? '- ' : ''}${formatCurrency(Number(dep.amount), dep.currency)} y se sincronizará con todos los miembros.`
+                        : `Se eliminará el registro de ${isSheetWithdrawal ? '- ' : ''}${formatCurrency(Number(dep.amount), dep.currency)}.`,
+                    });
+                  }
+                }
+              ] : undefined}
+            >
+              {selectedDepositForSheet && (
+                <div>
+                  <CurrencyBreakdownCard
+                    originalAmount={Number(selectedDepositForSheet.amount)}
+                    originalCurrency={selectedDepositForSheet.currency}
+                    amountBs={selectedDepositForSheet.amount_bs}
+                    amountUsd={selectedDepositForSheet.amount_usd}
+                    amountEur={selectedDepositForSheet.amount_eur}
+                    amountUsdt={selectedDepositForSheet.amount_usdt}
+                    rateUsdBs={selectedDepositForSheet.rate_usd_bs}
+                    rateEurBs={selectedDepositForSheet.rate_eur_bs}
+                    rateUsdtBs={selectedDepositForSheet.rate_usdt_bs}
+                    fallbackRates={rates}
+                  />
 
-              <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.55rem', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Fecha de registro:</span>
-                  <strong style={{ color: 'var(--text-primary)' }}>{formatDate(selectedDepositForSheet.deposit_date)}</strong>
+                  <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.55rem', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Fecha de registro:</span>
+                      <strong style={{ color: 'var(--text-primary)' }}>{formatDate(selectedDepositForSheet.deposit_date)}</strong>
+                    </div>
+                    {selectedDepositForSheet.currency !== selectedGoal.currency && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Equivalente en moneda del fondo ({selectedGoal.currency}):</span>
+                        <strong style={{ color: isSheetWithdrawal ? '#F59E0B' : 'var(--text-primary)' }}>
+                          {isSheetWithdrawal ? '- ' : ''}{formatCurrencyAmount(calcDepositInGoalCurrency(selectedDepositForSheet, selectedGoal), selectedGoal.currency)}
+                        </strong>
+                      </div>
+                    )}
+                    {selectedDepositForSheet.paid_by_name && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Registrado por:</span>
+                        <strong style={{ color: '#3B82F6' }}>{selectedDepositForSheet.paid_by_name}</strong>
+                      </div>
+                    )}
+                    {selectedDepositForSheet.note && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem' }}>
+                        <span>Nota:</span>
+                        <span style={{ textAlign: 'right', color: 'var(--text-primary)', fontStyle: 'italic' }}>{selectedDepositForSheet.note}</span>
+                      </div>
+                    )}
+                    {(selectedDepositForSheet.create_expense || selectedDepositForSheet.expense_id) && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#10B981', fontWeight: 600, marginTop: '0.25rem' }}>
+                        <CheckCircle2 size={14} />
+                        <span>Reflejado en la lista mensual de gastos</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                {selectedDepositForSheet.currency !== selectedGoal.currency && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Equivalente en moneda del fondo ({selectedGoal.currency}):</span>
-                    <strong style={{ color: 'var(--text-primary)' }}>
-                      {formatCurrencyAmount(calcDepositInGoalCurrency(selectedDepositForSheet, selectedGoal), selectedGoal.currency)}
-                    </strong>
-                  </div>
-                )}
-                {selectedDepositForSheet.paid_by_name && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Registrado por:</span>
-                    <strong style={{ color: '#3B82F6' }}>{selectedDepositForSheet.paid_by_name}</strong>
-                  </div>
-                )}
-                {selectedDepositForSheet.note && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem' }}>
-                    <span>Nota:</span>
-                    <span style={{ textAlign: 'right', color: 'var(--text-primary)', fontStyle: 'italic' }}>{selectedDepositForSheet.note}</span>
-                  </div>
-                )}
-                {(selectedDepositForSheet.create_expense || selectedDepositForSheet.expense_id) && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#10B981', fontWeight: 600, marginTop: '0.25rem' }}>
-                    <CheckCircle2 size={14} />
-                    <span>Reflejado en la lista mensual de gastos</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </ListCardBottomSheet>
+              )}
+            </ListCardBottomSheet>
+          );
+        })()}
 
         {activeShareModalItem && (
           <ShareMembersModal
@@ -1328,11 +1456,12 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
           <SavingDepositForm
             {...({ goalCategory: depositGoal.category || (depositGoal.type === 'project' ? 'Proyectos' : 'Ahorro') } as any)}
             initialData={editingDeposit}
+            initialTransactionType={depositModalMode}
             goalName={depositGoal.name}
             goalCurrency={depositGoal.currency}
             goalTargetAmount={depositGoal.target_amount != null ? Number(depositGoal.target_amount) : null}
             goalCurrentSaved={calculateGoalSaved(depositGoal)}
-            goalColor={depositGoal.color}
+            goalColor={getGoalVisuals(depositGoal).hexColor}
             goalType={depositGoal.type || 'saving'}
             onSubmit={handleAddOrUpdateDeposit}
             onCancel={() => { setDepositGoal(null); setEditingDeposit(undefined); }}
@@ -1515,10 +1644,7 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
             const isOverBudget = isProject && hasTarget && saved > target;
 
             // Visual Resolution by Category
-            const matchedGoalCat = categories.find(c => c.name.toLowerCase() === (goal.category || '').toLowerCase());
-            const fallbackGoalCat = goal.category || (isProject ? 'Proyectos' : 'Ahorro');
-            const { IconComponent, hexColor } = resolveCategoryVisuals(matchedGoalCat, fallbackGoalCat);
-            const color = goal.color && goal.color.startsWith('#') ? goal.color : hexColor;
+            const { IconComponent, hexColor: color } = getGoalVisuals(goal);
 
             // Currency conversion to mainCurrency
             const savedInMain = convertItemAmountToMainCurrency(
@@ -1597,7 +1723,7 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
                     <MemberAvatars members={goal.shared_members} size={18} />
                   </div>
                 )}
-                {goal.category ? (
+                {goal.category && goal.category.trim().toLowerCase() !== 'sin categoría' ? (
                   <span
                     onClick={(e) => {
                       e.stopPropagation();
@@ -1655,7 +1781,7 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
                     onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
                   >
                     <Tag size={10} />
-                    <span>Categoría</span>
+                    <span>{goal.category?.trim() ? goal.category : 'Categoría'}</span>
                   </span>
                 )}
                 {goal.target_date && (
@@ -1675,12 +1801,42 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
               </>
             );
 
-            const quickActionNode = (
+            const quickActionNode = (!isProject && saved > 0) ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <button
+                  type="button"
+                  className="list-card-quick-action"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDepositModalMode('withdrawal');
+                    setEditingDeposit(undefined);
+                    setDepositGoal(goal);
+                  }}
+                  title="Retirar"
+                >
+                  <Minus size={20} color={color} />
+                </button>
+                <button
+                  type="button"
+                  className="list-card-quick-action"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDepositModalMode('deposit');
+                    setEditingDeposit(undefined);
+                    setDepositGoal(goal);
+                  }}
+                  title="Nuevo Aporte"
+                >
+                  <Plus size={20} color={color} />
+                </button>
+              </div>
+            ) : (
               <button
                 type="button"
                 className="list-card-quick-action"
                 onClick={(e) => {
                   e.stopPropagation();
+                  setDepositModalMode('deposit');
                   setEditingDeposit(undefined);
                   setDepositGoal(goal);
                 }}
@@ -1747,11 +1903,12 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
         <SavingDepositForm
           {...({ goalCategory: depositGoal.category || (depositGoal.type === 'project' ? 'Proyectos' : 'Ahorro') } as any)}
           initialData={editingDeposit}
+          initialTransactionType={depositModalMode}
           goalName={depositGoal.name}
           goalCurrency={depositGoal.currency}
           goalTargetAmount={depositGoal.target_amount != null ? Number(depositGoal.target_amount) : null}
           goalCurrentSaved={calculateGoalSaved(depositGoal)}
-          goalColor={depositGoal.color}
+          goalColor={getGoalVisuals(depositGoal).hexColor}
           goalType={depositGoal.type || 'saving'}
           onSubmit={handleAddOrUpdateDeposit}
           onCancel={() => { setDepositGoal(null); setEditingDeposit(undefined); }}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Users } from 'lucide-react';
-import type { DebtPayment, DebtPaymentCreate, DebtPaymentUpdate, ExchangeRates } from '../types';
+import type { DebtPayment, DebtPaymentCreate, DebtPaymentUpdate, ExchangeRates, DebtTransactionType } from '../types';
 import { CURRENCY_OPTIONS } from '../types';
 import { getRates } from '../api';
 import { formatRateForInput } from '../utils/currencyFormat';
@@ -14,6 +14,7 @@ const getLocalToday = () => {
 
 interface DebtPaymentFormProps {
   initialData?: DebtPayment;
+  initialTransactionType?: DebtTransactionType;
   debtConcept?: string;
   debtCategory?: string | null;
   type: 'owed' | 'receivable';
@@ -37,6 +38,7 @@ const formatCurrency = (amount: number, currency: string = 'USD_BCV') => {
 
 const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({ 
   initialData,
+  initialTransactionType = 'payment',
   debtConcept,
   debtCategory,
   type, 
@@ -57,6 +59,9 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
     : type === 'owed';
   const initialCategory = initialData?.category || debtCategory || '';
 
+  const defaultTxType: DebtTransactionType =
+    initialData?.transaction_type || initialTransactionType || (remaining <= 0 ? 'increase' : 'payment');
+
   const [formData, setFormData] = useState<DebtPaymentCreate & { register_as_expense?: boolean; category?: string }>({
     amount: (initialData ? initialData.amount : '') as any,
     currency: (initialData?.currency || debtCurrency) as any,
@@ -64,11 +69,14 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
     note: initialData?.note || '',
     register_as_expense: initialRegExpense,
     category: initialCategory,
+    transaction_type: defaultTxType,
   });
   const [rates, setRates] = useState<ExchangeRates | null>(null);
   const [manualRate, setManualRate] = useState<string>('');
   const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const isIncrease = formData.transaction_type === 'increase';
 
   useEffect(() => {
     if (initialData) {
@@ -79,6 +87,7 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
         note: initialData.note || '',
         register_as_expense: Boolean(initialData.create_expense || initialData.expense_id),
         category: initialData.category || debtCategory || '',
+        transaction_type: (initialData.transaction_type || initialTransactionType || 'payment') as DebtTransactionType,
       });
 
       if (initialData.currency === 'EUR_BCV' && initialData.rate_eur_bs) {
@@ -94,8 +103,10 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
       }
     } else {
       setManualRate('');
+      const targetTxType: DebtTransactionType = initialTransactionType || (remaining <= 0 ? 'increase' : 'payment');
+      setFormData(prev => ({ ...prev, transaction_type: targetTxType }));
     }
-  }, [initialData, debtCategory]);
+  }, [initialData, debtCategory, remaining, initialTransactionType]);
 
   useEffect(() => {
     getRates(formData.payment_date || undefined)
@@ -109,7 +120,7 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
   // Check if user is paying in the same currency as the debt
   const isSameCurrency = formData.currency === debtCurrency;
   const currentAmount = Number(formData.amount) || 0;
-  const isOverpaying = !isEditing && isSameCurrency && currentAmount > remaining && remaining > 0;
+  const isOverpaying = !isEditing && !isIncrease && isSameCurrency && currentAmount > remaining && remaining > 0;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target as HTMLInputElement;
@@ -129,11 +140,13 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
     const submitData: DebtPaymentCreate = {
       ...formData,
       amount: Number(formData.amount),
-      category: formData.register_as_expense ? (formData.category || debtCategory || 'Sin Categoría') : null,
+      transaction_type: formData.transaction_type,
+      register_as_expense: isIncrease ? false : Boolean(formData.register_as_expense),
+      category: (!isIncrease && formData.register_as_expense) ? (formData.category || debtCategory || 'Sin Categoría') : null,
       manual_rate: parsedRate && !isNaN(parsedRate) && parsedRate > 0 ? parsedRate : undefined,
     };
     
-    if (!isEditing && isSameCurrency && submitData.amount > remaining) {
+    if (!isEditing && !isIncrease && isSameCurrency && submitData.amount > remaining) {
       setShowConfirm(true);
       return;
     }
@@ -149,7 +162,9 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
     const submitData: DebtPaymentCreate = {
       ...formData,
       amount: Number(formData.amount),
-      category: formData.register_as_expense ? (formData.category || debtCategory || 'Sin Categoría') : null,
+      transaction_type: formData.transaction_type,
+      register_as_expense: isIncrease ? false : Boolean(formData.register_as_expense),
+      category: (!isIncrease && formData.register_as_expense) ? (formData.category || debtCategory || 'Sin Categoría') : null,
       manual_rate: parsedRate && !isNaN(parsedRate) && parsedRate > 0 ? parsedRate : undefined,
     };
     onSubmit(submitData);
@@ -168,7 +183,7 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
         className="expense-form-container"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2>{isEditing ? 'Editar Abono' : 'Registrar Abono'}</h2>
+        <h2>{isEditing ? (isIncrease ? 'Editar Aumento' : 'Editar Abono') : (isIncrease ? 'Aumentar Deuda' : 'Registrar Abono')}</h2>
         {debtConcept && (
           <p style={{
             fontSize: '0.85rem',
@@ -249,7 +264,7 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
 
           <div className="form-group row">
             <div className="form-group half">
-              <label>Monto a Abonar *</label>
+              <label>{isIncrease ? 'Monto a Aumentar *' : 'Monto a Abonar *'}</label>
               <input
                 type="number"
                 name="amount"
@@ -300,7 +315,7 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
           </div>
 
           <div className="form-group">
-            <label>Fecha del Pago *</label>
+            <label>{isIncrease ? 'Fecha del Cargo *' : 'Fecha del Pago *'}</label>
             <input
               type="date"
               name="payment_date"
@@ -311,17 +326,17 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
           </div>
 
           <div className="form-group">
-            <label>Nota Adicional (Opcional)</label>
+            <label>{isIncrease ? 'Nota / Motivo del aumento' : 'Nota / Referencia'}</label>
             <input
               type="text"
               name="note"
               value={formData.note || ''}
               onChange={handleChange}
-              placeholder="Ej: Transferencia Mercantil, Zelle de Pedro..."
+              placeholder={isIncrease ? 'Ej: Cargo extra por servicio, consumo adicional...' : 'Ej: Transferencia Mercantil, Zelle de Pedro...'}
             />
           </div>
 
-          {type === 'owed' && (
+          {!isIncrease && type === 'owed' && (
             <div className="form-group" style={{
               background: 'var(--surface-muted, rgba(0,0,0,0.03))',
               padding: '0.85rem 1rem',
@@ -369,10 +384,10 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
               disabled={loading}
               className="btn-submit"
               style={{
-                background: 'var(--income-color)'
+                background: type === 'owed' ? 'var(--expense-color)' : 'var(--income-color)'
               }}
             >
-              {loading ? 'Procesando...' : (isEditing ? 'Guardar Cambios' : 'Registrar Abono')}
+              {loading ? 'Procesando...' : (isEditing ? 'Guardar Cambios' : (isIncrease ? 'Aumentar Deuda' : 'Registrar Abono'))}
             </button>
           </div>
           

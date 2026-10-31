@@ -309,6 +309,8 @@ export interface FixedExpenseSummary {
 
 // Debts
 
+export type DebtTransactionType = 'payment' | 'increase';
+
 export interface DebtPayment {
   id: string;
   debt_id: string;
@@ -331,6 +333,7 @@ export interface DebtPayment {
   sync_id?: string | null;
   can_edit?: boolean;
   mirror_payment_id?: string | null;
+  transaction_type?: DebtTransactionType;
   created_at: string;
 }
 
@@ -343,6 +346,7 @@ export interface DebtPaymentCreate {
   register_as_expense?: boolean;
   create_expense?: boolean;
   category?: string | null;
+  transaction_type?: DebtTransactionType;
 }
 
 export interface DebtPaymentUpdate {
@@ -354,6 +358,7 @@ export interface DebtPaymentUpdate {
   category?: string | null;
   register_as_expense?: boolean;
   create_expense?: boolean;
+  transaction_type?: DebtTransactionType;
 }
 
 export interface Debt {
@@ -671,6 +676,8 @@ export interface PanaDetail {
 
 
 // Saving Goals
+export type SavingTransactionType = 'deposit' | 'withdrawal';
+
 export interface SavingDeposit {
   id: string;
   goal_id: string;
@@ -694,6 +701,7 @@ export interface SavingDeposit {
   sync_id?: string | null;
   can_edit?: boolean;
   mirror_deposit_id?: string | null;
+  transaction_type?: SavingTransactionType;
 }
 
 export interface SavingDepositCreate {
@@ -704,6 +712,7 @@ export interface SavingDepositCreate {
   note?: string;
   manual_rate?: number;
   register_as_expense?: boolean;
+  transaction_type?: SavingTransactionType;
 }
 
 export interface SavingDepositUpdate {
@@ -714,6 +723,7 @@ export interface SavingDepositUpdate {
   note?: string | null;
   manual_rate?: number;
   register_as_expense?: boolean;
+  transaction_type?: SavingTransactionType;
 }
 
 export interface SavingGoal {

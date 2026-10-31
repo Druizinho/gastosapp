@@ -5,6 +5,7 @@ from sqlalchemy import or_, and_, delete
 from typing import List, Optional
 from uuid import UUID, uuid4
 from decimal import Decimal
+from types import SimpleNamespace
 import datetime
 from fastapi import HTTPException
 
@@ -351,16 +352,41 @@ async def add_saving_deposit(
         del data['manual_rate']
     register_as_expense = data.pop('register_as_expense', False)
 
+    tx_type = data.get("transaction_type") or "deposit"
+    data["transaction_type"] = tx_type
+
+    if tx_type == "withdrawal":
+        if (db_goal.type or "saving") == "project":
+            raise HTTPException(status_code=400, detail="Los proyectos no admiten retiros")
+        register_as_expense = False
+        current_saved = sharing.sum_children_in_currency(db_goal.deposits, db_goal.currency, "amount")
+        candidate = SimpleNamespace(
+            amount=data["amount"],
+            currency=data["currency"],
+            transaction_type="deposit",
+            **(extra_data or {})
+        )
+        withdrawal_in_goal_curr = sharing.sum_children_in_currency([candidate], db_goal.currency, "amount")
+        if withdrawal_in_goal_curr > current_saved:
+            raise HTTPException(status_code=400, detail="El monto del retiro supera el saldo disponible en el ahorro")
+
     deposit_cat = data.get("category")
     if deposit_cat and str(deposit_cat).strip():
         chosen_cat = str(deposit_cat).strip()
         if membership:
+            is_owner = (membership[0].owner_id == user_id)
             membership[1].local_category = chosen_cat
+            if is_owner and db_goal.user_id == user_id:
+                db_goal.category = chosen_cat
         elif db_goal.user_id == user_id:
             db_goal.category = chosen_cat
         effective_cat = chosen_cat
     else:
-        effective_cat = (membership[1].local_category if (membership and membership[1].local_category) else None) or db_goal.category or ("Proyectos" if db_goal.type == "project" else "Ahorro")
+        if membership:
+            is_owner = (membership[0].owner_id == user_id)
+            effective_cat = (membership[1].local_category if membership[1].local_category else None) or (db_goal.category if is_owner else None) or "Sin Categoría"
+        else:
+            effective_cat = db_goal.category or ("Proyectos" if db_goal.type == "project" else "Ahorro")
     data["category"] = effective_cat
 
     if extra_data:
@@ -419,6 +445,13 @@ async def add_saving_deposit(
         dep_verb = "pagó" if is_project else "aportó"
         ent_noun = "el proyecto" if is_project else "el fondo"
         ent_label = "al proyecto" if is_project else "al fondo"
+        notif_title = "Pago en proyecto compartido" if is_project else "Aporte a fondo compartido"
+
+        if tx_type == "withdrawal":
+            dep_noun = "retiro"
+            dep_verb = "retiró"
+            ent_label = "del fondo"
+            notif_title = "Retiro en fondo compartido"
 
         if not is_project and not was_completed and db_goal.is_completed:
             await sharing.notify_members(
@@ -438,7 +471,7 @@ async def add_saving_deposit(
                 db=db,
                 share_id=share.id,
                 exclude_user_id=user_id,
-                title="Pago en proyecto compartido" if is_project else "Aporte a fondo compartido",
+                title=notif_title,
                 body=f"{user_name} {dep_verb} {data['amount']} {curr_label} {ent_label} '{db_goal.name}'",
                 type="savings",
                 url="/herramientas/ahorros",
@@ -497,9 +530,24 @@ async def update_saving_deposit(
     goal_id = deposit.goal_id
     membership = await sharing.get_membership(db, goal_id, user_id)
 
+    goal_res = await db.execute(
+        select(models.SavingGoal)
+        .options(selectinload(models.SavingGoal.deposits))
+        .filter(models.SavingGoal.id == goal_id)
+    )
+    db_goal = goal_res.scalars().first()
+    if not db_goal:
+        return None
+
     update_dict = deposit_update.model_dump(exclude_unset=True)
     manual_rate = update_dict.pop('manual_rate', None)
     register_as_expense = update_dict.pop('register_as_expense', None)
+
+    new_tx_type = update_dict.get("transaction_type", getattr(deposit, "transaction_type", "deposit")) or "deposit"
+    if new_tx_type == "withdrawal" and (getattr(db_goal, "type", "saving") or "saving") == "project":
+        raise HTTPException(status_code=400, detail="Los proyectos no admiten retiros")
+
+    is_category_only = (set(update_dict.keys()) == {"category"}) and (register_as_expense is None) and (manual_rate is None)
 
     if 'category' in update_dict:
         raw_cat = update_dict.pop('category')
@@ -521,7 +569,7 @@ async def update_saving_deposit(
                 if exp:
                     exp.category = new_cat
 
-        if not (update_dict or register_as_expense is not None or manual_rate is not None):
+        if is_category_only:
             await db.commit()
             _exp = db.expire_all()
             if hasattr(_exp, "__await__"):
@@ -559,6 +607,36 @@ async def update_saving_deposit(
     for k, v in update_dict.items():
         setattr(deposit, k, v)
     await db.flush()
+
+    if new_tx_type == "withdrawal":
+        other_deposits = [d for d in (db_goal.deposits or []) if d.id != deposit.id]
+        available = sharing.sum_children_in_currency(other_deposits, db_goal.currency, "amount")
+        candidate = SimpleNamespace(
+            amount=deposit.amount,
+            currency=deposit.currency,
+            transaction_type="deposit",
+            amount_usd=deposit.amount_usd,
+            amount_bs=deposit.amount_bs,
+            amount_eur=deposit.amount_eur,
+            amount_usdt=deposit.amount_usdt
+        )
+        w_val = sharing.sum_children_in_currency([candidate], db_goal.currency, "amount")
+        if w_val > available:
+            raise HTTPException(status_code=400, detail="El monto del retiro supera el saldo disponible en el ahorro")
+        register_as_expense = False
+        if deposit.expense_id is not None:
+            linked_exp = None
+            if hasattr(db, "get"):
+                linked_exp = await db.get(models.Expense, deposit.expense_id)
+            if not linked_exp:
+                exp_res = await db.execute(
+                    select(models.Expense).filter(models.Expense.id == deposit.expense_id)
+                )
+                linked_exp = exp_res.scalars().first()
+            if linked_exp:
+                await db.delete(linked_exp)
+            deposit.expense_id = None
+            deposit.create_expense = False
 
     target_owner_id = deposit.paid_by_user_id or user_id
 
@@ -748,14 +826,15 @@ async def get_savings_summary(db: AsyncSession, user_id: UUID) -> schemas.Saving
 
     for goal in goals:
         for deposit in goal.deposits:
+            sign = Decimal('-1') if getattr(deposit, 'transaction_type', 'deposit') == 'withdrawal' else Decimal('1')
             if deposit.amount_bs:
-                total_saved_bs += Decimal(str(deposit.amount_bs))
+                total_saved_bs += sign * Decimal(str(deposit.amount_bs))
             if deposit.amount_usd:
-                total_saved_usd += Decimal(str(deposit.amount_usd))
+                total_saved_usd += sign * Decimal(str(deposit.amount_usd))
             if deposit.amount_eur:
-                total_saved_eur += Decimal(str(deposit.amount_eur))
+                total_saved_eur += sign * Decimal(str(deposit.amount_eur))
             if deposit.amount_usdt:
-                total_saved_usdt += Decimal(str(deposit.amount_usdt))
+                total_saved_usdt += sign * Decimal(str(deposit.amount_usdt))
 
     return schemas.SavingSummaryResponse(
         total_goals=total_goals,

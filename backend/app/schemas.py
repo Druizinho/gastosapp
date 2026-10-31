@@ -332,6 +332,7 @@ class FixedExpenseSummary(BaseModel):
 class DebtPaymentBase(BaseModel):
     amount: Decimal = Field(..., gt=0)
     currency: CurrencyType = Field(default=CurrencyType.BS)
+    transaction_type: str = Field(default='payment', pattern="^(payment|increase)$")
     payment_date: Optional[datetime.date] = None
     note: Optional[str] = None
     category: Optional[str] = None
@@ -344,6 +345,7 @@ class DebtPaymentCreate(DebtPaymentBase):
 class DebtPaymentUpdate(BaseModel):
     amount: Optional[Decimal] = Field(None, gt=0)
     currency: Optional[CurrencyType] = None
+    transaction_type: Optional[str] = Field(None, pattern="^(payment|increase)$")
     payment_date: Optional[datetime.date] = None
     note: Optional[str] = None
     manual_rate: Optional[Decimal] = Field(None, gt=0)
@@ -710,6 +712,7 @@ class PanaDetail(BaseModel):
 class SavingDepositBase(BaseModel):
     amount: Decimal = Field(..., gt=0)
     currency: CurrencyType = Field(default=CurrencyType.BS)
+    transaction_type: str = Field(default='deposit', pattern="^(deposit|withdrawal)$")
     deposit_date: Optional[datetime.date] = None
     note: Optional[str] = None
     category: Optional[str] = None
@@ -721,6 +724,7 @@ class SavingDepositCreate(SavingDepositBase):
 class SavingDepositUpdate(BaseModel):
     amount: Optional[Decimal] = Field(None, gt=0)
     currency: Optional[CurrencyType] = None
+    transaction_type: Optional[str] = Field(None, pattern="^(deposit|withdrawal)$")
     deposit_date: Optional[datetime.date] = None
     note: Optional[str] = None
     manual_rate: Optional[Decimal] = Field(None, gt=0)

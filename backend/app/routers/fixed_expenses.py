@@ -149,9 +149,14 @@ async def check_fixed_expense(
     membership = await sharing.get_membership(db, expense_id, user_id)
     cleaned_category = check_data.category.strip() if check_data.category and check_data.category.strip() else None
     if membership:
-        cat = cleaned_category or membership[1].local_category or db_expense.category or "Gastos Fijos"
+        is_owner = (membership[0].owner_id == user_id)
         if cleaned_category:
             membership[1].local_category = cleaned_category
+            if is_owner and db_expense.user_id == user_id:
+                db_expense.category = cleaned_category
+            cat = cleaned_category
+        else:
+            cat = membership[1].local_category or (db_expense.category if is_owner else None) or "Sin Categoría"
     else:
         cat = cleaned_category or db_expense.category or "Gastos Fijos"
         if cleaned_category and db_expense.user_id == user_id:

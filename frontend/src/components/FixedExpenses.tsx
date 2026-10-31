@@ -28,6 +28,7 @@ import { LeaveShareModal } from './panas/LeaveShareModal';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../supabaseClient';
 import { LocalCategoryModal } from './panas/LocalCategoryModal';
+import { useCategories } from '../context/CategoriesContext';
 import { resolveCategoryVisuals } from '../utils/categoryVisuals';
 import { useCurrencyPreference } from '../context/CurrencyPreferenceContext';
 import {
@@ -52,6 +53,7 @@ const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Juli
 
 const FixedExpenses: React.FC = () => {
   const navigate = useNavigate();
+  const { categories } = useCategories();
   const { mainCurrency } = useCurrencyPreference();
   const [displayCurrency, setDisplayCurrency] = useState<MainCurrencyPreference>(mainCurrency);
 
@@ -344,7 +346,8 @@ const FixedExpenses: React.FC = () => {
 
   const renderExpenseCard = (expense: FixedExpense, isPaid: boolean = false) => {
     const check = expense.checks?.find((c) => c.month_year === currentMonth);
-    const { IconComponent, hexColor } = resolveCategoryVisuals(null, expense.category || undefined);
+    const catObj = categories.find(c => c.name.toLowerCase() === (expense.category || '').toLowerCase());
+    const { IconComponent, hexColor } = resolveCategoryVisuals(catObj, expense.category || 'Gastos Fijos');
     const isMember = expense.is_shared && expense.my_role === 'member';
 
     const statusColor = isPaid
@@ -392,7 +395,7 @@ const FixedExpenses: React.FC = () => {
 
     const badges = (
       <>
-        {expense.category ? (
+        {expense.category && expense.category.trim().toLowerCase() !== 'sin categoría' ? (
           <span
             onClick={(e) => {
               e.stopPropagation();
@@ -450,7 +453,7 @@ const FixedExpenses: React.FC = () => {
             onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
           >
             <Tag size={10} />
-            <span>Categoría</span>
+            <span>{expense.category?.trim() ? expense.category : 'Categoría'}</span>
           </span>
         )}
         {expense.is_shared && (

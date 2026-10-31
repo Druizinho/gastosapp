@@ -23,7 +23,8 @@ import type {
   DebtPaymentCreate,
   DebtPaymentUpdate,
   ExchangeRates,
-  MainCurrencyPreference
+  MainCurrencyPreference,
+  DebtTransactionType
 } from '../types';
 import {
   getDebts,
@@ -114,6 +115,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
   const [selectedDebtForSheet, setSelectedDebtForSheet] = useState<Debt | null>(null);
   const [payingDebt, setPayingDebt] = useState<Debt | null>(null);
   const [editingPayment, setEditingPayment] = useState<DebtPayment | undefined>(undefined);
+  const [paymentModalMode, setPaymentModalMode] = useState<DebtTransactionType>('payment');
   const [selectedPaymentForSheet, setSelectedPaymentForSheet] = useState<DebtPayment | null>(null);
 
   const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; debtId?: string; paymentId?: string }>({ isOpen: false });
@@ -347,9 +349,17 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
     return debtOneUnitInBs > 0 ? payInBs / debtOneUnitInBs : 0;
   };
 
-  const calculatePaid = (debt: Debt) => {
-    return debt.payments.reduce((acc, pay) => acc + getPaymentAmountInDebtCurrency(pay, debt.currency), 0);
-  };
+  const calculatePaid = (debt: Debt) =>
+    debt.payments.reduce((acc, pay) => {
+      const val = getPaymentAmountInDebtCurrency(pay, debt.currency);
+      return acc + (pay.transaction_type === 'increase' ? -val : val);
+    }, 0);
+
+  const calculateGrossPaid = (debt: Debt) =>
+    debt.payments.reduce((acc, pay) => pay.transaction_type === 'increase' ? acc : acc + getPaymentAmountInDebtCurrency(pay, debt.currency), 0);
+
+  const calculateIncreases = (debt: Debt) =>
+    debt.payments.reduce((acc, pay) => pay.transaction_type === 'increase' ? acc + getPaymentAmountInDebtCurrency(pay, debt.currency) : acc, 0);
 
   const cycleDisplayCurrency = () => {
     const order: MainCurrencyPreference[] = ['USD', 'BS', 'EUR', 'USDT'];
@@ -408,9 +418,11 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
     const isOwed = selectedDebt.type === 'owed';
     const themeColor = isOwed ? 'var(--expense-color)' : 'var(--income-color)';
     const accentHex = isOwed ? '#EF4444' : '#10B981';
-    const paid = calculatePaid(selectedDebt);
-    const remaining = Math.max(Number(selectedDebt.total_amount) - paid, 0);
-    const progress = Math.min((paid / Number(selectedDebt.total_amount)) * 100, 100);
+    const netPaid = calculatePaid(selectedDebt);
+    const grossPaid = calculateGrossPaid(selectedDebt);
+    const effectiveTotal = Number(selectedDebt.total_amount) + calculateIncreases(selectedDebt);
+    const remaining = Math.max(Number(selectedDebt.total_amount) - netPaid, 0);
+    const progress = effectiveTotal > 0 ? Math.min(Math.max((grossPaid / effectiveTotal) * 100, 0), 100) : 0;
     const isMember = selectedDebt.is_shared && selectedDebt.my_role === 'member';
 
     const remainingInMain = convertItemAmountToMainCurrency(
@@ -419,12 +431,12 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
       rates
     );
     const paidInMain = convertItemAmountToMainCurrency(
-      { amount: paid, currency: selectedDebt.currency },
+      { amount: grossPaid, currency: selectedDebt.currency },
       mainCurrency,
       rates
     );
     const totalInMain = convertItemAmountToMainCurrency(
-      { amount: Number(selectedDebt.total_amount), currency: selectedDebt.currency },
+      { amount: effectiveTotal, currency: selectedDebt.currency },
       mainCurrency,
       rates
     );
@@ -548,13 +560,13 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
             {
               label: 'TOTAL',
               value: formatCurrencyAmount(totalInMain, mainCurrency),
-              subtext: !isSameCurrency(selectedDebt.currency, mainCurrency) ? formatCurrency(Number(selectedDebt.total_amount), selectedDebt.currency) : undefined,
+              subtext: !isSameCurrency(selectedDebt.currency, mainCurrency) ? formatCurrency(effectiveTotal, selectedDebt.currency) : undefined,
               valueColor: 'var(--text-primary)',
             },
             {
               label: 'ABONADO',
               value: formatCurrencyAmount(paidInMain, mainCurrency),
-              subtext: !isSameCurrency(selectedDebt.currency, mainCurrency) ? formatCurrency(paid, selectedDebt.currency) : undefined,
+              subtext: !isSameCurrency(selectedDebt.currency, mainCurrency) ? formatCurrency(grossPaid, selectedDebt.currency) : undefined,
               valueColor: 'var(--income-color)',
             },
             {
@@ -596,7 +608,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
             onClick={(e) => e.stopPropagation()}
             style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.85rem' }}
           >
-            {selectedDebt.category ? (() => {
+            {selectedDebt.category && selectedDebt.category.trim().toLowerCase() !== 'sin categoría' ? (() => {
               const catObj = categories.find(c => c.name.toLowerCase() === selectedDebt.category?.toLowerCase());
               const { IconComponent, hexColor } = resolveCategoryVisuals(catObj, selectedDebt.category);
               return (
@@ -659,7 +671,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
                 onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
               >
                 <Tag size={12} />
-                <span>Mi categoría</span>
+                <span>{selectedDebt.category?.trim() ? selectedDebt.category : 'Mi categoría'}</span>
               </div>
             )}
 
@@ -692,26 +704,28 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
             </div>
           )}
 
-          {selectedDebt.is_shared && paid > 0 && (() => {
+          {selectedDebt.is_shared && grossPaid > 0 && (() => {
             const palette = [accentHex, '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4'];
             const byContributor: Record<string, { amount: number; isMe: boolean }> = {};
             const myUserId = selectedDebt.shared_members?.find(m => m.is_me)?.user_id;
 
-            selectedDebt.payments.forEach(p => {
-              const depAmount = getPaymentAmountInDebtCurrency(p, selectedDebt.currency);
-              const isMe = myUserId ? p.paid_by_user_id === myUserId : !p.paid_by_name;
-              const key = isMe ? 'Tú' : (p.paid_by_name || 'Miembro');
-              if (!byContributor[key]) {
-                byContributor[key] = { amount: 0, isMe };
-              }
-              byContributor[key].amount += depAmount;
-            });
+            selectedDebt.payments
+              .filter(p => p.transaction_type !== 'increase')
+              .forEach(p => {
+                const depAmount = getPaymentAmountInDebtCurrency(p, selectedDebt.currency);
+                const isMe = myUserId ? p.paid_by_user_id === myUserId : !p.paid_by_name;
+                const key = isMe ? 'Tú' : (p.paid_by_name || 'Miembro');
+                if (!byContributor[key]) {
+                  byContributor[key] = { amount: 0, isMe };
+                }
+                byContributor[key].amount += depAmount;
+              });
 
             const entries = Object.entries(byContributor);
             const memberStats = entries.map(([name, data], idx) => ({
               name,
               amount: data.amount,
-              pct: paid > 0 ? Math.round((data.amount / paid) * 100) : 0,
+              pct: grossPaid > 0 ? Math.round((data.amount / grossPaid) * 100) : 0,
               color: palette[idx % palette.length],
               isMe: data.isMe
             }));
@@ -736,7 +750,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
                     Abonos por integrante
                   </span>
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-                    Total: {formatCurrency(paid, selectedDebt.currency)}
+                    Total: {formatCurrency(grossPaid, selectedDebt.currency)}
                   </span>
                 </div>
                 <div style={{
@@ -771,38 +785,80 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
             );
           })()}
 
-          <div style={{ marginTop: '1rem' }} onClick={(e) => e.stopPropagation()}>
+          <div style={{ marginTop: '1rem', display: 'flex', gap: '0.65rem', flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
+            {remaining > 0 && !selectedDebt.is_settled && (
+              <button
+                type="button"
+                onClick={() => {
+                  setPaymentModalMode('payment');
+                  setPayingDebt(selectedDebt);
+                }}
+                style={{
+                  flex: 1,
+                  minWidth: '140px',
+                  padding: '0.85rem',
+                  borderRadius: 'var(--radius-md)',
+                  background: themeColor,
+                  color: 'white',
+                  border: 'none',
+                  fontWeight: 700,
+                  fontSize: '0.92rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.5rem',
+                  boxShadow: `0 4px 14px ${colorWithOpacity(accentHex, '44')}`,
+                  transition: 'transform 150ms ease-out',
+                }}
+                onMouseDown={(e) => {
+                  e.currentTarget.style.transform = 'scale(0.96)';
+                }}
+                onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+              >
+                <Plus size={18} />
+                <span>Registrar Abono</span>
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => setPayingDebt(selectedDebt)}
-              disabled={remaining <= 0 || selectedDebt.is_settled}
+              onClick={() => {
+                setPaymentModalMode('increase');
+                setPayingDebt(selectedDebt);
+              }}
               style={{
-                width: '100%',
+                flex: 1,
+                minWidth: '140px',
                 padding: '0.85rem',
                 borderRadius: 'var(--radius-md)',
-                background: (remaining <= 0 || selectedDebt.is_settled) ? 'var(--surface-muted)' : themeColor,
-                color: (remaining <= 0 || selectedDebt.is_settled) ? 'var(--text-tertiary)' : 'white',
-                border: 'none',
+                background: (remaining <= 0 || selectedDebt.is_settled)
+                  ? themeColor
+                  : 'var(--bg-secondary, rgba(255, 255, 255, 0.05))',
+                color: (remaining <= 0 || selectedDebt.is_settled) ? 'white' : 'var(--text-primary)',
+                border: (remaining <= 0 || selectedDebt.is_settled)
+                  ? 'none'
+                  : '1px solid var(--border-color)',
                 fontWeight: 700,
                 fontSize: '0.92rem',
-                cursor: (remaining <= 0 || selectedDebt.is_settled) ? 'not-allowed' : 'pointer',
+                cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '0.5rem',
-                boxShadow: (remaining <= 0 || selectedDebt.is_settled) ? 'none' : `0 4px 14px ${colorWithOpacity(accentHex, '44')}`,
+                boxShadow: (remaining <= 0 || selectedDebt.is_settled)
+                  ? `0 4px 14px ${colorWithOpacity(accentHex, '44')}`
+                  : 'none',
                 transition: 'transform 150ms ease-out',
               }}
               onMouseDown={(e) => {
-                if (remaining > 0 && !selectedDebt.is_settled) {
-                  e.currentTarget.style.transform = 'scale(0.96)';
-                }
+                e.currentTarget.style.transform = 'scale(0.96)';
               }}
               onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
               onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
             >
               <Plus size={18} />
-              <span>Registrar Abono</span>
+              <span>Aumentar Deuda</span>
             </button>
           </div>
         </SummaryHeroCard>
@@ -821,7 +877,10 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
             compact
             actionLabel={remaining > 0 && !selectedDebt.is_settled ? 'Registrar Abono' : undefined}
             actionIcon={<Plus size={16} />}
-            onAction={remaining > 0 && !selectedDebt.is_settled ? () => setPayingDebt(selectedDebt) : undefined}
+            onAction={remaining > 0 && !selectedDebt.is_settled ? () => {
+              setPaymentModalMode('payment');
+              setPayingDebt(selectedDebt);
+            } : undefined}
             actionColor={accentHex}
           />
         ) : (
@@ -844,9 +903,27 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
                   rates,
                   { amountInTarget: eqVal, targetCurrency: selectedDebt.currency }
                 );
+                const isIncrease = payment.transaction_type === 'increase';
 
                 const badgesNode = (
                   <>
+                    {isIncrease && (
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        color: themeColor,
+                        background: colorWithOpacity(accentHex, '18'),
+                        border: `1px solid ${colorWithOpacity(accentHex, '35')}`,
+                        padding: '0.12rem 0.5rem',
+                        borderRadius: 'var(--radius-full)'
+                      }}>
+                        Aumento
+                      </span>
+                    )}
+
                     <span style={{
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -867,7 +944,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
                       <AttributionBadge name={payment.paid_by_name} isMe={false} icon="user" />
                     )}
 
-                    {(payment.create_expense || payment.expense_id) && (
+                    {!isIncrease && (payment.create_expense || payment.expense_id) && (
                       <span style={{
                         display: 'inline-flex',
                         alignItems: 'center',
@@ -890,14 +967,14 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
                 return (
                   <ListCard
                     key={payment.id}
-                    statusColor={hexColor}
+                    statusColor={isIncrease ? accentHex : hexColor}
                     icon={<IconComponent size={18} />}
-                    iconBg={`${hexColor}18`}
-                    iconColor={hexColor}
-                    title={payment.note?.trim() ? payment.note : (isOwed ? 'Abono realizado' : 'Abono recibido')}
+                    iconBg={isIncrease ? colorWithOpacity(accentHex, '18') : `${hexColor}18`}
+                    iconColor={isIncrease ? accentHex : hexColor}
+                    title={payment.note?.trim() ? payment.note : (isIncrease ? 'Aumento de deuda' : (isOwed ? 'Abono realizado' : 'Abono recibido'))}
                     subtitle={formatDate(payment.payment_date)}
                     badges={badgesNode}
-                    primaryAmount={amounts.primaryAmount}
+                    primaryAmount={isIncrease ? `+ ${amounts.primaryAmount}` : amounts.primaryAmount}
                     secondaryAmount={amounts.secondaryAmount}
                     onClick={() => setSelectedPaymentForSheet(payment)}
                   />
@@ -910,21 +987,22 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
         <ListCardBottomSheet
           isOpen={!!selectedPaymentForSheet}
           onClose={() => setSelectedPaymentForSheet(null)}
-          title="Detalle del Abono"
+          title={selectedPaymentForSheet?.transaction_type === 'increase' ? 'Detalle del Aumento' : 'Detalle del Abono'}
           subtitle={selectedPaymentForSheet ? formatDate(selectedPaymentForSheet.payment_date) : undefined}
           secondaryActions={selectedPaymentForSheet && selectedPaymentForSheet.can_edit !== false ? [
             {
-              label: 'Editar Abono',
+              label: selectedPaymentForSheet.transaction_type === 'increase' ? 'Editar Aumento' : 'Editar Abono',
               icon: <Edit3 size={15} />,
               onClick: () => {
                 const p = selectedPaymentForSheet;
                 setSelectedPaymentForSheet(null);
+                setPaymentModalMode(p.transaction_type || 'payment');
                 setEditingPayment(p);
                 setPayingDebt(selectedDebt);
               }
             },
             {
-              label: 'Eliminar Abono',
+              label: selectedPaymentForSheet.transaction_type === 'increase' ? 'Eliminar Aumento' : 'Eliminar Abono',
               icon: <Trash2 size={15} />,
               danger: true,
               onClick: () => {
@@ -1001,6 +1079,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
         {payingDebt && (
           <DebtPaymentForm
             initialData={editingPayment}
+            initialTransactionType={paymentModalMode}
             debtConcept={payingDebt.concept}
             debtCategory={payingDebt.category}
             type={payingDebt.type}
@@ -1167,9 +1246,11 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           {displayedDebts.map(debt => {
-            const paid = calculatePaid(debt);
-            const remaining = Math.max(Number(debt.total_amount) - paid, 0);
-            const progress = Math.min((paid / Number(debt.total_amount)) * 100, 100);
+            const netPaid = calculatePaid(debt);
+            const grossPaid = calculateGrossPaid(debt);
+            const effectiveTotal = Number(debt.total_amount) + calculateIncreases(debt);
+            const remaining = Math.max(Number(debt.total_amount) - netPaid, 0);
+            const progress = effectiveTotal > 0 ? Math.min(Math.max((grossPaid / effectiveTotal) * 100, 0), 100) : 0;
             const itemThemeColor = debt.type === 'owed' ? 'var(--expense-color)' : 'var(--income-color)';
 
             // Currency conversion to mainCurrency
@@ -1179,7 +1260,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
               rates
             );
             const debtInMain = convertItemAmountToMainCurrency(
-              { amount: Number(debt.total_amount), currency: debt.currency },
+              { amount: effectiveTotal, currency: debt.currency },
               mainCurrency,
               rates
             );
@@ -1256,7 +1337,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
                   </span>
                 ) : null}
 
-                {debt.category ? (() => {
+                {debt.category && debt.category.trim().toLowerCase() !== 'sin categoría' ? (() => {
                   const catObj = categories.find(c => c.name.toLowerCase() === debt.category?.toLowerCase());
                   const { IconComponent, hexColor } = resolveCategoryVisuals(catObj, debt.category);
                   return (
@@ -1318,7 +1399,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
                     onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
                   >
                     <Tag size={10} />
-                    <span>Categoría</span>
+                    <span>{debt.category?.trim() ? debt.category : 'Categoría'}</span>
                   </span>
                 )}
 
@@ -1359,6 +1440,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
                   e.stopPropagation();
                   const freshDebt = debts.find(d => d.id === debt.id) || debt;
                   setEditingPayment(undefined);
+                  setPaymentModalMode('payment');
                   setPayingDebt(freshDebt);
                 }}
                 title="Registrar abono"
@@ -1411,16 +1493,18 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
             : undefined
         }
         primaryAction={
-          selectedDebtForSheet &&
-          !selectedDebtForSheet.is_settled &&
-          Math.max(Number(selectedDebtForSheet.total_amount) - calculatePaid(selectedDebtForSheet), 0) > 0
+          selectedDebtForSheet
             ? {
-                label: 'Registrar Abono',
+                label: (selectedDebtForSheet.is_settled || Math.max(Number(selectedDebtForSheet.total_amount) - calculatePaid(selectedDebtForSheet), 0) <= 0)
+                  ? 'Aumentar Deuda'
+                  : 'Registrar Abono',
                 icon: <Plus size={18} />,
                 onClick: () => {
                   const d = selectedDebtForSheet;
+                  const isSettledOrZero = d.is_settled || Math.max(Number(d.total_amount) - calculatePaid(d), 0) <= 0;
                   setSelectedDebtForSheet(null);
                   setEditingPayment(undefined);
+                  setPaymentModalMode(isSettledOrZero ? 'increase' : 'payment');
                   setPayingDebt(d);
                 },
               }
@@ -1429,6 +1513,21 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
         secondaryActions={
           selectedDebtForSheet
             ? [
+                ...((!selectedDebtForSheet.is_settled && Math.max(Number(selectedDebtForSheet.total_amount) - calculatePaid(selectedDebtForSheet), 0) > 0)
+                  ? [
+                      {
+                        label: 'Aumentar Deuda',
+                        icon: <Plus size={16} />,
+                        onClick: () => {
+                          const d = selectedDebtForSheet;
+                          setSelectedDebtForSheet(null);
+                          setEditingPayment(undefined);
+                          setPaymentModalMode('increase');
+                          setPayingDebt(d);
+                        },
+                      },
+                    ]
+                  : []),
                 {
                   label: 'Personalizar mi categoría',
                   icon: <Tag size={16} />,
@@ -1497,8 +1596,10 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
         }
       >
         {selectedDebtForSheet && (() => {
-          const paid = calculatePaid(selectedDebtForSheet);
-          const remaining = Math.max(Number(selectedDebtForSheet.total_amount) - paid, 0);
+          const netPaid = calculatePaid(selectedDebtForSheet);
+          const grossPaid = calculateGrossPaid(selectedDebtForSheet);
+          const effectiveTotal = Number(selectedDebtForSheet.total_amount) + calculateIncreases(selectedDebtForSheet);
+          const remaining = Math.max(Number(selectedDebtForSheet.total_amount) - netPaid, 0);
           const isOwed = selectedDebtForSheet.type === 'owed';
           const statusColor = isOwed ? 'var(--expense-color)' : 'var(--income-color)';
 
@@ -1513,13 +1614,13 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
                 <div style={{ textAlign: 'center', padding: '0.65rem 0.4rem', background: 'var(--surface-muted)', borderRadius: 'var(--radius-md)' }}>
                   <p style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', margin: '0 0 0.25rem' }}>Total</p>
                   <p style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
-                    {formatCurrency(Number(selectedDebtForSheet.total_amount), selectedDebtForSheet.currency)}
+                    {formatCurrency(effectiveTotal, selectedDebtForSheet.currency)}
                   </p>
                 </div>
                 <div style={{ textAlign: 'center', padding: '0.65rem 0.4rem', background: 'var(--income-bg)', borderRadius: 'var(--radius-md)' }}>
                   <p style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', margin: '0 0 0.25rem' }}>Abonado</p>
                   <p style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--income-color)', margin: 0 }}>
-                    {formatCurrency(paid, selectedDebtForSheet.currency)}
+                    {formatCurrency(grossPaid, selectedDebtForSheet.currency)}
                   </p>
                 </div>
                 <div style={{ textAlign: 'center', padding: '0.65rem 0.4rem', background: remaining > 0 ? 'var(--expense-bg)' : 'var(--income-bg)', borderRadius: 'var(--radius-md)' }}>
@@ -1582,6 +1683,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
       {payingDebt && (
         <DebtPaymentForm
           initialData={editingPayment}
+          initialTransactionType={paymentModalMode}
           debtConcept={payingDebt.concept}
           debtCategory={payingDebt.category}
           type={payingDebt.type}

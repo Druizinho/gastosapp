@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { SavingDeposit, SavingDepositCreate, SavingDepositUpdate, CurrencyType, Category, ExchangeRates } from '../types';
+import type { SavingDeposit, SavingDepositCreate, SavingDepositUpdate, SavingTransactionType, CurrencyType, Category, ExchangeRates } from '../types';
 import { CURRENCY_OPTIONS } from '../types';
 import { getCategories, getRates } from '../api';
 import { formatRateForInput } from '../utils/currencyFormat';
@@ -7,6 +7,7 @@ import CategorySelect from './CategorySelect';
 
 interface SavingDepositFormProps {
   initialData?: SavingDeposit;
+  initialTransactionType?: SavingTransactionType;
   goalName: string;
   goalCurrency: string;
   goalTargetAmount?: number | null;
@@ -56,6 +57,7 @@ const formatCurrency = (amount: number, currency: string) => {
 
 export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
   initialData,
+  initialTransactionType = 'deposit',
   goalName,
   goalCurrency,
   goalTargetAmount,
@@ -93,6 +95,7 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
     manual_rate: getInitialDepositRate(initialData) as any,
     register_as_expense: isProject,
     category: defaultCategory,
+    transaction_type: (initialData?.transaction_type || initialTransactionType || 'deposit') as SavingTransactionType,
   });
 
   useEffect(() => {
@@ -111,15 +114,17 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
         manual_rate: getInitialDepositRate(initialData) as any,
         register_as_expense: Boolean(initialData.create_expense || initialData.expense_id),
         category: initialData.category || goalCategory || (isProject ? 'Proyectos' : 'Ahorro'),
+        transaction_type: (initialData.transaction_type || initialTransactionType || 'deposit') as SavingTransactionType,
       });
     } else {
       setFormData(prev => ({
         ...prev,
         register_as_expense: isProject,
         category: prev.category || goalCategory || (isProject ? 'Proyectos' : 'Ahorro'),
+        transaction_type: (isProject ? 'deposit' : (initialTransactionType || 'deposit')) as SavingTransactionType,
       }));
     }
-  }, [initialData, isProject, goalCategory]);
+  }, [initialData, isProject, goalCategory, initialTransactionType]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -130,6 +135,8 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
       [name]: type === 'checkbox' ? checked : value,
     }));
   };
+
+  const isWithdrawal = !isProject && formData.transaction_type === 'withdrawal';
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -144,16 +151,31 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
       delete submitData.manual_rate;
     }
     submitData.category = formData.category || (isProject ? 'Proyectos' : 'Ahorro');
-    submitData.register_as_expense = formData.register_as_expense;
-    if (isEditing) {
-      delete submitData.register_as_expense;
+    submitData.transaction_type = isProject ? 'deposit' : (formData.transaction_type || 'deposit');
+
+    if (isWithdrawal) {
+      submitData.register_as_expense = false;
+      const effectiveAvailable = !isEditing
+        ? goalCurrentSaved
+        : goalCurrentSaved + (initialData?.transaction_type === 'withdrawal' ? Number(initialData.amount) : -Number(initialData?.amount || 0));
+
+      if (isSameCurrency && Number(submitData.amount) > effectiveAvailable + 0.009) {
+        setError('El monto del retiro supera el saldo disponible en el ahorro');
+        return;
+      }
+    } else {
+      submitData.register_as_expense = formData.register_as_expense;
+      if (isEditing) {
+        delete submitData.register_as_expense;
+      }
     }
+
     onSubmit(submitData);
   };
 
   const currentAmount = Number(formData.amount) || 0;
   const isSameCurrency = formData.currency === goalCurrency;
-  const willComplete = !isProject && !isEditing && isSameCurrency && remaining !== null && currentAmount >= remaining && remaining > 0;
+  const willComplete = !isWithdrawal && !isProject && !isEditing && isSameCurrency && remaining !== null && currentAmount >= remaining && remaining > 0;
   const isUsdtRateMissing = formData.currency === 'USDT' && rates !== null && (rates.usdt_bs === null || rates.usdt_bs === undefined || rates.usdt_bs <= 0);
   const suggestedRate = formData.currency === 'EUR_BCV' ? rates?.eur_bs : formData.currency === 'USDT' ? rates?.usdt_bs : rates?.usd_bs;
 
@@ -171,8 +193,8 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
       >
         <h2>
           {isEditing 
-            ? (isProject ? 'Editar Pago' : 'Editar Aporte')
-            : (isProject ? 'Registrar Pago' : 'Abonar a Fondo')}
+            ? (isWithdrawal ? 'Editar Retiro' : (isProject ? 'Editar Pago' : 'Editar Aporte'))
+            : (isWithdrawal ? 'Retirar de Fondo' : (isProject ? 'Registrar Pago' : 'Abonar a Fondo'))}
         </h2>
         {goalName && (
           <p style={{
@@ -261,7 +283,7 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
           {/* Monto y Moneda */}
           <div className="form-group row">
             <div className="form-group half">
-              <label>{isProject ? 'Monto del Pago *' : 'Monto a Aportar *'}</label>
+              <label>{isWithdrawal ? 'Monto a Retirar *' : (isProject ? 'Monto del Pago *' : 'Monto a Aportar *')}</label>
               <input
                 type="number"
                 step="any"
@@ -311,7 +333,7 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
 
           {/* Fecha del Aporte / Pago */}
           <div className="form-group">
-            <label>{isProject ? 'Fecha del Pago' : 'Fecha del Aporte'}</label>
+            <label>{isWithdrawal ? 'Fecha del Retiro' : (isProject ? 'Fecha del Pago' : 'Fecha del Aporte')}</label>
             <input
               type="date"
               name="deposit_date"
@@ -323,20 +345,20 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
           {/* Nota */}
           <div className="form-group">
             <label style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>{isProject ? 'Nota / Concepto del pago' : 'Nota / Origen de los fondos'}</span>
+              <span>{isWithdrawal ? 'Nota / Destino del retiro' : (isProject ? 'Nota / Concepto del pago' : 'Nota / Origen de los fondos')}</span>
               <span className="form-hint-inline">(Opcional)</span>
             </label>
             <input
               type="text"
               name="note"
-              placeholder={isProject ? "Ej: Repuestos de bomba, refrigerante, mano de obra..." : "Ej: Bono de trabajo, venta de garaje..."}
+              placeholder={isProject ? "Ej: Repuestos de bomba, refrigerante, mano de obra..." : (isWithdrawal ? "Ej: Emergencia médica, reparación imprevista..." : "Ej: Bono de trabajo, venta de garaje...")}
               value={formData.note || ''}
               onChange={handleChange}
             />
           </div>
 
           {/* Registrar como Gasto en Dashboard */}
-          {!isEditing && (
+          {!isEditing && !isWithdrawal && (
             <div style={{
               background: 'var(--surface-muted)',
               padding: '0.875rem 1rem',
@@ -393,11 +415,11 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
               disabled={loading || !formData.amount}
               className="btn-submit"
               style={{
-                background: goalColor,
-                boxShadow: `0 4px 14px ${goalColor}44`,
+                background: isWithdrawal ? '#F59E0B' : goalColor,
+                boxShadow: `0 4px 14px ${isWithdrawal ? '#F59E0B' : goalColor}44`,
               }}
             >
-              {loading ? 'Guardando...' : (isEditing ? 'Guardar Cambios' : (isProject ? 'Registrar Pago' : 'Aportar'))}
+              {loading ? 'Guardando...' : (isEditing ? 'Guardar Cambios' : (isWithdrawal ? 'Retirar' : (isProject ? 'Registrar Pago' : 'Aportar')))}
             </button>
           </div>
         </form>

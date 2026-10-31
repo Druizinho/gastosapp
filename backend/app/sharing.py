@@ -249,35 +249,7 @@ async def resolve_initial_member_category(
     entity_type: str,
     owner_entity: Any
 ) -> str:
-    if entity_type == "debt":
-        default_cat = "Deudas"
-    elif entity_type == "fixed_expense":
-        default_cat = "Gastos Fijos"
-    elif entity_type == "saving_goal":
-        default_cat = "Proyectos" if getattr(owner_entity, "type", "saving") == "project" else "Ahorro"
-    else:
-        default_cat = "Sin Categoría"
-
-    owner_cat = getattr(owner_entity, "category", None)
-    if not owner_cat or not str(owner_cat).strip():
-        return default_cat
-
-    owner_cat = str(owner_cat).strip()
-    standard_defaults = {"deudas", "gastos fijos", "proyectos", "ahorro"}
-    if owner_cat.lower() in standard_defaults:
-        return owner_cat
-
-    res = await db.execute(
-        select(models.Category.name).where(
-            models.Category.user_id == target_user_id,
-            func.lower(models.Category.name) == func.lower(owner_cat)
-        )
-    )
-    matched_cat = res.scalars().first()
-    if matched_cat:
-        return matched_cat
-
-    return default_cat
+    return "Sin Categoría"
 
 
 # ==============================================================================
@@ -311,7 +283,7 @@ async def create_share(
         entity_id=owner_entity.id,
         role="admin",
         added_by=owner_id,
-        local_category=getattr(owner_entity, "category", None),
+        local_category=getattr(owner_entity, "category", None) or "Sin Categoría",
         perspective_type=None,
         counterpart_label=None
     )
@@ -523,10 +495,12 @@ def sum_children_in_currency(children: List[Any], target_currency: str, amount_a
         raw_val = getattr(ch, amount_attr, None)
         if raw_val is None:
             continue
-        if ch.currency == target_currency:
-            total += Decimal(str(raw_val))
+        ch_cur = getattr(ch, "currency", None)
+        val = Decimal("0")
+        if ch_cur == target_currency:
+            val = Decimal(str(raw_val))
         elif target_currency == "USD_BCV" and getattr(ch, "amount_usd", None) is not None:
-            total += Decimal(str(ch.amount_usd))
+            val = Decimal(str(ch.amount_usd))
         elif target_currency == "USD_CASH":
             # Si el pago es en USD_CASH, ya hizo match arriba (1:1).
             # Para pagos en otra moneda (BS, EUR, etc.), convertir usando la tasa efectivo de referencia
@@ -538,21 +512,26 @@ def sum_children_in_currency(children: List[Any], target_currency: str, amount_a
                 valid_rates = [r for r in (r_usd, r_eur, r_usdt) if r > 0]
                 cash_rate = max(valid_rates) if valid_rates else (r_usd if r_usd > 0 else Decimal("0"))
                 if cash_rate > 0:
-                    total += (amount_bs / cash_rate)
+                    val = (amount_bs / cash_rate)
                 elif getattr(ch, "amount_usd", None) is not None:
-                    total += Decimal(str(ch.amount_usd))
+                    val = Decimal(str(ch.amount_usd))
+                else:
+                    val = Decimal(str(raw_val))
             elif getattr(ch, "amount_usd", None) is not None:
-                total += Decimal(str(ch.amount_usd))
+                val = Decimal(str(ch.amount_usd))
             else:
-                total += Decimal(str(raw_val))
+                val = Decimal(str(raw_val))
         elif target_currency == "BS" and getattr(ch, "amount_bs", None) is not None:
-            total += Decimal(str(ch.amount_bs))
+            val = Decimal(str(ch.amount_bs))
         elif target_currency == "EUR_BCV" and getattr(ch, "amount_eur", None) is not None:
-            total += Decimal(str(ch.amount_eur))
+            val = Decimal(str(ch.amount_eur))
         elif target_currency == "USDT" and getattr(ch, "amount_usdt", None) is not None:
-            total += Decimal(str(ch.amount_usdt))
+            val = Decimal(str(ch.amount_usdt))
         else:
-            total += Decimal(str(raw_val))
+            val = Decimal(str(raw_val))
+
+        sign = Decimal("-1") if getattr(ch, "transaction_type", None) in ("withdrawal", "increase") else Decimal("1")
+        total += sign * val
     return total
 
 
@@ -761,7 +740,11 @@ async def populate_share_meta(
             e.owner_id = share.owner_id if share else getattr(e, "user_id", None)
             e.is_read_only = (entity_type == "sub_budget" and my_sm.user_id != (share.owner_id if share else None))
 
-            eff_cat = my_sm.local_category or getattr(e, "category", None)
+            is_owner_me = bool(share and my_sm.user_id == share.owner_id)
+            if is_owner_me:
+                eff_cat = my_sm.local_category or getattr(e, "category", None) or "Sin Categoría"
+            else:
+                eff_cat = my_sm.local_category or "Sin Categoría"
             if entity_type != "sub_budget" and hasattr(type(e), "category"):
                 try:
                     set_committed_value(e, "category", eff_cat)
@@ -803,6 +786,9 @@ async def populate_share_meta(
                 ch.can_edit = True
 
     return entities
+
+
+enrich_shared_entities = populate_share_meta
 
 
 async def build_share_info(db: AsyncSession, share: models.Share, user_id: UUID) -> schemas.ShareInfoOut:

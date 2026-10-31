@@ -291,6 +291,7 @@ async def ensure_categories_and_debts_schema() -> None:
         "ALTER TABLE debt_payments ADD COLUMN IF NOT EXISTS category VARCHAR(100)",
         "ALTER TABLE debt_payments ADD COLUMN IF NOT EXISTS create_expense BOOLEAN NOT NULL DEFAULT FALSE",
         "ALTER TABLE debt_payments ADD COLUMN IF NOT EXISTS expense_id UUID",
+        "ALTER TABLE debt_payments ADD COLUMN IF NOT EXISTS transaction_type VARCHAR(20) NOT NULL DEFAULT 'payment'",
         # 4. estimated_incomes columns
         "ALTER TABLE estimated_incomes ADD COLUMN IF NOT EXISTS category VARCHAR(100) DEFAULT 'Otros ingresos'",
         "ALTER TABLE estimated_incomes ALTER COLUMN category SET DEFAULT 'Otros ingresos'",
@@ -300,6 +301,7 @@ async def ensure_categories_and_debts_schema() -> None:
         "ALTER TABLE saving_deposits ADD COLUMN IF NOT EXISTS category VARCHAR(100)",
         "ALTER TABLE saving_deposits ADD COLUMN IF NOT EXISTS create_expense BOOLEAN NOT NULL DEFAULT FALSE",
         "ALTER TABLE saving_deposits ADD COLUMN IF NOT EXISTS expense_id UUID",
+        "ALTER TABLE saving_deposits ADD COLUMN IF NOT EXISTS transaction_type VARCHAR(20) NOT NULL DEFAULT 'deposit'",
         # 7. fixed_expenses columns
         "ALTER TABLE fixed_expenses ADD COLUMN IF NOT EXISTS category VARCHAR(100) DEFAULT 'Gastos Fijos'",
         # 8. share_members columns for localized per-user settings
@@ -1648,7 +1650,7 @@ async def delete_category(db: AsyncSession, category_id: UUID, user_id: UUID, re
             models.ShareMember.__table__.update()
             .where(models.ShareMember.user_id == user_id)
             .where(models.ShareMember.local_category == category_name)
-            .values(local_category=reassign_to if reassign_to else None)
+            .values(local_category=target_category)
         )
 
         # 8. Reassign BudgetCategoryLimit
