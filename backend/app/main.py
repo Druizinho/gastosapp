@@ -7,11 +7,12 @@ from firebase_admin import credentials
 import asyncio
 import datetime
 from typing import Optional
-from sqlalchemy import text
+from sqlalchemy import text, select, func
 
 from .routers import expenses, categories, profiles, fixed_expenses, debts, incomes, push, notifications, connections, savings, shares, budgets
 from .database import engine, Base, SessionLocal as AsyncSessionLocal
 from .time_utils import vet_now
+from . import bcv_service, models
 
 import base64
 import json
@@ -86,6 +87,27 @@ async def ensure_notifications_schema():
             print(f"Aviso migración notificaciones: {e}")
 
 
+async def _init_daily_rates_bg():
+    """
+    Inicializador en segundo plano para tasas diarias y sembrado histórico.
+    """
+    try:
+        if hasattr(bcv_service, "save_today_rates_to_db"):
+            await bcv_service.save_today_rates_to_db()
+    except Exception as e:
+        print(f"⚠️ Error guardando tasas del día en inicialización: {e}")
+
+    try:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(select(func.count()).select_from(models.DailyRate))
+            count = result.scalar() or 0
+            if count < 100 and hasattr(bcv_service, "seed_historical_rates"):
+                print(f"🌱 daily_rates tiene {count} registros (< 100). Ejecutando seed histórico...")
+                await bcv_service.seed_historical_rates()
+    except Exception as e:
+        print(f"⚠️ Error en verificación o seed histórico de tasas: {e}")
+
+
 async def _notification_scheduler_loop():
     """
     Bucle en segundo plano que revisa cada 60 segundos si es momento de ejecutar
@@ -94,11 +116,23 @@ async def _notification_scheduler_loop():
     from .routers.push import execute_scheduled_notifications
     last_morning_date: Optional[datetime.date] = None
     last_evening_date: Optional[datetime.date] = None
+    last_rates_save_key: tuple[str, int] | None = None
 
     while True:
         try:
             now = vet_now()
             today = now.date()
+            today_str = today.isoformat()
+
+            # Guardar tasas del día a las 9:00 AM y 7:00 PM (19:00) VET
+            if now.hour in (9, 19) and last_rates_save_key != (today_str, now.hour):
+                try:
+                    if hasattr(bcv_service, "save_today_rates_to_db"):
+                        await bcv_service.save_today_rates_to_db()
+                    last_rates_save_key = (today_str, now.hour)
+                    print(f"💵 Tasas diarias sincronizadas en scheduler a las {now.strftime('%H:%M:%S')} VET")
+                except Exception as e:
+                    print(f"⚠️ Error sincronizando tasas diarias en scheduler: {e}")
 
             # Ventana matutina: 9:00 AM VET
             if now.hour == 9 and last_morning_date != today:
@@ -165,6 +199,9 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"Aviso metadata create_all: {e}")
 
+    rates_init_task = asyncio.create_task(_init_daily_rates_bg())
+    print("✅ Tarea de inicialización de tasas diarias lanzada en segundo plano.")
+
     # Asegurar migración de esquema para notificaciones
     try:
         await ensure_notifications_schema()
@@ -190,6 +227,7 @@ async def lifespan(app: FastAPI):
     # Cancelar tareas de fondo al apagar
     ping_task.cancel()
     scheduler_task.cancel()
+    rates_init_task.cancel()
     try:
         await ping_task
     except asyncio.CancelledError:
@@ -198,6 +236,10 @@ async def lifespan(app: FastAPI):
         await scheduler_task
     except asyncio.CancelledError:
         print("🛑 Scheduler de notificaciones detenido.")
+    try:
+        await rates_init_task
+    except asyncio.CancelledError:
+        print("🛑 Inicialización de tasas diarias detenida.")
     await engine.dispose()
 
 app = FastAPI(title="GastosApp API", lifespan=lifespan)

@@ -75,6 +75,7 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [rates, setRates] = useState<ExchangeRates | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     getCategories()
@@ -132,6 +133,8 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+
     const submitData: any = { ...formData };
     submitData.amount = Number(submitData.amount);
     if (submitData.manual_rate) {
@@ -151,6 +154,7 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
   const currentAmount = Number(formData.amount) || 0;
   const isSameCurrency = formData.currency === goalCurrency;
   const willComplete = !isProject && !isEditing && isSameCurrency && remaining !== null && currentAmount >= remaining && remaining > 0;
+  const isUsdtRateMissing = formData.currency === 'USDT' && rates !== null && (rates.usdt_bs === null || rates.usdt_bs === undefined || rates.usdt_bs <= 0);
   const suggestedRate = formData.currency === 'EUR_BCV' ? rates?.eur_bs : formData.currency === 'USDT' ? rates?.usdt_bs : rates?.usd_bs;
 
   return (
@@ -181,6 +185,8 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
             {goalName}
           </p>
         )}
+
+        {error && <div className="error-message">{error}</div>}
 
         <form onSubmit={handleSubmit}>
           {/* Target Progress Banner */}
@@ -292,10 +298,15 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
               type="text"
               inputMode="decimal"
               name="manual_rate"
-              placeholder={suggestedRate ? `Por defecto: Bs. ${Number(suggestedRate).toFixed(2)}` : "Dejar vacío para usar tasa del día"}
+              placeholder={isUsdtRateMissing ? "No hay precio en esta fecha — tasa manual opcional" : (suggestedRate && suggestedRate > 0 ? `Por defecto: Bs. ${Number(suggestedRate).toFixed(2)}` : "Dejar vacío para usar tasa del día")}
               value={formData.manual_rate || ''}
               onChange={handleChange}
             />
+            {isUsdtRateMissing && !formData.manual_rate && (
+              <p style={{ fontSize: '0.8rem', color: 'var(--warning-color, #D97706)', marginTop: '0.35rem' }}>
+                No hay precio de USDT en esta fecha. Puedes ingresar una tasa manual (opcional).
+              </p>
+            )}
           </div>
 
           {/* Fecha del Aporte / Pago */}

@@ -416,3 +416,22 @@ CREATE TABLE IF NOT EXISTS public.budget_category_limits (
     CONSTRAINT _budget_category_limit_uc UNIQUE (budget_id, category_name)
 );
 CREATE INDEX IF NOT EXISTS idx_budget_cat_limits_budget_id ON public.budget_category_limits(budget_id);
+
+-- ------------------------------------------------------------------------------
+-- 19. TABLA DE TASAS HISTÓRICAS DIARIAS (BCV USD, BCV EUR, BINANCE USDT)
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.daily_rates (
+    fecha DATE PRIMARY KEY,
+    usd_bs NUMERIC(12, 4),
+    eur_bs NUMERIC(12, 4),
+    usdt_bs NUMERIC(12, 4),
+    source TEXT,
+    updated_at TIMESTAMPTZ DEFAULT timezone('utc', now())
+);
+
+ALTER TABLE public.daily_rates ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Lectura publica de tasas diarias" ON public.daily_rates;
+CREATE POLICY "Lectura publica de tasas diarias"
+    ON public.daily_rates FOR SELECT
+    USING (true);

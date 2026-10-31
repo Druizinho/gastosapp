@@ -131,7 +131,9 @@ export interface ExchangeRates {
   usd_bs: number | null;
   eur_bs: number | null;
   usdt_bs: number | null;
-  last_updated: string | null;
+  last_updated: string;
+  rate_date?: string | null;
+  is_historical?: boolean;
 }
 
 export type BCVRate = ExchangeRates;

@@ -144,6 +144,8 @@ class ExchangeRateResponse(BaseModel):
     eur_bs: Optional[Decimal] = None
     usdt_bs: Optional[Decimal] = None
     last_updated: Optional[datetime.datetime] = None
+    rate_date: Optional[datetime.date] = None
+    is_historical: bool = False
 
 class CategorySummary(BaseModel):
     category: str

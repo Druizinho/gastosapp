@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Calendar,
   Plus,
   Edit3,
   Trash2,
@@ -43,6 +42,7 @@ import ListCard from './ListCard';
 import ConfirmModal from './ConfirmModal';
 import { MemberAvatars, ShareMembersModal } from './panas';
 import { PageHeader } from './ui/PageHeader';
+import { MonthPicker } from './ui/MonthPicker';
 import { SummaryHeroCard, type SummaryMetricItem } from './ui/SummaryHeroCard';
 import { SegmentedTabs } from './ui/SegmentedTabs';
 import { SkeletonList } from './ui/Skeleton';
@@ -338,12 +338,6 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
   const [leaveSharedBudgetConfirm, setLeaveSharedBudgetConfirm] = useState<SingleBudgetOut | null>(null);
   const [activeShareModalItem, setActiveShareModalItem] = useState<{ id: string; name: string } | null>(null);
 
-  // Short month label for navigator pill
-  const shortMonthLabel = useMemo(() => {
-    const shortMonths = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-    const [y, m] = currentMonthYear.split('-');
-    return `${shortMonths[parseInt(m, 10) - 1]} ${y}`;
-  }, [currentMonthYear]);
 
   // Fast map of user categories for custom colors/icons
   const categoryMap = useMemo(() => {
@@ -662,41 +656,11 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
   };
 
   const monthNavigator = (
-    <div
-      style={{
-        position: 'relative',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '0.5rem',
-        background: 'var(--surface-color)',
-        padding: '0.4rem 0.6rem',
-        borderRadius: 'var(--radius-md)',
-        border: '1px solid var(--border-color)',
-        cursor: 'pointer',
-        flexShrink: 0,
-      }}
-    >
-      <Calendar size={18} color="var(--text-secondary)" />
-      <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-        {shortMonthLabel}
-      </span>
-      <input
-        type="month"
-        value={currentMonthYear}
-        onChange={(e) => {
-          if (e.target.value) setCurrentMonthYear(e.target.value);
-        }}
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: '100%',
-          opacity: 0,
-          cursor: 'pointer',
-        }}
-      />
-    </div>
+    <MonthPicker
+      value={currentMonthYear}
+      onChange={setCurrentMonthYear}
+      ariaLabel="Seleccionar mes del presupuesto"
+    />
   );
 
   const detailRightAction = selectedBudget ? (

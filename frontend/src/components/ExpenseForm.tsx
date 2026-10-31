@@ -209,6 +209,9 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
     }
   };
 
+  const isUsdtRateMissing = currency === 'USDT' && rates !== null && (rates.usdt_bs === null || rates.usdt_bs === undefined || rates.usdt_bs <= 0);
+  const currentRate = currency === 'EUR_BCV' ? rates?.eur_bs : currency === 'USDT' ? rates?.usdt_bs : rates?.usd_bs;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitError(null);
@@ -317,7 +320,6 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
     }
   };
 
-  const currentRate = currency === 'EUR_BCV' ? rates?.eur_bs : currency === 'USDT' ? rates?.usdt_bs : rates?.usd_bs;
   const isEditing = Boolean(initialData || initialIncomeData);
 
   return (
@@ -456,9 +458,31 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
           </div>
 
           <div className="form-group">
-            <label style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>Tasa de Cambio {isEditing ? '(Histórica)' : ''}</span>
-              <span className="form-hint-inline">(Opcional)</span>
+            <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <span>Tasa de Cambio {isEditing ? '(Histórica)' : ''}</span>
+                {currency !== 'BS' && currency !== 'USD_CASH' && (
+                  <span
+                    style={{
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      padding: '0.15rem 0.5rem',
+                      borderRadius: 'var(--radius-full)',
+                      background: isUsdtRateMissing ? 'rgba(239, 68, 68, 0.12)' : 'var(--surface-muted, rgba(0, 0, 0, 0.05))',
+                      color: isUsdtRateMissing ? '#ef4444' : 'var(--text-secondary)',
+                    }}
+                  >
+                    {isUsdtRateMissing
+                      ? 'No hay precio en esta fecha'
+                      : currentRate && Number(currentRate) > 0
+                        ? `Bs. ${Number(currentRate).toFixed(2)}`
+                        : 'Sin tasa'}
+                  </span>
+                )}
+              </span>
+              <span className="form-hint-inline">
+                (Opcional)
+              </span>
             </label>
             <input
               type="text"
@@ -468,31 +492,57 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
                 const val = e.target.value.replace(/[^0-9.,]/g, '');
                 setManualRate(val);
               }}
-              placeholder={currentRate ? `Por defecto: Bs. ${Number(currentRate).toFixed(2)}` : "Ej. 36.50"}
+              placeholder={
+                isUsdtRateMissing
+                  ? "No hay precio en esta fecha — tasa manual opcional"
+                  : currentRate && Number(currentRate) > 0
+                    ? `Por defecto: Bs. ${Number(currentRate).toFixed(2)}`
+                    : "Ej. 36.50"
+              }
             />
-            <div
-              style={{
-                marginTop: '0.5rem',
-                display: 'flex',
-                alignItems: 'flex-start',
-                gap: '0.5rem',
-                background: 'rgba(59, 130, 246, 0.1)',
-                color: 'var(--accent-color)',
-                padding: '0.75rem',
-                borderRadius: '8px',
-                fontSize: '0.85rem',
-                border: '1px solid rgba(59, 130, 246, 0.2)',
-              }}
-            >
-              <Info size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
-              <span>
-                {isEditing
-                  ? (mode === 'income'
-                      ? "Esta fue la tasa de cambio usada en su momento. Modifícala solo si deseas recalcular el ingreso."
-                      : "Esta fue la tasa de cambio usada en su momento. Modifícala solo si deseas recalcular el gasto.")
-                  : "💡 Déjalo en blanco para usar la tasa de cambio automática del sistema (BCV o Binance)."}
-              </span>
-            </div>
+            {isUsdtRateMissing ? (
+              <div
+                style={{
+                  marginTop: '0.5rem',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '0.5rem',
+                  background: 'rgba(234, 179, 8, 0.12)',
+                  color: '#b45309',
+                  padding: '0.75rem',
+                  borderRadius: '8px',
+                  fontSize: '0.85rem',
+                  border: '1px solid rgba(234, 179, 8, 0.25)',
+                }}
+              >
+                <Info size={16} style={{ flexShrink: 0, marginTop: '2px', color: '#b45309' }} />
+                <span>No hay precio de USDT en esta fecha. Puedes ingresar una tasa manual (opcional).</span>
+              </div>
+            ) : (
+              <div
+                style={{
+                  marginTop: '0.5rem',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '0.5rem',
+                  background: 'rgba(59, 130, 246, 0.1)',
+                  color: 'var(--accent-color)',
+                  padding: '0.75rem',
+                  borderRadius: '8px',
+                  fontSize: '0.85rem',
+                  border: '1px solid rgba(59, 130, 246, 0.2)',
+                }}
+              >
+                <Info size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
+                <span>
+                  {isEditing
+                    ? (mode === 'income'
+                        ? "Esta fue la tasa de cambio usada en su momento. Modifícala solo si deseas recalcular el ingreso."
+                        : "Esta fue la tasa de cambio usada en su momento. Modifícala solo si deseas recalcular el gasto.")
+                    : "💡 Déjalo en blanco para usar la tasa de cambio automática del sistema (BCV o Binance)."}
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="form-group">

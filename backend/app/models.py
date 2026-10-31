@@ -186,7 +186,7 @@ class Debt(Base):
     shared_partner_name = None
     shared_by = None
 
-    payments = relationship("DebtPayment", back_populates="debt", cascade="all, delete-orphan")
+    payments = relationship("DebtPayment", back_populates="debt", cascade="all, delete-orphan", order_by=lambda: [DebtPayment.payment_date.desc(), DebtPayment.created_at.desc()])
 
 
 class DebtPayment(Base):
@@ -363,7 +363,7 @@ class SavingGoal(Base):
     shared_partner_name = None
     shared_by = None
 
-    deposits = relationship("SavingDeposit", back_populates="goal", cascade="all, delete-orphan")
+    deposits = relationship("SavingDeposit", back_populates="goal", cascade="all, delete-orphan", order_by=lambda: [SavingDeposit.deposit_date.desc(), SavingDeposit.created_at.desc()])
 
 
 class SavingDeposit(Base):
@@ -468,4 +468,16 @@ class BudgetCategoryLimit(Base):
     __table_args__ = (
         UniqueConstraint('budget_id', 'category_name', name='_budget_category_limit_uc'),
     )
+
+
+class DailyRate(Base):
+    __tablename__ = "daily_rates"
+
+    fecha = Column(Date, primary_key=True, index=True)
+    usd_bs = Column(Numeric(12, 4), nullable=True)
+    eur_bs = Column(Numeric(12, 4), nullable=True)
+    usdt_bs = Column(Numeric(12, 4), nullable=True)
+    source = Column(String, nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
 

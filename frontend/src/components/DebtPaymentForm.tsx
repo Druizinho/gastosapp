@@ -68,6 +68,7 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
   const [rates, setRates] = useState<ExchangeRates | null>(null);
   const [manualRate, setManualRate] = useState<string>('');
   const [showConfirm, setShowConfirm] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (initialData) {
@@ -102,6 +103,7 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
       .catch((err) => console.error('Failed to load exchange rates', err));
   }, [formData.payment_date]);
 
+  const isUsdtRateMissing = formData.currency === 'USDT' && rates !== null && (rates.usdt_bs === null || rates.usdt_bs === undefined || rates.usdt_bs <= 0);
   const suggestedRate = formData.currency === 'EUR_BCV' ? rates?.eur_bs : formData.currency === 'USDT' ? rates?.usdt_bs : rates?.usd_bs;
 
   // Check if user is paying in the same currency as the debt
@@ -121,7 +123,9 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
     const parsedRate = manualRate ? parseFloat(manualRate.replace(',', '.')) : undefined;
+
     const submitData: DebtPaymentCreate = {
       ...formData,
       amount: Number(formData.amount),
@@ -139,7 +143,9 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
 
   const handleConfirmSubmit = () => {
     setShowConfirm(false);
+    setError(null);
     const parsedRate = manualRate ? parseFloat(manualRate.replace(',', '.')) : undefined;
+
     const submitData: DebtPaymentCreate = {
       ...formData,
       amount: Number(formData.amount),
@@ -173,6 +179,8 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
             {debtConcept}
           </p>
         )}
+
+        {error && <div className="error-message">{error}</div>}
 
         <form onSubmit={handleSubmit}>
           {isShared && (
@@ -269,7 +277,10 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
           </div>
 
           <div className="form-group">
-            <label>Tasa de Cambio en Bs (Opcional)</label>
+            <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Tasa de Cambio en Bs</span>
+              <span className="form-hint-inline">(Opcional)</span>
+            </label>
             <input
               type="text"
               inputMode="decimal"
@@ -279,8 +290,13 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
                 const parts = val.split(/[.,]/);
                 if (parts.length <= 2) setManualRate(val);
               }}
-              placeholder={suggestedRate ? `Por defecto: Bs. ${Number(suggestedRate).toFixed(2)}` : 'Por defecto usa la tasa del día'}
+              placeholder={isUsdtRateMissing ? "No hay precio en esta fecha — tasa manual opcional" : (suggestedRate && suggestedRate > 0 ? `Por defecto: Bs. ${Number(suggestedRate).toFixed(2)}` : 'Por defecto usa la tasa del día')}
             />
+            {isUsdtRateMissing && !manualRate && (
+              <p style={{ fontSize: '0.8rem', color: 'var(--warning-color, #D97706)', marginTop: '0.35rem' }}>
+                No hay precio de USDT en esta fecha. Puedes ingresar una tasa manual (opcional).
+              </p>
+            )}
           </div>
 
           <div className="form-group">

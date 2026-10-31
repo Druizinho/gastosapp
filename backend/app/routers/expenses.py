@@ -33,7 +33,9 @@ async def read_rates(target_date: Optional[date] = None, db: AsyncSession = Depe
         usd_bs=rates.get('usd_bs'),
         eur_bs=rates.get('eur_bs'),
         usdt_bs=rates.get('usdt_bs'),
-        last_updated=datetime.now()
+        last_updated=rates.get('last_updated') or datetime.now(),
+        rate_date=rates.get('rate_date'),
+        is_historical=bool(rates.get('is_historical', False))
     )
 
 @router.post("/", response_model=schemas.ExpenseResponse)

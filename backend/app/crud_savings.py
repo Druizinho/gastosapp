@@ -624,7 +624,7 @@ async def update_saving_deposit(
         deposit.expense_id = None
         deposit.create_expense = False
 
-    await sharing.recompute_settlement(db, "saving_goal", [deposit.goal_id])
+    await sharing.recompute_settlement(db, "saving_goal", [goal_id])
 
     had_expense = deposit.expense_id is not None
     dep_date = deposit.deposit_date
@@ -635,7 +635,7 @@ async def update_saving_deposit(
         await _exp
     if had_expense:
         await check_and_notify_budget_thresholds(db, user_id, dep_date, allow_notify=True)
-    return await get_saving_goal(db, deposit.goal_id, user_id)
+    return await get_saving_goal(db, goal_id, user_id)
 
 
 async def delete_saving_deposit(db: AsyncSession, deposit_id: UUID, user_id: UUID) -> Optional[models.SavingGoal]:

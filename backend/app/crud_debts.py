@@ -33,7 +33,7 @@ async def get_debts(db: AsyncSession, user_id: UUID, debt_type: Optional[str] = 
     if is_settled is not None:
         query = query.filter(models.Debt.is_settled == is_settled)
         
-    query = query.order_by(models.Debt.created_at.desc())
+    query = query.order_by(models.Debt.start_date.desc(), models.Debt.created_at.desc())
     result = await db.execute(query)
     debts = result.scalars().all()
     await sharing.populate_share_meta(db, debts, user_id, "debt")

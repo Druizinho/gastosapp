@@ -36,6 +36,7 @@ import {
   convertItemAmountToMainCurrency
 } from '../utils/currencyFormat';
 import { PageHeader } from './ui/PageHeader';
+import { MonthPicker } from './ui/MonthPicker';
 import { SummaryHeroCard } from './ui/SummaryHeroCard';
 import { SegmentedTabs } from './ui/SegmentedTabs';
 import { EmptyState } from './ui/EmptyState';
@@ -137,11 +138,6 @@ const FixedExpenses: React.FC = () => {
     return `${monthNames[parseInt(m, 10) - 1]} ${y}`;
   }, [currentMonth]);
 
-  const shortMonth = useMemo(() => {
-    const shortMonths = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-    const [y, m] = currentMonth.split('-');
-    return `${shortMonths[parseInt(m, 10) - 1]} ${y}`;
-  }, [currentMonth]);
 
   const fetchData = async (silent = false) => {
     if (!silent) setIsLoading(true);
@@ -560,41 +556,11 @@ const FixedExpenses: React.FC = () => {
         onBack={() => navigate('/herramientas')}
         rightAction={
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <div
-              style={{
-                position: 'relative',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-                background: 'var(--surface-color, #FFFFFF)',
-                padding: '0.45rem 0.65rem',
-                borderRadius: 'var(--radius-md, 12px)',
-                border: '1px solid var(--border-color, rgba(0,0,0,0.08))',
-                cursor: 'pointer',
-                flexShrink: 0,
-              }}
-            >
-              <Calendar size={16} color="var(--text-secondary)" />
-              <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                {shortMonth}
-              </span>
-              <input
-                type="month"
-                value={currentMonth}
-                onChange={(e) => {
-                  if (e.target.value) setCurrentMonth(e.target.value);
-                }}
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: '100%',
-                  opacity: 0,
-                  cursor: 'pointer',
-                }}
-              />
-            </div>
+            <MonthPicker
+              value={currentMonth}
+              onChange={setCurrentMonth}
+              ariaLabel="Seleccionar mes de gastos fijos"
+            />
 
             <button
               type="button"

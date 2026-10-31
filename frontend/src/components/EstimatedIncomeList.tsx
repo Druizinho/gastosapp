@@ -52,6 +52,7 @@ import {
 import { resolveCategoryVisuals } from '../utils/categoryVisuals';
 import { colorWithOpacity } from '../utils/toolColors';
 import { PageHeader } from './ui/PageHeader';
+import { MonthPicker } from './ui/MonthPicker';
 import { SummaryHeroCard } from './ui/SummaryHeroCard';
 import { SegmentedTabs } from './ui/SegmentedTabs';
 import { EmptyState } from './ui/EmptyState';
@@ -134,11 +135,6 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
 
   const currentMonthYear = getMonthYearString(currentDate);
 
-  const shortMonthLabel = useMemo(() => {
-    const shortMonths = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-    const [y, m] = currentMonthYear.split('-');
-    return `${shortMonths[parseInt(m, 10) - 1]} ${y}`;
-  }, [currentMonthYear]);
 
   const fetchData = useCallback(async (silent = false) => {
     if (!silent) setIsLoading(true);
@@ -268,9 +264,9 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
     setDisplayCurrency(currencies[nextIndex]);
   };
 
-  const handleMonthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.value) return;
-    const [year, month] = e.target.value.split('-');
+  const handleMonthChange = (val: string) => {
+    if (!val) return;
+    const [year, month] = val.split('-');
     setCurrentDate(new Date(Number(year), Number(month) - 1, 1));
   };
 
@@ -745,39 +741,11 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
         onBack={onBack}
         rightAction={
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <div
-              style={{
-                position: 'relative',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-                background: 'var(--surface-color, #FFFFFF)',
-                padding: '0.45rem 0.65rem',
-                borderRadius: 'var(--radius-md, 12px)',
-                border: '1px solid var(--border-color, rgba(0,0,0,0.08))',
-                cursor: 'pointer',
-                flexShrink: 0,
-              }}
-            >
-              <Calendar size={16} color="var(--text-secondary)" />
-              <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                {shortMonthLabel}
-              </span>
-              <input
-                type="month"
-                value={currentMonthYear}
-                onChange={handleMonthChange}
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: '100%',
-                  opacity: 0,
-                  cursor: 'pointer',
-                }}
-              />
-            </div>
+            <MonthPicker
+              value={currentMonthYear}
+              onChange={handleMonthChange}
+              ariaLabel="Seleccionar mes de ingresos"
+            />
 
             {activeTab === 'movements' ? (
               <button

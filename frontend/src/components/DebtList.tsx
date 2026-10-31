@@ -827,7 +827,13 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
             {[...selectedDebt.payments]
-              .sort((a, b) => new Date(b.created_at || b.payment_date).getTime() - new Date(a.created_at || a.payment_date).getTime())
+              .sort((a, b) => {
+                const dateDiff = new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime();
+                if (dateDiff !== 0) return dateDiff;
+                const aCreated = a.created_at ? new Date(a.created_at).getTime() : 0;
+                const bCreated = b.created_at ? new Date(b.created_at).getTime() : 0;
+                return bCreated - aCreated;
+              })
               .map(payment => {
                 const catObj = categories.find(c => c.name.toLowerCase() === (payment.category || selectedDebt.category || '').toLowerCase());
                 const { IconComponent, hexColor } = resolveCategoryVisuals(catObj, payment.category || selectedDebt.category || 'Deudas');

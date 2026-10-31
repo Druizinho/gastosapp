@@ -49,22 +49,59 @@ export const CurrencyBreakdownCard: React.FC<CurrencyBreakdownCardProps> = ({
 
   const rateInfo = getHistoricalRateDisplay(itemRef, fallbackRates);
 
+  // Determine if this item has historical rates recorded
+  const hasHistoricalRates = !isPendingReference && Boolean(
+    (rateUsdBs != null && Number(rateUsdBs) > 0) ||
+    (amountBs != null && Number(amountBs) > 0) ||
+    (rateEurBs != null && Number(rateEurBs) > 0) ||
+    (rateUsdtBs != null && Number(rateUsdtBs) > 0) ||
+    rateInfo.isHistorical
+  );
+
   // Compute resolved equivalents
   const resolvedBs = amountBs != null && !isNaN(amountBs)
     ? amountBs
-    : convertItemAmountToMainCurrency(itemRef, 'BS', fallbackRates);
+    : isSameCurrency(originalCurrency, 'BS')
+      ? originalAmount
+      : convertItemAmountToMainCurrency(itemRef, 'BS', fallbackRates);
 
   const resolvedUsd = amountUsd != null && !isNaN(amountUsd)
     ? amountUsd
-    : convertItemAmountToMainCurrency(itemRef, 'USD', fallbackRates);
+    : isSameCurrency(originalCurrency, 'USD')
+      ? originalAmount
+      : (rateUsdBs != null && Number(rateUsdBs) > 0 && resolvedBs != null && Number(resolvedBs) > 0)
+        ? Number(resolvedBs) / Number(rateUsdBs)
+        : convertItemAmountToMainCurrency(itemRef, 'USD', fallbackRates);
 
-  const resolvedEur = amountEur != null && !isNaN(amountEur)
-    ? amountEur
-    : convertItemAmountToMainCurrency(itemRef, 'EUR', fallbackRates);
+  // EUR: only use amountEur, transaction rateEurBs, or (if not historical) fallbackRates
+  let resolvedEur: number | null = null;
+  if (isSameCurrency(originalCurrency, 'EUR')) {
+    resolvedEur = originalAmount;
+  } else if (amountEur != null && !isNaN(Number(amountEur))) {
+    resolvedEur = Number(amountEur);
+  } else if (rateEurBs != null && Number(rateEurBs) > 0 && resolvedBs != null && Number(resolvedBs) > 0) {
+    resolvedEur = Number(resolvedBs) / Number(rateEurBs);
+  } else if (!hasHistoricalRates) {
+    const converted = convertItemAmountToMainCurrency(itemRef, 'EUR', fallbackRates);
+    resolvedEur = !isNaN(converted) && converted > 0 ? converted : null;
+  } else {
+    resolvedEur = null;
+  }
 
-  const resolvedUsdt = amountUsdt != null && !isNaN(amountUsdt)
-    ? amountUsdt
-    : convertItemAmountToMainCurrency(itemRef, 'USDT', fallbackRates);
+  // USDT: if historical and no amountUsdt/rateUsdtBs, do NOT invent from today's fallback rate
+  let resolvedUsdt: number | null = null;
+  if (isSameCurrency(originalCurrency, 'USDT')) {
+    resolvedUsdt = originalAmount;
+  } else if (amountUsdt != null && !isNaN(Number(amountUsdt))) {
+    resolvedUsdt = Number(amountUsdt);
+  } else if (rateUsdtBs != null && Number(rateUsdtBs) > 0 && resolvedBs != null && Number(resolvedBs) > 0) {
+    resolvedUsdt = Number(resolvedBs) / Number(rateUsdtBs);
+  } else if (!hasHistoricalRates) {
+    const converted = convertItemAmountToMainCurrency(itemRef, 'USDT', fallbackRates);
+    resolvedUsdt = !isNaN(converted) && converted > 0 ? converted : null;
+  } else {
+    resolvedUsdt = null;
+  }
 
   const equivalents = [
     {
@@ -74,6 +111,7 @@ export const CurrencyBreakdownCard: React.FC<CurrencyBreakdownCardProps> = ({
       amountText: formatCurrencyAmount(resolvedBs, 'BS'),
       isOriginal: isSameCurrency(originalCurrency, 'BS'),
       accentColor: '#3B82F6',
+      isUnavailable: false,
     },
     {
       code: 'USD',
@@ -82,22 +120,25 @@ export const CurrencyBreakdownCard: React.FC<CurrencyBreakdownCardProps> = ({
       amountText: formatCurrencyAmount(resolvedUsd, 'USD'),
       isOriginal: isSameCurrency(originalCurrency, 'USD'),
       accentColor: '#10B981',
+      isUnavailable: false,
     },
     {
       code: 'EUR',
       label: 'Euro BCV',
       symbol: '€',
-      amountText: formatCurrencyAmount(resolvedEur, 'EUR'),
+      amountText: resolvedEur != null ? formatCurrencyAmount(resolvedEur, 'EUR') : 'No hay precio en esta fecha',
       isOriginal: isSameCurrency(originalCurrency, 'EUR'),
       accentColor: '#8B5CF6',
+      isUnavailable: resolvedEur == null,
     },
     {
       code: 'USDT',
       label: 'USDT (Binance)',
       symbol: '₮',
-      amountText: formatCurrencyAmount(resolvedUsdt, 'USDT'),
+      amountText: resolvedUsdt != null ? formatCurrencyAmount(resolvedUsdt, 'USDT') : 'No hay precio en esta fecha',
       isOriginal: isSameCurrency(originalCurrency, 'USDT'),
       accentColor: '#F59E0B',
+      isUnavailable: resolvedUsdt == null,
     },
   ];
 
@@ -201,10 +242,16 @@ export const CurrencyBreakdownCard: React.FC<CurrencyBreakdownCardProps> = ({
               )}
             </div>
             <span style={{
-              fontSize: '0.9rem',
-              fontWeight: 700,
-              color: eq.isOriginal ? 'var(--text-primary)' : 'var(--text-secondary)',
-              letterSpacing: '-0.01em',
+              fontSize: eq.isUnavailable ? '0.74rem' : '0.9rem',
+              fontWeight: eq.isUnavailable ? 500 : 700,
+              fontStyle: eq.isUnavailable ? 'italic' : 'normal',
+              color: eq.isUnavailable
+                ? 'var(--text-tertiary)'
+                : eq.isOriginal
+                ? 'var(--text-primary)'
+                : 'var(--text-secondary)',
+              letterSpacing: eq.isUnavailable ? 'normal' : '-0.01em',
+              lineHeight: eq.isUnavailable ? 1.25 : 1.3,
             }}>
               {eq.amountText}
             </span>

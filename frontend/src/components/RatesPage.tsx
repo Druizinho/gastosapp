@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { RefreshCw, Calculator, ChevronDown, Copy, Check, ArrowRightLeft, ArrowUpDown } from 'lucide-react';
+import { RefreshCw, Calculator, ChevronDown, Copy, Check, ArrowRightLeft, ArrowUpDown, Calendar } from 'lucide-react';
 import { getRates } from '../api';
 import type { ExchangeRates } from '../types';
 import { Skeleton } from './ui/Skeleton';
@@ -7,7 +7,7 @@ import { Skeleton } from './ui/Skeleton';
 type CurrencyKey = 'USD' | 'EUR' | 'USDT' | 'BS';
 
 const formatRate = (val: number | null | undefined): string => {
-  if (val === null || val === undefined || isNaN(val)) return '—';
+  if (val === null || val === undefined || isNaN(val) || val <= 0) return '—';
   return `Bs. ${Number(val).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
@@ -19,8 +19,23 @@ const formatNumber = (val: number | null | undefined): string => {
   });
 };
 
-const SubRateDisplay: React.FC<{ value: number | null | undefined }> = ({ value }) => {
-  if (value === null || value === undefined || isNaN(value)) {
+const SubRateDisplay: React.FC<{ value: number | null | undefined; emptyMessage?: string }> = ({ value, emptyMessage }) => {
+  if (value === null || value === undefined || isNaN(value) || value <= 0) {
+    if (emptyMessage) {
+      return (
+        <div
+          className="rate-empty-notice"
+          style={{
+            fontSize: '0.95rem',
+            fontWeight: 600,
+            color: 'var(--text-secondary)',
+            padding: '0.4rem 0',
+          }}
+        >
+          {emptyMessage}
+        </div>
+      );
+    }
     return (
       <div
         style={{
@@ -75,29 +90,47 @@ const SubRateDisplay: React.FC<{ value: number | null | undefined }> = ({ value 
   );
 };
 
-const formatStatusText = (timestamp?: string | null): string => {
-  if (!timestamp) return 'BCV Oficial · Hoy';
-  try {
-    const date = new Date(timestamp);
-    if (isNaN(date.getTime())) return 'BCV Oficial · Hoy';
-    const now = new Date();
-    const isToday = date.toDateString() === now.toDateString();
-    if (isToday) {
-      const timeStr = date.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', hour12: true });
-      return `BCV Oficial · Hoy ${timeStr}`;
-    }
-    return `BCV Oficial · ${date.toLocaleDateString('es-VE', { day: 'numeric', month: 'short' })}`;
-  } catch {
-    return 'BCV Oficial · Hoy';
+const getLocalToday = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+const formatSpanishDate = (dateStr: string) => {
+  const cleanDate = dateStr.slice(0, 10);
+  const parts = cleanDate.split('-');
+  if (parts.length !== 3) {
+    return { weekday: '', formattedDate: dateStr };
   }
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10) - 1;
+  const day = parseInt(parts[2], 10);
+  const dateObj = new Date(year, month, day);
+  const weekdays = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+  const weekday = weekdays[dateObj.getDay()] || '';
+  const formattedDate = `${String(day).padStart(2, '0')}/${String(month + 1).padStart(2, '0')}/${year}`;
+  return { weekday, formattedDate };
+};
+
+const getRatesStatusText = (rates: ExchangeRates | null, selectedDate: string, today: string) => {
+  if (selectedDate === today && !rates?.is_historical) {
+    return 'Tasas en vivo · Hoy';
+  }
+  if (rates?.rate_date && rates.rate_date !== selectedDate) {
+    const { weekday, formattedDate } = formatSpanishDate(rates.rate_date);
+    return `Vigente del ${weekday} ${formattedDate}`;
+  }
+  const { formattedDate } = formatSpanishDate(selectedDate);
+  return `Tasa del ${formattedDate}`;
 };
 
 export const RatesPage: React.FC = () => {
   const [rates, setRates] = useState<ExchangeRates | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [selectedDate, setSelectedDate] = useState<string>(getLocalToday);
+  const today = getLocalToday();
 
   // Calculator state
-  const [calcAmount, setCalcAmount] = useState<string>('1');
+  const [calcAmount, setCalcAmount] = useState<string>('0');
   const [calcBase, setCalcBase] = useState<CurrencyKey>(() => {
     return (localStorage.getItem('gastosapp_calc_base') as CurrencyKey) || 'USD';
   });
@@ -120,10 +153,10 @@ export const RatesPage: React.FC = () => {
     };
   }, []);
 
-  const fetchRates = async () => {
+  const fetchRates = async (targetDate: string = selectedDate) => {
     setLoading(true);
     try {
-      const data = await getRates();
+      const data = await getRates(targetDate === today ? undefined : targetDate);
       setRates(data);
     } catch (error) {
       console.error('Error fetching rates:', error);
@@ -133,8 +166,12 @@ export const RatesPage: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchRates();
-  }, []);
+    fetchRates(selectedDate);
+  }, [selectedDate]);
+
+  const statusText = useMemo(() => {
+    return getRatesStatusText(rates, selectedDate, today);
+  }, [rates, selectedDate, today]);
 
   // Focus and select currency in calculator
   const handleSelectCurrency = (currency: CurrencyKey) => {
@@ -182,45 +219,66 @@ export const RatesPage: React.FC = () => {
     }
   };
 
+  const isUsdtMissing = rates?.usdt_bs === null || rates?.usdt_bs === undefined || rates?.usdt_bs <= 0;
+  const isUsdMissing = rates?.usd_bs === null || rates?.usd_bs === undefined || rates?.usd_bs <= 0;
+  const isEurMissing = rates?.eur_bs === null || rates?.eur_bs === undefined || rates?.eur_bs <= 0;
+
   // Conversions
   const calcResults = useMemo(() => {
     if (!rates) return null;
     const amount = parseFloat(calcAmount.replace(',', '.')) || 0;
 
-    let amountInBs = 0;
+    let amountInBs: number | null = 0;
     if (calcBase === 'BS') {
       amountInBs = amount;
     } else if (calcBase === 'USD') {
-      amountInBs = amount * (rates.usd_bs || 0);
+      amountInBs = !isUsdMissing ? amount * rates.usd_bs! : null;
     } else if (calcBase === 'EUR') {
-      amountInBs = amount * (rates.eur_bs || 0);
+      amountInBs = !isEurMissing ? amount * rates.eur_bs! : null;
     } else if (calcBase === 'USDT') {
-      amountInBs = amount * (rates.usdt_bs || 0);
+      amountInBs = !isUsdtMissing ? amount * rates.usdt_bs! : null;
     }
 
     return {
       bs: amountInBs,
-      usd: rates.usd_bs && rates.usd_bs > 0 ? amountInBs / rates.usd_bs : null,
-      eur: rates.eur_bs && rates.eur_bs > 0 ? amountInBs / rates.eur_bs : null,
-      usdt: rates.usdt_bs && rates.usdt_bs > 0 ? amountInBs / rates.usdt_bs : null,
+      usd: amountInBs !== null && !isUsdMissing ? amountInBs / rates.usd_bs! : null,
+      eur: amountInBs !== null && !isEurMissing ? amountInBs / rates.eur_bs! : null,
+      usdt: amountInBs !== null && !isUsdtMissing ? amountInBs / rates.usdt_bs! : null,
     };
-  }, [rates, calcAmount, calcBase]);
+  }, [rates, calcAmount, calcBase, isUsdMissing, isEurMissing, isUsdtMissing]);
 
   const primaryFormattedText = useMemo(() => {
+    if (!rates) return '—';
+    if (calcBase === 'USDT' && isUsdtMissing) {
+      return 'No hay precio en esta fecha';
+    }
+    if (calcBase === 'USD' && isUsdMissing) {
+      return '—';
+    }
+    if (calcBase === 'EUR' && isEurMissing) {
+      return '—';
+    }
     if (!calcResults) return '—';
     if (calcBase === 'BS') {
-      return `$ ${formatNumber(calcResults.usd)}`;
+      return calcResults.usd !== null ? `$ ${formatNumber(calcResults.usd)}` : '—';
     }
-    return `Bs. ${formatNumber(calcResults.bs)}`;
-  }, [calcResults, calcBase]);
+    return calcResults.bs !== null ? `Bs. ${formatNumber(calcResults.bs)}` : '—';
+  }, [calcResults, calcBase, rates, isUsdtMissing, isUsdMissing, isEurMissing]);
 
   const secondaryItems = useMemo(() => {
-    if (!calcResults) return [];
+    if (!rates || !calcResults) return [];
+
+    const usdtFormatted = isUsdtMissing
+      ? 'No hay precio en esta fecha'
+      : calcResults.usdt !== null
+        ? `₮ ${formatNumber(calcResults.usdt)}`
+        : '—';
+
     const all = [
-      { key: 'USD' as CurrencyKey, label: 'Dólar BCV', symbol: '$', formatted: `$ ${formatNumber(calcResults.usd)}`, color: '#10B981', symbolColor: '#FFFFFF' },
-      { key: 'EUR' as CurrencyKey, label: 'Euro BCV', symbol: '€', formatted: `€ ${formatNumber(calcResults.eur)}`, color: '#3B82F6', symbolColor: '#FFFFFF' },
-      { key: 'USDT' as CurrencyKey, label: 'Tether USDT', symbol: '₮', formatted: `₮ ${formatNumber(calcResults.usdt)}`, color: '#FACC15', symbolColor: '#78350F' },
-      { key: 'BS' as CurrencyKey, label: 'Bolívares', symbol: 'Bs', formatted: `Bs. ${formatNumber(calcResults.bs)}`, color: '#EF4444', symbolColor: '#FFFFFF' },
+      { key: 'USD' as CurrencyKey, label: 'Dólar BCV', symbol: '$', formatted: calcResults.usd !== null ? `$ ${formatNumber(calcResults.usd)}` : '—', color: '#10B981', symbolColor: '#FFFFFF' },
+      { key: 'EUR' as CurrencyKey, label: 'Euro BCV', symbol: '€', formatted: calcResults.eur !== null ? `€ ${formatNumber(calcResults.eur)}` : '—', color: '#3B82F6', symbolColor: '#FFFFFF' },
+      { key: 'USDT' as CurrencyKey, label: 'Tether USDT', symbol: '₮', formatted: usdtFormatted, color: '#FACC15', symbolColor: '#78350F' },
+      { key: 'BS' as CurrencyKey, label: 'Bolívares', symbol: 'Bs', formatted: calcResults.bs !== null ? `Bs. ${formatNumber(calcResults.bs)}` : '—', color: '#EF4444', symbolColor: '#FFFFFF' },
     ];
 
     if (calcBase === 'BS') {
@@ -229,7 +287,7 @@ export const RatesPage: React.FC = () => {
     }
     // Primary is BS, so secondary are other foreign currencies excluding current base
     return all.filter((item) => item.key !== calcBase && item.key !== 'BS');
-  }, [calcResults, calcBase]);
+  }, [rates, calcResults, calcBase, isUsdtMissing]);
 
   const handleCopyResult = async (textToCopy: string) => {
     try {
@@ -384,11 +442,12 @@ export const RatesPage: React.FC = () => {
 
       {/* 1. Header */}
       <header
+        className="page-header"
         style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          marginBottom: '1.75rem',
+          marginBottom: '1.25rem',
           paddingTop: '1rem',
         }}
       >
@@ -413,13 +472,13 @@ export const RatesPage: React.FC = () => {
               lineHeight: 1.5,
             }}
           >
-            {rates?.last_updated ? formatStatusText(rates.last_updated) : 'Cargando cotizaciones...'}
+            {loading && !rates ? 'Cargando cotizaciones...' : statusText}
           </p>
         </div>
 
         <button
           type="button"
-          onClick={fetchRates}
+          onClick={() => fetchRates(selectedDate)}
           aria-label="Actualizar cotizaciones"
           className="better-press"
           style={{
@@ -450,6 +509,74 @@ export const RatesPage: React.FC = () => {
           <RefreshCw size={18} className={loading ? 'spin-loading' : ''} />
         </button>
       </header>
+
+      {/* Date Selector Bar */}
+      <div style={{ marginBottom: '1.25rem' }}>
+        <div className="custom-date-row" style={{ alignItems: 'flex-end', flexWrap: 'wrap', gap: '0.75rem' }}>
+          <div className="custom-date-field" style={{ flex: '1 1 200px' }}>
+            <label htmlFor="rates-date-input" className="custom-date-label">
+              Fecha de Cotización
+            </label>
+            <div className="custom-date-input-wrap">
+              <Calendar size={14} className="custom-date-icon" aria-hidden="true" />
+              <input
+                id="rates-date-input"
+                type="date"
+                max={today}
+                value={selectedDate}
+                onChange={(e) => {
+                  if (e.target.value) {
+                    setSelectedDate(e.target.value);
+                  }
+                }}
+                className="custom-date-input"
+                aria-label="Fecha de cotización"
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+            <button
+              type="button"
+              onClick={() => setSelectedDate(today)}
+              className={`period-pill ${selectedDate === today ? 'period-pill--active' : ''}`}
+              style={{
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                height: '36px',
+                padding: '0 0.85rem',
+              }}
+            >
+              Hoy
+            </button>
+
+            <div
+              className="rates-status-badge"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                padding: '0.4rem 0.75rem',
+                borderRadius: 'var(--radius-full)',
+                background: selectedDate === today && !rates?.is_historical ? 'rgba(16, 185, 129, 0.12)' : 'var(--surface-muted, rgba(0, 0, 0, 0.05))',
+                color: selectedDate === today && !rates?.is_historical ? '#10B981' : 'var(--text-secondary)',
+                fontSize: '0.75rem',
+                fontWeight: 700,
+                border: '1px solid var(--border-color)',
+                whiteSpace: 'nowrap',
+                height: '36px',
+                boxSizing: 'border-box',
+              }}
+            >
+              {selectedDate === today && !rates?.is_historical && (
+                <span className="pulse-dot" style={{ width: '6px', height: '6px' }} />
+              )}
+              <span>{statusText}</span>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {loading && !rates ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -546,7 +673,7 @@ export const RatesPage: React.FC = () => {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           {/* 2. Rates Grid */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+          <div className="rates-grid" style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
             {/* HERO Card for USD (BCV) */}
             <div
               role="button"
@@ -848,7 +975,7 @@ export const RatesPage: React.FC = () => {
                   >
                     1 USDT
                   </div>
-                  <SubRateDisplay value={rates?.usdt_bs} />
+                  <SubRateDisplay value={rates?.usdt_bs} emptyMessage="No hay precio en esta fecha" />
                 </div>
               </div>
             </div>
@@ -1201,9 +1328,9 @@ export const RatesPage: React.FC = () => {
                 {/* Primary Result Figure */}
                 <div
                   style={{
-                    fontSize: '2.5rem',
+                    fontSize: primaryFormattedText === 'No hay precio en esta fecha' ? '1.35rem' : '2.5rem',
                     fontWeight: 900,
-                    color: 'var(--text-primary)',
+                    color: primaryFormattedText === 'No hay precio en esta fecha' ? 'var(--text-secondary)' : 'var(--text-primary)',
                     fontVariantNumeric: 'tabular-nums',
                     letterSpacing: '-0.02em',
                     margin: '0.4rem 0 1rem 0',
@@ -1291,9 +1418,9 @@ export const RatesPage: React.FC = () => {
                             </div>
                             <div
                               style={{
-                                fontSize: '1.05rem',
+                                fontSize: item.formatted === 'No hay precio en esta fecha' ? '0.82rem' : '1.05rem',
                                 fontWeight: 800,
-                                color: 'var(--text-primary)',
+                                color: item.formatted === 'No hay precio en esta fecha' ? 'var(--text-secondary)' : 'var(--text-primary)',
                                 fontVariantNumeric: 'tabular-nums',
                                 letterSpacing: '-0.01em',
                                 lineHeight: 1.2,

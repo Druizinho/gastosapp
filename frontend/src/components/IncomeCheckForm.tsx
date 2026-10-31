@@ -83,6 +83,7 @@ const IncomeCheckForm: React.FC<IncomeCheckFormProps> = ({ income, monthYear, on
     }
   };
 
+  const isUsdtRateMissing = currency === 'USDT' && rates !== null && (rates.usdt_bs === null || rates.usdt_bs === undefined || rates.usdt_bs <= 0);
   const suggestedRate = currency === 'EUR_BCV' ? rates?.eur_bs : currency === 'USDT' ? rates?.usdt_bs : rates?.usd_bs;
 
   return (
@@ -164,8 +165,13 @@ const IncomeCheckForm: React.FC<IncomeCheckFormProps> = ({ income, monthYear, on
                 const val = e.target.value.replace(/[^0-9.,]/g, '');
                 setManualRate(val);
               }}
-              placeholder={suggestedRate ? `Por defecto: Bs. ${Number(suggestedRate).toFixed(2)}` : "Dejar vacío para usar tasa del día"}
+              placeholder={isUsdtRateMissing ? "No hay precio en esta fecha — tasa manual opcional" : (suggestedRate && suggestedRate > 0 ? `Por defecto: Bs. ${Number(suggestedRate).toFixed(2)}` : "Dejar vacío para usar tasa del día")}
             />
+            {isUsdtRateMissing && !manualRate && (
+              <p style={{ fontSize: '0.8rem', color: 'var(--warning-color, #D97706)', marginTop: '0.35rem' }}>
+                No hay precio de USDT en esta fecha. Puedes ingresar una tasa manual (opcional).
+              </p>
+            )}
           </div>
 
           {isPartial && (

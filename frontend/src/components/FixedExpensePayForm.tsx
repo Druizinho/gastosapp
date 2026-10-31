@@ -37,6 +37,7 @@ const FixedExpensePayForm: React.FC<FixedExpensePayFormProps> = ({
   const [manualRate, setManualRate] = useState('');
   const [rates, setRates] = useState<ExchangeRates | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     getRates(paidDate || undefined).then(setRates).catch(console.error);
@@ -48,7 +49,10 @@ const FixedExpensePayForm: React.FC<FixedExpensePayFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
     if (!paidAmount) return;
+
+    const parsedRate = manualRate ? parseFloat(manualRate.replace(',', '.')) : undefined;
 
     setIsSubmitting(true);
     try {
@@ -64,13 +68,16 @@ const FixedExpensePayForm: React.FC<FixedExpensePayFormProps> = ({
           create_expense: createExpense,
           category: chosenCategory,
           notes: notes || undefined,
-          manual_rate: manualRate ? parseFloat(manualRate.replace(',', '.')) : undefined,
+          manual_rate: parsedRate,
         });
       }
 
       if (onPay) {
         await onPay(m, y, createExpense, chosenCategory);
       }
+    } catch (err: any) {
+      console.error('Error paying fixed expense:', err);
+      setError(err?.response?.data?.detail || 'Error al registrar el pago.');
     } finally {
       setIsSubmitting(false);
     }
@@ -82,6 +89,7 @@ const FixedExpensePayForm: React.FC<FixedExpensePayFormProps> = ({
     return `${months[parseInt(m, 10) - 1]} ${y}`;
   })();
 
+  const isUsdtRateMissing = currency === 'USDT' && rates !== null && (rates.usdt_bs === null || rates.usdt_bs === undefined || rates.usdt_bs <= 0);
   const currentRate = currency === 'EUR_BCV' ? rates?.eur_bs : currency === 'USDT' ? rates?.usdt_bs : rates?.usd_bs;
 
   return (
@@ -96,6 +104,9 @@ const FixedExpensePayForm: React.FC<FixedExpensePayFormProps> = ({
         <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '-0.5rem 0 1rem' }}>
           {activeExpense.name} — {monthLabel}
         </p>
+
+        {error && <div className="error-message">{error}</div>}
+
         <form onSubmit={handleSubmit}>
 
           <div className="form-group row">
@@ -134,8 +145,13 @@ const FixedExpensePayForm: React.FC<FixedExpensePayFormProps> = ({
                 const val = e.target.value.replace(/[^0-9.,]/g, '');
                 setManualRate(val);
               }}
-              placeholder={currentRate ? `Por defecto: Bs. ${Number(currentRate).toFixed(2)}` : "Ej. 36.50"}
+              placeholder={isUsdtRateMissing ? "No hay precio en esta fecha — tasa manual opcional" : (currentRate && currentRate > 0 ? `Por defecto: Bs. ${Number(currentRate).toFixed(2)}` : "Ej. 36.50")}
             />
+            {isUsdtRateMissing && !manualRate && (
+              <p style={{ fontSize: '0.8rem', color: 'var(--warning-color, #D97706)', marginTop: '0.35rem' }}>
+                No hay precio de USDT en esta fecha. Puedes ingresar una tasa manual (opcional).
+              </p>
+            )}
           </div>
 
           <div className="form-group">

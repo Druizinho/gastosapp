@@ -1091,7 +1091,13 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
               {[...selectedGoal.deposits]
-                .sort((a, b) => new Date(b.created_at || b.deposit_date).getTime() - new Date(a.created_at || a.deposit_date).getTime())
+                .sort((a, b) => {
+                  const dateDiff = new Date(b.deposit_date).getTime() - new Date(a.deposit_date).getTime();
+                  if (dateDiff !== 0) return dateDiff;
+                  const aCreated = a.created_at ? new Date(a.created_at).getTime() : 0;
+                  const bCreated = b.created_at ? new Date(b.created_at).getTime() : 0;
+                  return bCreated - aCreated;
+                })
                 .map((d) => {
                   const myUserId = selectedGoal.shared_members?.find(m => m.is_me)?.user_id;
                   const isMeDeposit = myUserId ? d.paid_by_user_id === myUserId : !d.paid_by_name;
