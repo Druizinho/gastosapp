@@ -31,10 +31,17 @@ async def get_pana_details(
     db: AsyncSession = Depends(get_db),
     user_id: UUID = Depends(auth.get_current_user)
 ):
-    detail = await crud_connections.get_pana_details(db, user_id, partner_id)
-    if not detail:
-        raise HTTPException(status_code=404, detail="Pana no encontrado o no conectado")
-    return detail
+    try:
+        detail = await crud_connections.get_pana_details(db, user_id, partner_id)
+        if not detail:
+            raise HTTPException(status_code=404, detail="Pana no encontrado o no conectado")
+        return detail
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error al obtener detalles del pana: {str(e)}")
 
 @router.post("/request", response_model=schemas.ConnectionResponse)
 async def request_connection(

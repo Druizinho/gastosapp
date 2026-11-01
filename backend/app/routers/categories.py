@@ -41,8 +41,7 @@ async def restore_default_categories(
     db: AsyncSession = Depends(get_db),
     user_id: UUID = Depends(get_current_user)
 ):
-    await crud.seed_default_categories(db, user_id=user_id, only_if_empty=False, kind=kind or "expense")
-    return await crud.get_categories(db, user_id=user_id, kind=kind or "expense")
+    return await crud.reset_default_categories(db, user_id=user_id, kind=kind or "expense")
 
 # Dedicated /income routes declared BEFORE parameterized /{category_id} routes
 
@@ -71,8 +70,7 @@ async def restore_default_income_categories(
     db: AsyncSession = Depends(get_db),
     user_id: UUID = Depends(get_current_user)
 ):
-    await crud.seed_default_categories(db, user_id=user_id, only_if_empty=False, kind="income")
-    return await crud.get_categories(db, user_id=user_id, kind="income")
+    return await crud.reset_default_categories(db, user_id=user_id, kind="income")
 
 @router.put("/income/{category_id}", response_model=schemas.CategoryResponse)
 async def update_income_category(

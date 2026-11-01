@@ -24,6 +24,7 @@ import {
   AlertTriangle,
   Layers,
   Package,
+  Loader2,
 } from 'lucide-react';
 import ListCard from './ListCard';
 import ListCardBottomSheet from './ListCardBottomSheet';
@@ -76,6 +77,7 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
   const [iconFilter, setIconFilter] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
+  const [showResetModal, setShowResetModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
   // Delete modal state
@@ -170,7 +172,7 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
     }
   };
 
-  const handleSeedDefaults = async () => {
+  const handleConfirmReset = async () => {
     if (isSeeding) return;
     setIsSeeding(true);
     setErrorMessage('');
@@ -179,9 +181,18 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
       setCurrentCategories(seeded);
       await refreshCategories();
       onCategoriesChanged?.();
+      setShowResetModal(false);
+      toast.success(
+        activeKind === 'income'
+          ? 'Categorías de ingresos restablecidas de fábrica'
+          : 'Categorías de gastos restablecidas de fábrica'
+      );
     } catch (err: any) {
       console.error('Error restoring default categories:', err);
-      setErrorMessage('Error al restaurar las categorías por defecto');
+      const detail = err?.response?.data?.detail;
+      const msg = typeof detail === 'string' ? detail : err?.message || 'Error al restaurar las categorías por defecto';
+      setErrorMessage(msg);
+      toast.error(msg);
     } finally {
       setIsSeeding(false);
     }
@@ -219,6 +230,27 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
 
   return (
     <div className="category-manager" style={{ maxWidth: '640px', margin: '0 auto' }}>
+      <style>{`
+        .btn-modal-action {
+          transition: transform 150ms ease-out, background-color 150ms ease, opacity 150ms ease;
+        }
+        .btn-modal-action:not(:disabled):active {
+          transform: scale(0.96);
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        .spin {
+          animation: spin 0.85s linear infinite;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .btn-modal-action {
+            transition: none !important;
+            transform: none !important;
+          }
+        }
+      `}</style>
       {/* Top Header Card */}
       <div className="category-manager-card soft-card">
         <div
@@ -256,7 +288,7 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <button
               type="button"
-              onClick={handleSeedDefaults}
+              onClick={() => setShowResetModal(true)}
               disabled={isSeeding}
               style={{
                 display: 'inline-flex',
@@ -962,6 +994,125 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
                 }}
               >
                 {isDeleting ? 'Eliminando...' : 'Eliminar y Reasignar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Reset Modal */}
+      {showResetModal && (
+        <div
+          className="modal-backdrop"
+          style={{ zIndex: 1100 }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isSeeding) setShowResetModal(false);
+          }}
+        >
+          <div
+            className="expense-form-container soft-card"
+            style={{
+              maxWidth: '440px',
+              width: '90%',
+              padding: '1.5rem',
+              animation: 'slideUp 0.25s cubic-bezier(0.2, 0, 0, 1) forwards',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '0.75rem' }}>
+              <div
+                style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '10px',
+                  background: 'rgba(245, 158, 11, 0.12)',
+                  color: '#D97706',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <RotateCcw size={18} />
+              </div>
+              <h3 style={{ fontSize: '1.05rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)', lineHeight: 1.35 }}>
+                ¿Restablecer categorías de {activeKind === 'income' ? 'ingresos' : 'gastos'} de fábrica?
+              </h3>
+            </div>
+
+            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.45, margin: '0 0 0.85rem' }}>
+              Esto restablecerá tus categorías a los valores de fábrica. Ningún registro se perderá: los{' '}
+              {activeKind === 'income' ? 'ingresos' : 'gastos'} asociados se moverán automáticamente a &quot;{defaultReassignTarget}&quot;.
+            </p>
+
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '0.6rem',
+                padding: '0.75rem 0.85rem',
+                borderRadius: 'var(--radius-sm, 8px)',
+                background: 'rgba(245, 158, 11, 0.08)',
+                border: '1px solid rgba(245, 158, 11, 0.25)',
+                marginBottom: '1.25rem',
+              }}
+            >
+              <AlertTriangle size={16} style={{ color: '#D97706', flexShrink: 0, marginTop: '2px' }} />
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+                Las categorías personalizadas actuales serán eliminadas y reemplazadas por el conjunto predeterminado oficial del sistema.
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                className="btn-modal-action"
+                onClick={() => setShowResetModal(false)}
+                disabled={isSeeding}
+                style={{
+                  flex: 1,
+                  padding: '0.65rem',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--surface-muted)',
+                  color: 'var(--text-primary)',
+                  fontWeight: 600,
+                  fontSize: '0.85rem',
+                  cursor: isSeeding ? 'not-allowed' : 'pointer',
+                  opacity: isSeeding ? 0.6 : 1,
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn-modal-action"
+                onClick={handleConfirmReset}
+                disabled={isSeeding}
+                style={{
+                  flex: 1,
+                  padding: '0.65rem',
+                  borderRadius: 'var(--radius-sm)',
+                  border: 'none',
+                  background: '#D97706',
+                  color: '#FFFFFF',
+                  fontWeight: 600,
+                  fontSize: '0.85rem',
+                  cursor: isSeeding ? 'not-allowed' : 'pointer',
+                  opacity: isSeeding ? 0.75 : 1,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.4rem',
+                }}
+              >
+                {isSeeding ? (
+                  <>
+                    <Loader2 size={15} className="spin" />
+                    <span>Restableciendo...</span>
+                  </>
+                ) : (
+                  'Restablecer todo'
+                )}
               </button>
             </div>
           </div>

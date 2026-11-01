@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import extract, func, case, text
+from sqlalchemy import extract, func, case, text, update, delete
 from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException
 from typing import Optional, List
@@ -10,6 +10,9 @@ from . import models, schemas
 from .database import engine
 from decimal import Decimal
 from .crud_budgets import check_and_notify_budget_thresholds
+
+if not hasattr(models, "Budget"):
+    models.Budget = models.MonthlyBudget
 
 async def create_expense(db: AsyncSession, expense: schemas.ExpenseCreate, user_id: UUID, extra_data: dict = None):
     data = expense.model_dump(exclude_unset=True)
@@ -1712,3 +1715,122 @@ async def delete_category(db: AsyncSession, category_id: UUID, user_id: UUID, re
     await db.delete(db_category)
     await db.commit()
     return True
+
+async def reset_default_categories(db: AsyncSession, user_id: UUID, kind: str = "expense") -> List:
+    await ensure_categories_and_debts_schema()
+
+    clean_kind = (kind or "expense").strip().lower()
+    if clean_kind == "income":
+        target_category = "Otros ingresos"
+        existing_res = await db.execute(
+            select(models.IncomeCategory.name).where(models.IncomeCategory.user_id == user_id)
+        )
+        existing_names = [
+            name for name in existing_res.scalars().all()
+            if name and name.strip().lower() != target_category.lower()
+        ]
+        if existing_names:
+            await db.execute(
+                update(models.EstimatedIncome)
+                .where(models.EstimatedIncome.user_id == user_id)
+                .where(models.EstimatedIncome.category.in_(existing_names))
+                .values(category=target_category)
+            )
+            await db.execute(
+                update(models.Income)
+                .where(models.Income.user_id == user_id)
+                .where(models.Income.category.in_(existing_names))
+                .values(category=target_category)
+            )
+
+        await db.execute(
+            delete(models.IncomeCategory).where(models.IncomeCategory.user_id == user_id)
+        )
+        new_categories = [
+            models.IncomeCategory(
+                user_id=user_id,
+                name=item["name"],
+                icon=item["icon"],
+                color=item["color"],
+            )
+            for item in DEFAULT_INCOME_CATEGORIES
+        ]
+        db.add_all(new_categories)
+        await db.commit()
+        return await get_categories(db, user_id=user_id, kind="income")
+
+    target_category = "Sin Categoría"
+    existing_res = await db.execute(
+        select(models.Category.name).where(models.Category.user_id == user_id)
+    )
+    existing_names = [
+        name for name in existing_res.scalars().all()
+        if name and name.strip().lower() != target_category.lower()
+    ]
+    if existing_names:
+        await db.execute(
+            update(models.Expense)
+            .where(models.Expense.user_id == user_id)
+            .where(models.Expense.category.in_(existing_names))
+            .values(category=target_category)
+        )
+        await db.execute(
+            update(models.FixedExpense)
+            .where(models.FixedExpense.user_id == user_id)
+            .where(models.FixedExpense.category.in_(existing_names))
+            .values(category=target_category)
+        )
+        await db.execute(
+            update(models.SavingGoal)
+            .where(models.SavingGoal.user_id == user_id)
+            .where(models.SavingGoal.category.in_(existing_names))
+            .values(category=target_category)
+        )
+        await db.execute(
+            update(models.Debt)
+            .where(models.Debt.user_id == user_id)
+            .where(models.Debt.category.in_(existing_names))
+            .values(category=target_category)
+        )
+        user_debt_ids = select(models.Debt.id).where(models.Debt.user_id == user_id)
+        await db.execute(
+            update(models.DebtPayment)
+            .where(models.DebtPayment.debt_id.in_(user_debt_ids))
+            .where(models.DebtPayment.category.in_(existing_names))
+            .values(category=target_category)
+        )
+        user_goal_ids = select(models.SavingGoal.id).where(models.SavingGoal.user_id == user_id)
+        await db.execute(
+            update(models.SavingDeposit)
+            .where(models.SavingDeposit.goal_id.in_(user_goal_ids))
+            .where(models.SavingDeposit.category.in_(existing_names))
+            .values(category=target_category)
+        )
+        await db.execute(
+            update(models.ShareMember)
+            .where(models.ShareMember.user_id == user_id)
+            .where(models.ShareMember.local_category.in_(existing_names))
+            .values(local_category=target_category)
+        )
+        user_budget_ids = select(models.Budget.id).where(models.Budget.user_id == user_id)
+        await db.execute(
+            delete(models.BudgetCategoryLimit)
+            .where(models.BudgetCategoryLimit.budget_id.in_(user_budget_ids))
+            .where(models.BudgetCategoryLimit.category_name.in_(existing_names))
+        )
+
+    await db.execute(
+        delete(models.Category).where(models.Category.user_id == user_id)
+    )
+    new_categories = [
+        models.Category(
+            user_id=user_id,
+            name=item["name"],
+            icon=item["icon"],
+            color=item["color"],
+        )
+        for item in DEFAULT_CATEGORIES
+    ]
+    db.add_all(new_categories)
+    await db.commit()
+    return await get_categories(db, user_id=user_id, kind="expense")

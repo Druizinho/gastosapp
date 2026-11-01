@@ -72,7 +72,7 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
   const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
   const fetchDetails = async (silent = false) => {
-    if (!partnerId) return;
+    if (!partnerId || partnerId === 'undefined' || partnerId === 'null') return;
     try {
       if (!silent && !detail) {
         setLoading(true);
@@ -81,14 +81,21 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
       const data = await getPanaDetails(partnerId);
       setDetail(data);
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Error al cargar detalles del Pana');
+      console.error('Error fetching pana details:', err);
+      const backendDetail = err.response?.data?.detail;
+      const errorMsg = Array.isArray(backendDetail)
+        ? backendDetail.map((d: any) => d.msg || JSON.stringify(d)).join(', ')
+        : (typeof backendDetail === 'string'
+            ? backendDetail
+            : (err.message || 'Error al cargar detalles del Pana'));
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (isOpen && partnerId) {
+    if (isOpen && partnerId && partnerId !== 'undefined' && partnerId !== 'null') {
       fetchDetails();
     } else {
       setDetail(null);

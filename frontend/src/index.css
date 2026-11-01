@@ -3018,11 +3018,13 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .btn-trigger-manual-rate,
-  .btn-clear-rate {
+  .btn-clear-rate,
+  .rates-today-btn {
     transition: none;
   }
   .btn-trigger-manual-rate:active,
-  .btn-clear-rate:active {
+  .btn-clear-rate:active,
+  .rates-today-btn:active {
     transform: none;
   }
   .form-collapse-reveal,
@@ -3032,5 +3034,67 @@ body {
     transition: none !important;
   }
 }
+
+/* Rates Page Date Bar */
+.rates-date-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  margin-bottom: 1.25rem;
+}
+
+.rates-date-input-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md, 10px);
+  padding: 0 0.75rem;
+  height: 40px;
+  box-shadow: var(--shadow-xs);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.rates-date-input-wrap:focus-within {
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.15);
+}
+
+.rates-today-btn {
+  flex-shrink: 0;
+  height: 40px;
+  padding: 0 1rem;
+  border-radius: var(--radius-md, 10px);
+  border: 1px solid var(--border-color);
+  background: var(--surface-color);
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 150ms ease;
+}
+
+.rates-today-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.rates-today-btn:active {
+  transform: scale(0.96);
+}
+
+.rates-today-btn--active {
+  background: var(--accent-color, #10B981);
+  color: #FFFFFF !important;
+  border-color: var(--accent-color, #10B981);
+}
+
 
 

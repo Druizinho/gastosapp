@@ -464,16 +464,21 @@ export const RatesPage: React.FC = () => {
           >
             Tasas de Cambio
           </h1>
-          <p
-            style={{
-              fontSize: '0.9rem',
-              color: 'var(--text-secondary)',
-              margin: 0,
-              lineHeight: 1.5,
-            }}
-          >
-            {loading && !rates ? 'Cargando cotizaciones...' : statusText}
-          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginTop: '0.2rem' }}>
+            {selectedDate === today && !rates?.is_historical && (
+              <span className="pulse-dot" style={{ width: '7px', height: '7px' }} />
+            )}
+            <p
+              style={{
+                fontSize: '0.875rem',
+                color: selectedDate === today && !rates?.is_historical ? 'var(--text-secondary)' : 'var(--text-tertiary)',
+                margin: 0,
+                fontWeight: 500,
+              }}
+            >
+              {loading && !rates ? 'Cargando cotizaciones...' : statusText}
+            </p>
+          </div>
         </div>
 
         <button
@@ -511,71 +516,31 @@ export const RatesPage: React.FC = () => {
       </header>
 
       {/* Date Selector Bar */}
-      <div style={{ marginBottom: '1.25rem' }}>
-        <div className="custom-date-row" style={{ alignItems: 'flex-end', flexWrap: 'wrap', gap: '0.75rem' }}>
-          <div className="custom-date-field" style={{ flex: '1 1 200px' }}>
-            <label htmlFor="rates-date-input" className="custom-date-label">
-              Fecha de Cotización
-            </label>
-            <div className="custom-date-input-wrap">
-              <Calendar size={14} className="custom-date-icon" aria-hidden="true" />
-              <input
-                id="rates-date-input"
-                type="date"
-                max={today}
-                value={selectedDate}
-                onChange={(e) => {
-                  if (e.target.value) {
-                    setSelectedDate(e.target.value);
-                  }
-                }}
-                className="custom-date-input"
-                aria-label="Fecha de cotización"
-              />
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
-            <button
-              type="button"
-              onClick={() => setSelectedDate(today)}
-              className={`period-pill ${selectedDate === today ? 'period-pill--active' : ''}`}
-              style={{
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                height: '36px',
-                padding: '0 0.85rem',
-              }}
-            >
-              Hoy
-            </button>
-
-            <div
-              className="rates-status-badge"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-                padding: '0.4rem 0.75rem',
-                borderRadius: 'var(--radius-full)',
-                background: selectedDate === today && !rates?.is_historical ? 'rgba(16, 185, 129, 0.12)' : 'var(--surface-muted, rgba(0, 0, 0, 0.05))',
-                color: selectedDate === today && !rates?.is_historical ? '#10B981' : 'var(--text-secondary)',
-                fontSize: '0.75rem',
-                fontWeight: 700,
-                border: '1px solid var(--border-color)',
-                whiteSpace: 'nowrap',
-                height: '36px',
-                boxSizing: 'border-box',
-              }}
-            >
-              {selectedDate === today && !rates?.is_historical && (
-                <span className="pulse-dot" style={{ width: '6px', height: '6px' }} />
-              )}
-              <span>{statusText}</span>
-            </div>
-          </div>
+      <div className="rates-date-bar">
+        <div className="rates-date-input-wrap">
+          <Calendar size={15} className="custom-date-icon" aria-hidden="true" />
+          <input
+            id="rates-date-input"
+            type="date"
+            max={today}
+            value={selectedDate}
+            onChange={(e) => {
+              if (e.target.value) {
+                setSelectedDate(e.target.value);
+              }
+            }}
+            className="custom-date-input"
+            aria-label="Fecha de cotización"
+          />
         </div>
+        <button
+          type="button"
+          onClick={() => setSelectedDate(today)}
+          className={`rates-today-btn ${selectedDate === today ? 'rates-today-btn--active' : ''}`}
+          aria-label="Ver cotizaciones de hoy"
+        >
+          Hoy
+        </button>
       </div>
 
       {loading && !rates ? (

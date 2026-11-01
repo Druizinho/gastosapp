@@ -6,9 +6,7 @@ import {
   Trash2,
   SlidersHorizontal,
   Layers,
-  X,
   Star,
-  Check,
   Lock,
   RotateCcw,
   Users,
@@ -20,15 +18,14 @@ import type {
   CurrencyType,
   Category,
   BudgetCategorySummaryOut,
-  ShareMemberOut
+  ShareMemberOut,
+  Connection
 } from '../types';
 import {
   getMonthlyBudget,
   getCachedMonthlyBudget,
   createMonthlyBudget,
-  updateMonthlyBudgetById,
   deleteMonthlyBudgetById,
-  upsertCategoryLimitByBudgetId,
   deleteCategoryLimitByBudgetId,
   getConnections,
   removeShareMember,
@@ -47,48 +44,22 @@ import { SummaryHeroCard, type SummaryMetricItem } from './ui/SummaryHeroCard';
 import { SegmentedTabs } from './ui/SegmentedTabs';
 import { SkeletonList } from './ui/Skeleton';
 import { useToast } from './ui/Toast';
+import {
+  CategoryLimitModal,
+  BudgetFormModal,
+  currencyLabels,
+  formatAmount,
+  prefixMap,
+  suffixMap,
+  type DisplayCurrency,
+  type SubBudgetTab,
+} from './budgets/index';
+
+export * from './budgets/constants';
 
 interface BudgetsProps {
   onBack?: () => void;
 }
-
-const currencyLabels: Record<string, string> = {
-  USD_BCV: '$',
-  EUR_BCV: '€',
-  BS: 'Bs.',
-  USDT: 'USDT',
-  USD_CASH: '$ Cash',
-};
-
-const CURRENCY_OPTIONS: { value: CurrencyType; label: string }[] = [
-  { value: 'USD_BCV', label: 'USD (Tasa BCV)' },
-  { value: 'BS', label: 'Bolívares (Bs)' },
-  { value: 'USD_CASH', label: 'USD (Efectivo / Paralelo)' },
-  { value: 'EUR_BCV', label: 'EUR (Tasa BCV)' },
-  { value: 'USDT', label: 'USDT (Binance)' },
-];
-
-const formatAmount = (amount: number | null | undefined, prefix: string = ''): string => {
-  if (amount === null || amount === undefined) return '—';
-  return `${prefix}${Number(amount).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-};
-
-export type DisplayCurrency = 'usd' | 'bs' | 'eur' | 'usdt';
-export type SubBudgetTab = 'all' | 'own' | 'shared';
-
-export const prefixMap: Record<DisplayCurrency, string> = {
-  bs: 'Bs. ',
-  usd: '$ ',
-  eur: '€ ',
-  usdt: '',
-};
-
-export const suffixMap: Record<DisplayCurrency, string> = {
-  bs: '',
-  usd: '',
-  eur: '',
-  usdt: ' USDT',
-};
 
 export interface TrafficLightProgressBarProps {
   percentage: number;
@@ -277,6 +248,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
   // Data states
   const [budgetResponse, setBudgetResponse] = useState<MonthlyBudgetResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [connections, setConnections] = useState<Connection[]>([]);
   const [panas, setPanas] = useState<{ partner_id: string; partner_name: string }[]>([]);
 
   // Currency cycling for hero card (usd, bs, eur, usdt)
@@ -497,9 +469,12 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
     getConnections()
       .then((conns) => {
         if (isMounted) {
-          const accepted = (conns || [])
-            .filter((c) => c.status === 'accepted' && c.partner_id)
-            .map((c) => ({ partner_id: c.partner_id!, partner_name: c.partner_name || 'Pana' }));
+          const acceptedConns = (conns || []).filter((c) => c.status === 'accepted' && c.partner_id);
+          setConnections(acceptedConns);
+          const accepted = acceptedConns.map((c) => ({
+            partner_id: c.partner_id!,
+            partner_name: c.partner_name || 'Pana',
+          }));
           setPanas(accepted);
         }
       })
@@ -583,32 +558,6 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
       limitAmount: existing && Number(existing.limit_amount) > 0 ? String(existing.limit_amount) : '',
       currency: existing?.currency || targetBudgetForLimit.currency || 'USD_BCV',
     });
-  };
-
-  const handleSaveCategoryLimit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const targetBudgetForLimit = primaryBudget || selectedBudget;
-    if (!targetBudgetForLimit) return;
-    const amountNum = parseFloat(categoryModal.limitAmount);
-    if (isNaN(amountNum) || amountNum < 0) {
-      toast.warning('Ingresa un monto límite válido mayor o igual a 0');
-      return;
-    }
-
-    try {
-      const updated = await upsertCategoryLimitByBudgetId(targetBudgetForLimit.id, {
-        category_name: categoryModal.categoryName,
-        limit_amount: amountNum,
-        currency: categoryModal.currency,
-      });
-      setBudgetResponse(updated);
-      setCategoryModal((prev) => ({ ...prev, isOpen: false }));
-      invalidateMonthlyBudgetCache(currentMonthYear);
-      await fetchData(true);
-    } catch (error: any) {
-      console.error('Error saving category limit:', error);
-      toast.error(error?.response?.data?.detail || 'Error al guardar límite de categoría');
-    }
   };
 
   const handleDeleteBudget = async () => {
@@ -1769,8 +1718,9 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
           availableCategories={budgetResponse?.available_categories || []}
           renderCategoryIcon={renderCategoryIcon}
           panas={panas}
+          connections={connections}
           onClose={() => setBudgetModal({ isOpen: false, budgetToEdit: null })}
-          onSaved={(updated) => {
+          onSaved={(updated: MonthlyBudgetResponse) => {
             setBudgetResponse(updated);
             setBudgetModal({ isOpen: false, budgetToEdit: null });
             invalidateMonthlyBudgetCache(currentMonthYear);
@@ -1781,177 +1731,29 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
 
       {/* CategoryLimitModal */}
       {categoryModal.isOpen && (
-        <div
-          className="modal-backdrop"
-          style={{ zIndex: 1000 }}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setCategoryModal((prev) => ({ ...prev, isOpen: false }));
-            }
+        <CategoryLimitModal
+          isOpen={categoryModal.isOpen}
+          categoryName={categoryModal.categoryName}
+          budgetId={(primaryBudget || selectedBudget)?.id}
+          existingLimit={categoryModal.existingLimit}
+          initialLimitAmount={categoryModal.limitAmount}
+          initialCurrency={categoryModal.currency}
+          onClose={() => setCategoryModal((prev) => ({ ...prev, isOpen: false }))}
+          onSaved={(updated: MonthlyBudgetResponse) => {
+            setBudgetResponse(updated);
+            setCategoryModal((prev) => ({ ...prev, isOpen: false }));
+            invalidateMonthlyBudgetCache(currentMonthYear);
+            fetchData(true);
           }}
-        >
-          <div
-            className="expense-form-container soft-card"
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              maxWidth: '420px',
-              width: '90%',
-              padding: '1.5rem',
-              animation: 'slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards',
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '1rem',
-              }}
-            >
-              <div>
-                <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
-                  {categoryModal.existingLimit && Number(categoryModal.existingLimit.limit_amount) > 0
-                    ? 'Editar Límite Mensual'
-                    : 'Asignar Límite Mensual'}
-                </h2>
-                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '0.2rem 0 0 0' }}>
-                  {categoryModal.categoryName} • Plan Maestro
-                </p>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                {categoryModal.existingLimit && Number(categoryModal.existingLimit.limit_amount) > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const targetId = (primaryBudget || selectedBudget)?.id || '';
-                      setConfirmDeleteCategoryLimit({
-                        isOpen: true,
-                        budgetId: targetId,
-                        categoryName: categoryModal.categoryName,
-                      });
-                    }}
-                    title="Restablecer límite a 0"
-                    style={{
-                      width: '32px',
-                      height: '32px',
-                      borderRadius: 'var(--radius-full)',
-                      background: 'var(--surface-muted)',
-                      border: 'none',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                      color: 'var(--text-tertiary)',
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    <RotateCcw size={15} />
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setCategoryModal((prev) => ({ ...prev, isOpen: false }))}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    color: 'var(--text-secondary)',
-                  }}
-                >
-                  <X size={20} />
-                </button>
-              </div>
-            </div>
-
-            {/* Sync explanation callout */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                padding: '0.75rem',
-                borderRadius: '8px',
-                background: 'rgba(16, 185, 129, 0.1)',
-                border: '1px solid rgba(16, 185, 129, 0.25)',
-                marginBottom: '1rem',
-                fontSize: '0.75rem',
-                color: '#065F46',
-              }}
-            >
-              <Lock size={15} style={{ flexShrink: 0 }} />
-              <div>
-                El límite se define en el <strong>Plan Maestro</strong> y se sincroniza automáticamente con todos los grupos que incluyan esta categoría.
-              </div>
-            </div>
-
-            <form onSubmit={handleSaveCategoryLimit} className="expense-form">
-              <div className="form-group" style={{ marginBottom: '1rem' }}>
-                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                  Categoría
-                </label>
-                <input
-                  type="text"
-                  value={categoryModal.categoryName}
-                  disabled
-                  style={{ width: '100%', marginTop: '0.35rem', opacity: 0.7 }}
-                />
-              </div>
-
-              <div className="form-group" style={{ marginBottom: '1rem' }}>
-                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                  Moneda del límite
-                </label>
-                <select
-                  value={categoryModal.currency}
-                  onChange={(e) =>
-                    setCategoryModal((prev) => ({ ...prev, currency: e.target.value as CurrencyType }))
-                  }
-                  style={{ width: '100%', marginTop: '0.35rem' }}
-                >
-                  {CURRENCY_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="form-group" style={{ marginBottom: '1.5rem' }}>
-                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                  Monto límite ({currencyLabels[categoryModal.currency] || '$'})
-                </label>
-                <input
-                  type="number"
-                  step="any"
-                  min="0"
-                  required
-                  placeholder="0.00"
-                  value={categoryModal.limitAmount}
-                  onChange={(e) => setCategoryModal((prev) => ({ ...prev, limitAmount: e.target.value }))}
-                  style={{ width: '100%', marginTop: '0.35rem', fontSize: '1.1rem', fontWeight: 600 }}
-                />
-              </div>
-
-              <div className="form-actions">
-                <button
-                  type="button"
-                  onClick={() => setCategoryModal((prev) => ({ ...prev, isOpen: false }))}
-                  className="app-btn app-btn-secondary"
-                  style={{ flex: 1 }}
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="app-btn app-btn-primary"
-                  style={{ flex: 1 }}
-                >
-                  Guardar Límite
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+          onResetLimit={() => {
+            const targetId = (primaryBudget || selectedBudget)?.id || '';
+            setConfirmDeleteCategoryLimit({
+              isOpen: true,
+              budgetId: targetId,
+              categoryName: categoryModal.categoryName,
+            });
+          }}
+        />
       )}
 
       {/* ConfirmDelete Budget Modal */}
@@ -2007,465 +1809,6 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
           }}
         />
       )}
-    </div>
-  );
-};
-
-// Modal for Creating or Editing a Budget (BudgetFormModal)
-interface BudgetFormModalProps {
-  isOpen: boolean;
-  monthYear: string;
-  budgetToEdit: SingleBudgetOut | null;
-  hasExistingBudgets?: boolean;
-  availableCategories?: string[];
-  renderCategoryIcon?: (name: string) => React.ReactNode;
-  panas?: Array<{ partner_id: string; partner_name: string }>;
-  onClose: () => void;
-  onSaved: (response: MonthlyBudgetResponse) => void;
-}
-
-const BudgetFormModal: React.FC<BudgetFormModalProps> = ({
-  isOpen,
-  monthYear,
-  budgetToEdit,
-  availableCategories = [],
-  renderCategoryIcon,
-  panas = [],
-  onClose,
-  onSaved,
-}) => {
-  const toast = useToast();
-  const isEdit = Boolean(budgetToEdit);
-  const isPrimary = Boolean(budgetToEdit?.is_primary);
-  const [name, setName] = useState<string>(budgetToEdit?.name || '');
-  const [currency, setCurrency] = useState<CurrencyType>(budgetToEdit?.currency || 'USD_BCV');
-  const [selectedCategories, setSelectedCategories] = useState<string[]>(() => {
-    if (budgetToEdit) {
-      return budgetToEdit.category_limits ? budgetToEdit.category_limits.map((cl) => cl.category_name) : [];
-    }
-    return availableCategories || [];
-  });
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Panas sharing state for sub-budgets (instantly available from panas prop, fallback fetch if prop not provided)
-  const [fallbackPanas, setFallbackPanas] = useState<Array<{ id: string; name: string }>>([]);
-
-  const availablePanas = useMemo(() => {
-    if (panas && panas.length > 0) {
-      return panas.map((p) => ({ id: p.partner_id, name: p.partner_name }));
-    }
-    return fallbackPanas;
-  }, [panas, fallbackPanas]);
-
-  const [sharedWithIds, setSharedWithIds] = useState<string[]>(() => {
-    if (budgetToEdit?.shared_members) {
-      return budgetToEdit.shared_members
-        .filter((m) => m.user_id !== budgetToEdit.owner_id && !m.is_owner)
-        .map((m) => m.user_id);
-    }
-    return [];
-  });
-
-  useEffect(() => {
-    if (budgetToEdit?.shared_members) {
-      setSharedWithIds(
-        budgetToEdit.shared_members
-          .filter((m) => m.user_id !== budgetToEdit.owner_id && !m.is_owner)
-          .map((m) => m.user_id)
-      );
-    } else {
-      setSharedWithIds([]);
-    }
-  }, [budgetToEdit]);
-
-  // Fallback fetch only if panas prop wasn't provided or empty
-  useEffect(() => {
-    if (isOpen && !isPrimary && (!panas || panas.length === 0)) {
-      getConnections()
-        .then((conns) => {
-          const accepted = (conns || [])
-            .filter((c) => c.status === 'accepted' && c.partner_id)
-            .map((c) => ({ id: c.partner_id!, name: c.partner_name || 'Pana' }));
-          setFallbackPanas(accepted);
-        })
-        .catch((err) => console.error('Error fetching connections in BudgetFormModal:', err));
-    }
-  }, [isOpen, isPrimary, panas]);
-
-  const togglePana = (partnerId: string) => {
-    setSharedWithIds((prev) =>
-      prev.includes(partnerId)
-        ? prev.filter((id) => id !== partnerId)
-        : [...prev, partnerId]
-    );
-  };
-
-  if (!isOpen) return null;
-
-  const allSelected =
-    availableCategories.length > 0 &&
-    availableCategories.every((cat) =>
-      selectedCategories.some((sc) => sc.toLowerCase() === cat.toLowerCase())
-    );
-
-  const toggleCategory = (catName: string) => {
-    setSelectedCategories((prev) => {
-      const exists = prev.some((c) => c.toLowerCase() === catName.toLowerCase());
-      if (exists) {
-        return prev.filter((c) => c.toLowerCase() !== catName.toLowerCase());
-      } else {
-        return [...prev, catName];
-      }
-    });
-  };
-
-  const handleSelectAllCategories = () => {
-    if (availableCategories.length === 0) return;
-    if (allSelected) {
-      setSelectedCategories([]);
-    } else {
-      setSelectedCategories([...availableCategories]);
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) {
-      toast.warning('Ingresa un nombre');
-      return;
-    }
-    setIsSubmitting(true);
-
-    try {
-      if (isEdit && budgetToEdit) {
-        const res = await updateMonthlyBudgetById(budgetToEdit.id, {
-          name: name.trim(),
-          currency,
-          is_primary: isPrimary,
-          categories: isPrimary ? undefined : selectedCategories,
-          shared_with_ids: isPrimary ? undefined : sharedWithIds,
-        });
-        onSaved(res);
-      } else {
-        const res = await createMonthlyBudget(monthYear, {
-          name: name.trim(),
-          currency,
-          is_primary: false,
-          categories: selectedCategories,
-          shared_with_ids: sharedWithIds,
-        });
-        onSaved(res);
-      }
-    } catch (error: any) {
-      console.error('Error saving budget:', error);
-      toast.error(error?.response?.data?.detail || 'Error al guardar el presupuesto');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  return (
-    <div
-      className="modal-backdrop"
-      style={{ zIndex: 1000 }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) {
-          onClose();
-        }
-      }}
-    >
-      <div
-        className="expense-form-container soft-card"
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          maxWidth: '450px',
-          width: '90%',
-          padding: '1.5rem',
-          animation: 'slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards',
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '1rem',
-          }}
-        >
-          <div>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
-              {isEdit ? (isPrimary ? 'Editar Plan Maestro' : 'Editar Grupo') : 'Nuevo Grupo de Categorías'}
-            </h2>
-            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '0.2rem 0 0 0' }}>
-              {isPrimary
-                ? 'Configura el nombre y moneda base de tu Plan Maestro'
-                : 'Agrupa categorías que heredarán sus límites del Principal'}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              color: 'var(--text-secondary)',
-            }}
-          >
-            <X size={20} />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="expense-form">
-          {/* Banner */}
-          {isPrimary ? (
-            <div
-              style={{
-                padding: '0.75rem',
-                borderRadius: '8px',
-                background: 'rgba(245, 158, 11, 0.1)',
-                border: '1px solid rgba(245, 158, 11, 0.25)',
-                marginBottom: '1rem',
-                fontSize: '0.75rem',
-                color: '#92400E',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-              }}
-            >
-              <Star size={15} fill="#F59E0B" color="#F59E0B" style={{ flexShrink: 0 }} />
-              <div>
-                <strong>Plan Maestro:</strong> Es el presupuesto principal y la fuente de verdad de todos los límites de categorías.
-              </div>
-            </div>
-          ) : (
-            <div
-              style={{
-                padding: '0.75rem',
-                borderRadius: '8px',
-                background: 'rgba(16, 185, 129, 0.1)',
-                border: '1px solid rgba(16, 185, 129, 0.25)',
-                marginBottom: '1rem',
-                fontSize: '0.75rem',
-                color: '#065F46',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-              }}
-            >
-              <Lock size={15} style={{ flexShrink: 0 }} />
-              <div>
-                <strong>Límites heredados:</strong> Los montos de cada categoría se toman automáticamente del Presupuesto Principal.
-              </div>
-            </div>
-          )}
-
-          {/* Name */}
-          <div className="form-group" style={{ marginBottom: '1rem' }}>
-            <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-              {isPrimary ? 'Nombre del Presupuesto Principal' : 'Nombre del grupo'}
-            </label>
-            <input
-              type="text"
-              required
-              placeholder={isPrimary ? 'Plan Maestro' : 'Ej. Hogar, Salidas, Pareja'}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              style={{ width: '100%', marginTop: '0.35rem' }}
-            />
-          </div>
-
-          {/* Currency */}
-          <div className="form-group" style={{ marginBottom: '1rem' }}>
-            <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-              Moneda base
-            </label>
-            <select
-              value={currency}
-              onChange={(e) => setCurrency(e.target.value as CurrencyType)}
-              style={{ width: '100%', marginTop: '0.35rem' }}
-            >
-              {CURRENCY_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Category selection for Sub-Budgets */}
-          {!isPrimary && (
-            <div className="form-group" style={{ marginBottom: '1.25rem' }}>
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: '0.4rem',
-                }}
-              >
-                <div>
-                  <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                    Categorías a incluir ({selectedCategories.length})
-                  </label>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
-                    Solo los gastos de estas categorías se sumarán a este grupo
-                  </div>
-                </div>
-                {availableCategories.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={handleSelectAllCategories}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: 'var(--primary-color)',
-                      fontSize: '0.75rem',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      padding: '0.2rem 0.4rem',
-                      borderRadius: '6px',
-                    }}
-                  >
-                    {allSelected ? 'Limpiar' : 'Seleccionar todas'}
-                  </button>
-                )}
-              </div>
-
-              {/* Chips Container */}
-              <div
-                style={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  gap: '0.4rem',
-                  maxHeight: '160px',
-                  overflowY: 'auto',
-                  padding: '0.5rem',
-                  borderRadius: '10px',
-                  background: 'var(--surface-muted)',
-                  border: '1px solid var(--border-color)',
-                }}
-              >
-                {availableCategories.length === 0 ? (
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', padding: '0.5rem' }}>
-                    No hay categorías registradas.
-                  </div>
-                ) : (
-                  availableCategories.map((cat) => {
-                    const isChecked = selectedCategories.some(
-                      (sc) => sc.toLowerCase() === cat.toLowerCase()
-                    );
-                    return (
-                      <button
-                        key={cat}
-                        type="button"
-                        onClick={() => toggleCategory(cat)}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '0.35rem',
-                          padding: '0.35rem 0.65rem',
-                          borderRadius: 'var(--radius-full)',
-                          border: `1.5px solid ${isChecked ? 'var(--primary-color)' : 'var(--border-color)'}`,
-                          background: isChecked ? 'rgba(16, 185, 129, 0.12)' : 'var(--surface-color)',
-                          color: isChecked ? 'var(--primary-color)' : 'var(--text-secondary)',
-                          fontSize: '0.75rem',
-                          fontWeight: isChecked ? 600 : 500,
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease',
-                        }}
-                      >
-                        {renderCategoryIcon && (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', transform: 'scale(0.85)' }}>
-                            {renderCategoryIcon(cat)}
-                          </span>
-                        )}
-                        <span>{cat}</span>
-                        {isChecked && <Check size={12} strokeWidth={2.5} />}
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Compartir con Panas (Solo lectura) */}
-          {!isPrimary && availablePanas.length > 0 && (
-            <div className="form-group" style={{ marginBottom: '1.25rem' }}>
-              <div style={{ marginBottom: '0.4rem' }}>
-                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                  <Users size={14} style={{ color: 'var(--primary-color)' }} />
-                  Compartir con Panas (Solo lectura) {sharedWithIds.length > 0 && `(${sharedWithIds.length})`}
-                </label>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
-                  Tus panas podrán ver el progreso de las categorías de este grupo en modo solo lectura.
-                </div>
-              </div>
-              <div
-                style={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  gap: '0.4rem',
-                  padding: '0.5rem',
-                  borderRadius: '10px',
-                  background: 'var(--surface-muted)',
-                  border: '1px solid var(--border-color)',
-                }}
-              >
-                {availablePanas.map((pana) => {
-                  const isChecked = sharedWithIds.includes(pana.id);
-                  return (
-                    <button
-                      key={pana.id}
-                      type="button"
-                      onClick={() => togglePana(pana.id)}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '0.35rem',
-                        padding: '0.35rem 0.65rem',
-                        borderRadius: 'var(--radius-full)',
-                        border: `1.5px solid ${isChecked ? 'var(--primary-color)' : 'var(--border-color)'}`,
-                        background: isChecked ? 'rgba(16, 185, 129, 0.12)' : 'var(--surface-color)',
-                        color: isChecked ? 'var(--primary-color)' : 'var(--text-secondary)',
-                        fontSize: '0.75rem',
-                        fontWeight: isChecked ? 600 : 500,
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease',
-                      }}
-                    >
-                      <span>{pana.name}</span>
-                      {isChecked && <Check size={12} strokeWidth={2.5} />}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Action buttons */}
-          <div className="form-actions">
-            <button
-              type="button"
-              onClick={onClose}
-              className="app-btn app-btn-secondary"
-              style={{ flex: 1 }}
-              disabled={isSubmitting}
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="app-btn app-btn-primary"
-              style={{ flex: 1 }}
-            >
-              {isSubmitting ? 'Guardando...' : isEdit ? 'Guardar Cambios' : 'Crear Grupo'}
-            </button>
-          </div>
-        </form>
-      </div>
     </div>
   );
 };

@@ -5,6 +5,8 @@ import uuid
 import datetime
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
+from contextlib import asynccontextmanager
+from fastapi import HTTPException
 
 # Add backend directory to sys.path so app modules can be loaded
 backend_dir = Path(__file__).resolve().parent.parent
@@ -12,6 +14,7 @@ if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
 from app import schemas, crud_connections, models
+from app.routers import connections as router_connections
 
 
 class TestPanaDetailsHelpersAndSchemas(unittest.TestCase):
@@ -260,6 +263,12 @@ class TestGetPanaDetailsResilience(unittest.IsolatedAsyncioTestCase):
 
         db = AsyncMock()
 
+        @asynccontextmanager
+        async def mock_begin_nested():
+            yield
+
+        db.begin_nested = mock_begin_nested
+
         # Execute side effects for queries
         async def mock_execute(query, *args, **kwargs):
             query_str = str(query)
@@ -290,6 +299,11 @@ class TestGetPanaDetailsResilience(unittest.IsolatedAsyncioTestCase):
                 mock_res.scalars.return_value.all.return_value = [mock_share_member]
                 return mock_res
 
+            # MonthlyBudget query
+            if "monthly_budgets" in query_str:
+                mock_res.scalars.return_value.first.return_value = mock_anchor_budget
+                return mock_res
+
             mock_res.scalars.return_value.all.return_value = []
             mock_res.scalars.return_value.first.return_value = None
             mock_res.all.return_value = []
@@ -313,6 +327,127 @@ class TestGetPanaDetailsResilience(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sb_item.name, "Presupuesto Ocio")
         self.assertEqual(sb_item.effective_global_limit, 250.0)
         self.assertEqual(sb_item.currency, "USD_BCV")
+
+    async def test_get_pana_details_populate_share_meta_failure_resilience(self):
+        user_id = uuid.uuid4()
+        partner_id = uuid.uuid4()
+        conn_id = uuid.uuid4()
+        fe_id = uuid.uuid4()
+        share_id = uuid.uuid4()
+
+        mock_conn = MagicMock()
+        mock_conn.id = conn_id
+        mock_conn.status = "accepted"
+
+        mock_prof = MagicMock()
+        mock_prof.id = partner_id
+        mock_prof.display_name = "Pana Resistente"
+        mock_prof.avatar_url = "https://example.com/avatar.png"
+
+        mock_share = MagicMock()
+        mock_share.id = share_id
+        mock_share.owner_id = user_id
+        mock_share.entity_type = "fixed_expense"
+
+        mock_share_member = MagicMock()
+        mock_share_member.share_id = share_id
+        mock_share_member.user_id = user_id
+        mock_share_member.entity_id = fe_id
+
+        mock_fe = MagicMock()
+        mock_fe.id = fe_id
+        mock_fe.name = "Alquiler Compartido"
+        mock_fe.amount = Decimal("500.00")
+        mock_fe.currency = "USD_BCV"
+        mock_fe.category = "Vivienda"
+        mock_fe.payment_day = Decimal("15")  # Numeric/Decimal from Postgres
+        mock_fe.is_active = True
+        mock_fe.checks = []
+
+        db = AsyncMock()
+
+        @asynccontextmanager
+        async def mock_begin_nested():
+            yield
+
+        db.begin_nested = mock_begin_nested
+
+        async def mock_execute(query, *args, **kwargs):
+            query_str = str(query)
+            mock_res = MagicMock()
+
+            if "connections" in query_str:
+                mock_res.scalars.return_value.first.return_value = mock_conn
+                return mock_res
+            if "profiles" in query_str:
+                mock_res.scalars.return_value.first.return_value = mock_prof
+                mock_res.scalars.return_value.all.return_value = [mock_prof]
+                return mock_res
+            if "auth.users" in query_str:
+                mock_res.first.return_value = ("amigo@example.com",)
+                return mock_res
+            if "shares" in query_str and "share_members" in query_str:
+                mock_res.all.return_value = [(mock_share, fe_id)]
+                return mock_res
+            if "share_members" in query_str:
+                mock_res.scalars.return_value.all.return_value = [mock_share_member]
+                return mock_res
+            if "fixed_expenses" in query_str:
+                mock_res.scalars.return_value.unique.return_value.all.return_value = [mock_fe]
+                return mock_res
+
+            mock_res.scalars.return_value.all.return_value = []
+            mock_res.scalars.return_value.first.return_value = None
+            mock_res.all.return_value = []
+            return mock_res
+
+        db.execute = mock_execute
+
+        # Verify populate_share_meta is no longer called in get_pana_details
+        with patch("app.sharing.populate_share_meta", side_effect=ValueError("Invalid share role or db error")) as mock_pop:
+            detail = await crud_connections.get_pana_details(db, user_id, partner_id)
+            mock_pop.assert_not_called()
+
+        self.assertIsNotNone(detail)
+        self.assertEqual(detail.partner_name, "Pana Resistente")
+        self.assertEqual(len(detail.shared_fixed_expenses), 1)
+        fe_out = detail.shared_fixed_expenses[0]
+        self.assertEqual(fe_out.id, fe_id)
+        self.assertEqual(fe_out.payment_day, 15)  # Cleanly coerced from Decimal(15)
+        self.assertEqual(fe_out.name, "Alquiler Compartido")
+
+
+class TestRouterPanaDetails(unittest.IsolatedAsyncioTestCase):
+    async def test_router_get_pana_details_success(self):
+        db = AsyncMock()
+        user_id = uuid.uuid4()
+        partner_id = uuid.uuid4()
+        mock_detail = MagicMock(spec=schemas.PanaDetail)
+
+        with patch("app.crud_connections.get_pana_details", new=AsyncMock(return_value=mock_detail)):
+            res = await router_connections.get_pana_details(partner_id, db=db, user_id=user_id)
+            self.assertEqual(res, mock_detail)
+
+    async def test_router_get_pana_details_not_found(self):
+        db = AsyncMock()
+        user_id = uuid.uuid4()
+        partner_id = uuid.uuid4()
+
+        with patch("app.crud_connections.get_pana_details", new=AsyncMock(return_value=None)):
+            with self.assertRaises(HTTPException) as ctx:
+                await router_connections.get_pana_details(partner_id, db=db, user_id=user_id)
+            self.assertEqual(ctx.exception.status_code, 404)
+
+    async def test_router_get_pana_details_500_exception(self):
+        db = AsyncMock()
+        user_id = uuid.uuid4()
+        partner_id = uuid.uuid4()
+
+        with patch("app.crud_connections.get_pana_details", new=AsyncMock(side_effect=RuntimeError("DB connection failed"))):
+            with self.assertRaises(HTTPException) as ctx:
+                await router_connections.get_pana_details(partner_id, db=db, user_id=user_id)
+            self.assertEqual(ctx.exception.status_code, 500)
+            self.assertIn("DB connection failed", ctx.exception.detail)
 
 
 if __name__ == "__main__":

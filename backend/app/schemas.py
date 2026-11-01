@@ -621,6 +621,11 @@ class SharedFixedExpenseBrief(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+    @field_validator("name", mode="before")
+    @classmethod
+    def _val_name(cls, v: Any) -> Any:
+        return "" if v is None else str(v)
+
     @field_validator("amount", mode="before")
     @classmethod
     def _val_amount(cls, v: Any) -> Any:
@@ -630,6 +635,33 @@ class SharedFixedExpenseBrief(BaseModel):
     @classmethod
     def _val_currency(cls, v: Any) -> Any:
         return "BS" if v is None else v
+
+    @field_validator("payment_day", mode="before")
+    @classmethod
+    def _val_payment_day(cls, v: Any) -> Any:
+        if v is None:
+            return None
+        try:
+            val = int(float(str(v)))
+            return val if 1 <= val <= 31 else None
+        except Exception:
+            return None
+
+    @field_validator("paid_date", mode="before")
+    @classmethod
+    def _val_paid_date(cls, v: Any) -> Any:
+        if v is None:
+            return None
+        if isinstance(v, datetime.datetime):
+            return v.date()
+        if isinstance(v, datetime.date):
+            return v
+        if isinstance(v, str):
+            try:
+                return datetime.date.fromisoformat(v[:10])
+            except Exception:
+                return None
+        return None
 
     @field_validator("is_active", mode="before")
     @classmethod
@@ -668,6 +700,27 @@ class SharedDebtBrief(BaseModel):
     member_names: List[str] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("concept", "counterpart", mode="before")
+    @classmethod
+    def _val_debt_strings(cls, v: Any) -> Any:
+        return "" if v is None else str(v)
+
+    @field_validator("last_payment_date", mode="before")
+    @classmethod
+    def _val_last_payment_date(cls, v: Any) -> Any:
+        if v is None:
+            return None
+        if isinstance(v, datetime.datetime):
+            return v.date()
+        if isinstance(v, datetime.date):
+            return v
+        if isinstance(v, str):
+            try:
+                return datetime.date.fromisoformat(v[:10])
+            except Exception:
+                return None
+        return None
 
     @field_validator("total_amount", "remaining_amount", mode="before")
     @classmethod
@@ -724,6 +777,27 @@ class SharedSavingGoalBrief(BaseModel):
     member_names: List[str] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def _val_goal_name(cls, v: Any) -> Any:
+        return "" if v is None else str(v)
+
+    @field_validator("last_deposit_date", mode="before")
+    @classmethod
+    def _val_last_deposit_date(cls, v: Any) -> Any:
+        if v is None:
+            return None
+        if isinstance(v, datetime.datetime):
+            return v.date()
+        if isinstance(v, datetime.date):
+            return v
+        if isinstance(v, str):
+            try:
+                return datetime.date.fromisoformat(v[:10])
+            except Exception:
+                return None
+        return None
 
     @field_validator("type", mode="before")
     @classmethod

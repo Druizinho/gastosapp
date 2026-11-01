@@ -379,7 +379,7 @@ export const PanasPage: React.FC = () => {
                     subtitle={subtitle}
                     badges={badges}
                     quickAction={<ChevronRight size={18} style={{ color: 'var(--text-tertiary)' }} />}
-                    onClick={() => setSelectedPartnerId(pana.partner_id)}
+                    onClick={() => pana?.partner_id && setSelectedPartnerId(pana.partner_id)}
                   />
                 );
               })}
