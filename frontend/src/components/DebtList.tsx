@@ -1228,7 +1228,6 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
     <div style={{ padding: '1rem', paddingBottom: '6rem', maxWidth: '600px', margin: '0 auto' }}>
       <PageHeader
         title="Deudas y Préstamos"
-        subtitle="Lo que debes y lo que te deben"
         onBack={onBack}
         actionLabel="Nueva Deuda"
         actionIcon={<Plus size={18} />}
@@ -1245,7 +1244,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
         mainAmount={loading ? '...' : metrics.netFormatted}
         mainAmountColor={metrics.isNetPositive ? 'var(--income-color)' : 'var(--expense-color)'}
         statusSubtext={metrics.isNetPositive ? '(A tu favor)' : '(En contra)'}
-        currencyHintText={`Toca para alternar moneda (${mainCurrency})`}
+        currencyHintText={mainCurrency}
         onCycleCurrency={cycleDisplayCurrency}
         accentColor="var(--tool-debts, #8B5CF6)"
         metrics={[
@@ -1296,7 +1295,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
       ) : displayedDebts.length === 0 ? (
         <EmptyState
           title={`No hay deudas ${activeTab === 'owed' ? 'por pagar' : activeTab === 'receivable' ? 'por cobrar' : ''} ${filterSettled ? 'liquidadas' : 'activas'}`.trim()}
-          description={filterSettled ? 'No se encontraron deudas liquidadas en esta sección.' : 'Comienza registrando un préstamo o compromiso.'}
+          description={filterSettled ? undefined : 'Registra un préstamo o compromiso para comenzar.'}
           actionLabel="Crear deuda"
           actionIcon={<Plus size={16} />}
           onAction={() => { setEditingDebt(undefined); setShowForm(true); }}

@@ -184,7 +184,7 @@ export const BudgetHeroCard: React.FC<BudgetHeroCardProps> = ({
       badgeColor={lightColor}
       mainAmount={isLoading ? '...' : spentStr}
       statusSubtext={hasLimit ? `de ${limitStr} límite mensual` : 'Sin límite mensual fijado'}
-      currencyHintText={`Toca para alternar (${displayCurrency.toUpperCase()})`}
+      currencyHintText={displayCurrency.toUpperCase()}
       onCycleCurrency={onCycleCurrency}
       accentColor="var(--tool-budgets, #6366F1)"
       metrics={metrics}
@@ -735,7 +735,6 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
           {/* Header */}
           <PageHeader
             title="Presupuestos"
-            subtitle="Planificación y techos mensuales"
             onBack={handleBack}
             rightAction={monthNavigator}
             actionColor="var(--tool-budgets, #6366F1)"
@@ -743,7 +742,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
 
           {/* Hero Card: Presupuesto Principal (Plan Maestro) */}
           <BudgetHeroCard
-            eyebrow="PLAN MAESTRO"
+            eyebrow="PRESUPUESTO GENERAL"
             badgeText="Plan Maestro"
             badgeIcon={<Star size={12} fill="#F59E0B" color="#F59E0B" />}
             spentMap={{
@@ -1296,7 +1295,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
 
           {/* Hero Card for THIS Budget */}
           <BudgetHeroCard
-            eyebrow={selectedBudget.is_primary ? 'PLAN MAESTRO' : 'GRUPO DE CATEGORÍAS'}
+            eyebrow={selectedBudget.is_primary ? 'PRESUPUESTO GENERAL' : 'GRUPO DE CATEGORÍAS'}
             badgeText={
               selectedBudget.effective_global_limit && selectedBudget.effective_global_limit > 0
                 ? `${Math.round(selectedBudget.global_spent_percentage)}% consumido`

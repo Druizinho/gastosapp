@@ -120,7 +120,6 @@ export const PanasPage: React.FC = () => {
     <div style={{ padding: '1rem', paddingBottom: '6rem', maxWidth: '640px', margin: '0 auto' }}>
       <PageHeader
         title="Panas"
-        subtitle="Finanzas compartidas con amigos y equipo"
         onBack={() => navigate('/herramientas')}
         actionLabel="Invitar pana"
         actionIcon={<UserPlus size={16} />}

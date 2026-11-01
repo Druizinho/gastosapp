@@ -103,23 +103,16 @@ export const ToolsHub: React.FC = () => {
   return (
     <div style={{ padding: '1rem', paddingBottom: '6rem', maxWidth: '600px', margin: '0 auto' }}>
       {/* Header */}
-      <header style={{ marginBottom: '1.75rem', paddingTop: '1rem' }}>
+      <header style={{ marginBottom: '1.25rem', paddingTop: '0.5rem' }}>
         <h1 style={{
           fontSize: '1.75rem',
           fontWeight: 800,
           color: 'var(--text-primary)',
-          marginBottom: '0.25rem',
+          marginBottom: 0,
           letterSpacing: '-0.02em'
         }}>
           Herramientas
         </h1>
-        <p style={{
-          fontSize: '0.95rem',
-          color: 'var(--text-secondary)',
-          lineHeight: 1.5
-        }}>
-          Gestiona tus finanzas de forma integral
-        </p>
       </header>
 
       {/* Grouped Sections */}

@@ -282,7 +282,6 @@ const ToggleSwitch = ({ checked, onChange, disabled = false }: { checked: boolea
         </div>
         <div>
           <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>Notificaciones Push</h2>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', margin: '0.25rem 0 0 0' }}>Recibe alertas sobre tus finanzas</p>
         </div>
       </div>
 
@@ -302,7 +301,6 @@ const ToggleSwitch = ({ checked, onChange, disabled = false }: { checked: boolea
       }}>
         <div>
           <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Permitir Notificaciones</h3>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', margin: '0.25rem 0 0 0' }}>Habilita las notificaciones en tu teléfono o navegador</p>
         </div>
         <ToggleSwitch checked={isEnabled} onChange={handleToggleSystem} disabled={isLoading} />
       </div>

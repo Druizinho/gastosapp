@@ -256,7 +256,6 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
       <div className="category-manager-card soft-card">
         <PageHeader
           title="Mis Categorías"
-          subtitle="Personaliza nombres, colores e íconos en toda tu app"
           actionLabel={!isFormOpen ? "Nueva" : undefined}
           actionIcon={<Plus size={16} strokeWidth={2.5} />}
           onAction={!isFormOpen ? handleOpenCreate : undefined}

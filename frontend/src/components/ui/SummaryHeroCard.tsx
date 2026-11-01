@@ -1,6 +1,22 @@
-import React from 'react';
+import React, { useMemo } from 'react';
+import { ArrowLeftRight } from 'lucide-react';
 import { Skeleton } from './Skeleton';
 import { colorWithOpacity } from '../../utils/toolColors';
+
+const cleanCurrencyHint = (hint?: string): string => {
+  if (!hint) return '';
+  const parenMatch = hint.match(/\(([^)]+)\)/);
+  if (parenMatch && parenMatch[1].trim()) {
+    return parenMatch[1].trim();
+  }
+  const stripped = hint
+    .replace(/toca para alternar( moneda)?/gi, '')
+    .replace(/alternar( moneda)?/gi, '')
+    .replace(/moneda/gi, '')
+    .replace(/[·•\-–]/g, '')
+    .trim();
+  return stripped || 'Moneda';
+};
 
 export interface SummaryMetricItem {
   label: string;
@@ -49,6 +65,10 @@ export const SummaryHeroCard: React.FC<SummaryHeroCardProps> = ({
   isLoading = false,
 }) => {
   const isInteractive = typeof onCycleCurrency === 'function';
+  const isDuplicateEyebrow = Boolean(
+    badgeText && eyebrow.trim().toLowerCase() === (badgeText || '').trim().toLowerCase()
+  );
+  const cleanedCurrencyText = useMemo(() => cleanCurrencyHint(currencyHintText), [currencyHintText]);
 
   return (
     <div
@@ -92,15 +112,17 @@ export const SummaryHeroCard: React.FC<SummaryHeroCardProps> = ({
         marginBottom: '0.4rem',
         gap: '0.5rem',
       }}>
-        <span style={{
-          fontSize: '0.78rem',
-          color: colorWithOpacity(accentColor, 'b0') || 'var(--text-tertiary, #64748B)',
-          fontWeight: 700,
-          textTransform: 'uppercase',
-          letterSpacing: '0.05em',
-        }}>
-          {eyebrow}
-        </span>
+        {!isDuplicateEyebrow && (
+          <span style={{
+            fontSize: '0.78rem',
+            color: colorWithOpacity(accentColor, 'b0') || 'var(--text-tertiary, #64748B)',
+            fontWeight: 700,
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+          }}>
+            {eyebrow}
+          </span>
+        )}
 
         {badgeText && (
           <div style={{
@@ -138,7 +160,7 @@ export const SummaryHeroCard: React.FC<SummaryHeroCardProps> = ({
           )}
         </div>
 
-        {(statusSubtext || currencyHintText) && (
+        {(statusSubtext || currencyHintText || onCycleCurrency) && (
           <div style={{
             display: 'flex',
             alignItems: 'center',
@@ -151,7 +173,38 @@ export const SummaryHeroCard: React.FC<SummaryHeroCardProps> = ({
                 {statusSubtext}
               </span>
             )}
-            {currencyHintText && (
+            {onCycleCurrency && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCycleCurrency();
+                }}
+                aria-label="Cambiar moneda de visualización"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  padding: '0.2rem 0.55rem',
+                  borderRadius: 'var(--radius-full, 9999px)',
+                  background: 'var(--surface-muted, rgba(0, 0, 0, 0.04))',
+                  border: '1px solid var(--border-color, rgba(0, 0, 0, 0.08))',
+                  fontSize: '0.72rem',
+                  fontWeight: 600,
+                  color: 'var(--text-secondary, #475569)',
+                  cursor: 'pointer',
+                  marginLeft: 'auto',
+                  transition: 'background-color 150ms ease, transform 150ms ease',
+                }}
+                onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+                onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+              >
+                <span>{cleanedCurrencyText || currencyHintText || 'Moneda'}</span>
+                <ArrowLeftRight size={11} style={{ opacity: 0.7 }} />
+              </button>
+            )}
+            {!onCycleCurrency && currencyHintText && (
               <span style={{
                 fontSize: '0.7rem',
                 color: 'var(--text-tertiary, #94A3B8)',

@@ -73,13 +73,8 @@ export const ParticipantPicker: React.FC<ParticipantPickerProps> = ({
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
         <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
-          Selecciona los panas del grupo (puedes marcar múltiples personas):
+          Participantes:
         </span>
-        {connections.length === 1 && (
-          <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>
-            💡 Tienes 1 pana conectado actualmente. Puedes conectar a más personas desde <em>Herramientas &gt; Panas</em>.
-          </span>
-        )}
       </div>
 
       {connections.length > 5 && (

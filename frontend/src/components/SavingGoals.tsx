@@ -1650,7 +1650,6 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
     <div style={{ padding: '1rem', paddingBottom: '6rem', maxWidth: '600px', margin: '0 auto' }}>
       <PageHeader
         title="Proyectos / Ahorros"
-        subtitle="Fondos de reserva y cuentas por proyecto"
         onBack={onBack}
         actionLabel="Nuevo"
         actionIcon={<Plus size={18} />}
@@ -1666,7 +1665,7 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
         badgeIcon={heroBadgeIcon}
         mainAmount={loading ? '...' : formatVal(heroAmount)}
         mainAmountColor="var(--text-primary)"
-        currencyHintText={`Toca para alternar moneda (${mainCurrency})`}
+        currencyHintText={mainCurrency}
         onCycleCurrency={cycleDisplayCurrency}
         accentColor={heroAccentColor}
         metrics={heroMetrics}
