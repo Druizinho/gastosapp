@@ -741,10 +741,11 @@ async def populate_share_meta(
             e.is_read_only = (entity_type == "sub_budget" and my_sm.user_id != (share.owner_id if share else None))
 
             is_owner_me = bool(share and my_sm.user_id == share.owner_id)
+            local_cat = my_sm.local_category.strip() if (my_sm.local_category and my_sm.local_category.strip()) else None
             if is_owner_me:
-                eff_cat = my_sm.local_category or getattr(e, "category", None) or "Sin Categoría"
+                eff_cat = local_cat or getattr(e, "category", None) or "Sin Categoría"
             else:
-                eff_cat = my_sm.local_category or "Sin Categoría"
+                eff_cat = local_cat or "Sin Categoría"
             if entity_type != "sub_budget" and hasattr(type(e), "category"):
                 try:
                     set_committed_value(e, "category", eff_cat)

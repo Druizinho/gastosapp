@@ -372,7 +372,8 @@ const FixedExpenses: React.FC = () => {
   const renderExpenseCard = (expense: FixedExpense, isPaid: boolean = false) => {
     const check = expense.checks?.find((c) => c.month_year === currentMonth);
     const catObj = categories.find(c => c.name.toLowerCase() === (expense.category || '').toLowerCase());
-    const { IconComponent, hexColor } = resolveCategoryVisuals(catObj, expense.category || 'Gastos Fijos');
+    const hasValidCategory = Boolean(expense.category && expense.category.trim().toLowerCase() !== 'sin categoría' && catObj);
+    const { IconComponent, hexColor } = resolveCategoryVisuals(catObj, (hasValidCategory ? expense.category : 'Gastos Fijos') || 'Gastos Fijos');
     const isMember = expense.is_shared && expense.my_role === 'member';
 
     const statusColor = isPaid
@@ -420,7 +421,7 @@ const FixedExpenses: React.FC = () => {
 
     const badges = (
       <>
-        {expense.category && expense.category.trim().toLowerCase() !== 'sin categoría' ? (
+        {hasValidCategory && catObj ? (
           <span
             onClick={(e) => {
               e.stopPropagation();
@@ -478,7 +479,7 @@ const FixedExpenses: React.FC = () => {
             onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
           >
             <Tag size={10} />
-            <span>{expense.category?.trim() ? expense.category : 'Categoría'}</span>
+            <span>Sin Categoría</span>
           </span>
         )}
         {expense.is_shared && (

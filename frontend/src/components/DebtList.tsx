@@ -649,9 +649,44 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
             onClick={(e) => e.stopPropagation()}
             style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.85rem' }}
           >
-            {selectedDebt.category && selectedDebt.category.trim().toLowerCase() !== 'sin categoría' ? (() => {
+            {(() => {
               const catObj = categories.find(c => c.name.toLowerCase() === selectedDebt.category?.toLowerCase());
-              const { IconComponent, hexColor } = resolveCategoryVisuals(catObj, selectedDebt.category);
+              const hasValidCategory = Boolean(selectedDebt.category && selectedDebt.category.trim().toLowerCase() !== 'sin categoría' && catObj);
+              if (hasValidCategory && catObj) {
+                const { IconComponent, hexColor } = resolveCategoryVisuals(catObj, selectedDebt.category || undefined);
+                return (
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setLocalCategoryModal({ isOpen: true, debt: selectedDebt });
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    title="Personalizar mi categoría"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      padding: '0.2rem 0.6rem',
+                      borderRadius: 'var(--radius-full)',
+                      background: `${hexColor}18`,
+                      border: `1px solid ${hexColor}35`,
+                      color: hexColor,
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      transition: 'transform 150ms ease-out',
+                    }}
+                    onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+                    onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                  >
+                    <IconComponent size={12} />
+                    <span>{selectedDebt.category}</span>
+                    <Tag size={10} style={{ opacity: 0.7 }} />
+                  </div>
+                );
+              }
               return (
                 <div
                   onClick={(e) => {
@@ -667,9 +702,9 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
                     gap: '0.35rem',
                     padding: '0.2rem 0.6rem',
                     borderRadius: 'var(--radius-full)',
-                    background: `${hexColor}18`,
-                    border: `1px solid ${hexColor}35`,
-                    color: hexColor,
+                    background: 'var(--surface-muted)',
+                    border: '1px dashed var(--border-color)',
+                    color: 'var(--text-secondary)',
                     fontSize: '0.75rem',
                     fontWeight: 600,
                     cursor: 'pointer',
@@ -679,42 +714,11 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
                   onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
                   onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
                 >
-                  <IconComponent size={12} />
-                  <span>{selectedDebt.category}</span>
-                  <Tag size={10} style={{ opacity: 0.7 }} />
+                  <Tag size={12} />
+                  <span>Sin Categoría</span>
                 </div>
               );
-            })() : (
-              <div
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setLocalCategoryModal({ isOpen: true, debt: selectedDebt });
-                }}
-                role="button"
-                tabIndex={0}
-                title="Personalizar mi categoría"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.35rem',
-                  padding: '0.2rem 0.6rem',
-                  borderRadius: 'var(--radius-full)',
-                  background: 'var(--surface-muted)',
-                  border: '1px dashed var(--border-color)',
-                  color: 'var(--text-secondary)',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  transition: 'transform 150ms ease-out',
-                }}
-                onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
-                onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-              >
-                <Tag size={12} />
-                <span>{selectedDebt.category?.trim() ? selectedDebt.category : 'Mi categoría'}</span>
-              </div>
-            )}
+            })()}
 
             {selectedDebt.start_date && (
               <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
@@ -1251,9 +1255,9 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
       {/* Main Tabs */}
       <SegmentedTabs
         tabs={[
-          { id: 'all', label: 'Todas', count: debts.length },
-          { id: 'owed', label: 'Por Pagar', count: owedCount },
-          { id: 'receivable', label: 'Por Cobrar', count: recCount },
+          { id: 'all', label: 'Todas', shortLabel: 'Todas', count: debts.length },
+          { id: 'owed', label: 'Por Pagar', shortLabel: 'Pagar', count: owedCount },
+          { id: 'receivable', label: 'Por Cobrar', shortLabel: 'Cobrar', count: recCount },
         ]}
         activeTab={activeTab}
         onChange={(tab) => handleTabChange(tab as 'all' | 'owed' | 'receivable')}
@@ -1264,8 +1268,8 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.25rem' }}>
         <SegmentedTabs
           tabs={[
-            { id: 'active', label: 'Activas' },
-            { id: 'settled', label: 'Liquidadas' },
+            { id: 'active', label: 'Activas', shortLabel: 'Activas' },
+            { id: 'settled', label: 'Liquidadas', shortLabel: 'Liquidadas' },
           ]}
           activeTab={filterSettled ? 'settled' : 'active'}
           onChange={(tab) => setFilterSettled(tab === 'settled')}
@@ -1378,9 +1382,43 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
                   </span>
                 ) : null}
 
-                {debt.category && debt.category.trim().toLowerCase() !== 'sin categoría' ? (() => {
+                {(() => {
                   const catObj = categories.find(c => c.name.toLowerCase() === debt.category?.toLowerCase());
-                  const { IconComponent, hexColor } = resolveCategoryVisuals(catObj, debt.category);
+                  const hasValidCategory = Boolean(debt.category && debt.category.trim().toLowerCase() !== 'sin categoría' && catObj);
+                  if (hasValidCategory && catObj) {
+                    const { IconComponent, hexColor } = resolveCategoryVisuals(catObj, debt.category || undefined);
+                    return (
+                      <span
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setLocalCategoryModal({ isOpen: true, debt });
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        title="Personalizar mi categoría"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.25rem',
+                          fontSize: '0.7rem',
+                          fontWeight: 600,
+                          color: hexColor,
+                          background: `${hexColor}18`,
+                          border: `1px solid ${hexColor}35`,
+                          padding: '0.12rem 0.5rem',
+                          borderRadius: 'var(--radius-full)',
+                          cursor: 'pointer',
+                          transition: 'transform 150ms ease-out',
+                        }}
+                        onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+                        onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                      >
+                        <IconComponent size={10} />
+                        <span>{debt.category}</span>
+                      </span>
+                    );
+                  }
                   return (
                     <span
                       onClick={(e) => {
@@ -1396,9 +1434,9 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
                         gap: '0.25rem',
                         fontSize: '0.7rem',
                         fontWeight: 600,
-                        color: hexColor,
-                        background: `${hexColor}18`,
-                        border: `1px solid ${hexColor}35`,
+                        color: 'var(--text-secondary)',
+                        background: 'var(--surface-muted)',
+                        border: '1px dashed var(--border-color)',
                         padding: '0.12rem 0.5rem',
                         borderRadius: 'var(--radius-full)',
                         cursor: 'pointer',
@@ -1408,41 +1446,11 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
                       onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
                       onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
                     >
-                      <IconComponent size={10} />
-                      <span>{debt.category}</span>
+                      <Tag size={10} />
+                      <span>Sin Categoría</span>
                     </span>
                   );
-                })() : (
-                  <span
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setLocalCategoryModal({ isOpen: true, debt });
-                    }}
-                    role="button"
-                    tabIndex={0}
-                    title="Personalizar mi categoría"
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '0.25rem',
-                      fontSize: '0.7rem',
-                      fontWeight: 600,
-                      color: 'var(--text-secondary)',
-                      background: 'var(--surface-muted)',
-                      border: '1px dashed var(--border-color)',
-                      padding: '0.12rem 0.5rem',
-                      borderRadius: 'var(--radius-full)',
-                      cursor: 'pointer',
-                      transition: 'transform 150ms ease-out',
-                    }}
-                    onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
-                    onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-                  >
-                    <Tag size={10} />
-                    <span>{debt.category?.trim() ? debt.category : 'Categoría'}</span>
-                  </span>
-                )}
+                })()}
 
                 {debt.is_shared && (
                   <div

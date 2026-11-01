@@ -225,6 +225,7 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
     {
       id: 'expenses',
       label: 'Fijos',
+      shortLabel: 'Fijos',
       count: detail?.shared_fixed_expenses?.length || 0,
       icon: <Home size={15} />,
       badgeColor: '#F59E0B',
@@ -232,6 +233,7 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
     {
       id: 'debts',
       label: 'Deudas',
+      shortLabel: 'Deudas',
       count: detail?.shared_debts?.length || 0,
       icon: <CreditCard size={15} />,
       badgeColor: '#8B5CF6',
@@ -239,6 +241,7 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
     {
       id: 'savings',
       label: 'Ahorros',
+      shortLabel: 'Ahorros',
       count: detail?.shared_saving_goals?.length || 0,
       icon: <PiggyBank size={15} />,
       badgeColor: '#10B981',
@@ -246,6 +249,7 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
     {
       id: 'budgets',
       label: 'Presupuestos',
+      shortLabel: 'Presup.',
       count: detail?.shared_sub_budgets?.length || 0,
       icon: <Layers size={15} />,
       badgeColor: '#6366F1',
@@ -413,6 +417,7 @@ export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
               activeTab={activeTab}
               onChange={(tabId) => setActiveTab(tabId)}
               activeColor={TAB_COLORS[activeTab]}
+              layout="grid-2x2"
             />
           </div>
 

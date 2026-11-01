@@ -877,11 +877,13 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
             {
               id: 'movements',
               label: 'Movimientos',
+              shortLabel: 'Movimientos',
               count: realIncomes.length,
             },
             {
               id: 'por-cobrar',
               label: 'Por cobrar',
+              shortLabel: 'Por cobrar',
               count: pendingAndPartialIncomesList.length + pausedIncomesList.length,
             },
           ]}
@@ -955,9 +957,9 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
                   onChange={setPorCobrarSubTab}
                   activeColor="#3B82F6"
                   tabs={[
-                    { id: 'pending', label: `Pendientes (${pendingCount})` },
-                    { id: 'confirmed', label: `Cobrados (${confirmedCount})` },
-                    ...(pausedCount > 0 ? [{ id: 'paused' as const, label: `Pausados (${pausedCount})` }] : []),
+                    { id: 'pending', label: 'Pendientes', shortLabel: 'Pendientes', count: pendingCount },
+                    { id: 'confirmed', label: 'Cobrados', shortLabel: 'Cobrados', count: confirmedCount },
+                    ...(pausedCount > 0 ? [{ id: 'paused' as const, label: 'Pausados', shortLabel: 'Pausados', count: pausedCount }] : []),
                   ]}
                 />
               </div>

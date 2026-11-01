@@ -126,9 +126,11 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
 
   const getGoalVisuals = useCallback((goalItem: SavingGoal) => {
     const isProject = goalItem.type === 'project';
-    const targetCatName = goalItem.category || (isProject ? 'Proyectos' : 'Ahorro');
-    const matchedCat = categories.find(c => c.name.toLowerCase() === targetCatName.toLowerCase());
-    return resolveCategoryVisuals(matchedCat, targetCatName);
+    const catObj = goalItem.category && goalItem.category.trim().toLowerCase() !== 'sin categoría'
+      ? categories.find(c => c.name.toLowerCase() === goalItem.category!.toLowerCase())
+      : undefined;
+    const targetCatName = catObj ? goalItem.category! : (isProject ? 'Proyectos' : 'Ahorro');
+    return resolveCategoryVisuals(catObj, targetCatName);
   }, [categories]);
 
   const handleConfirmLeaveGoal = async () => {
@@ -531,7 +533,7 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
     const remaining = hasTarget ? Math.max(target - saved, 0) : null;
     const isOverBudget = isProject && hasTarget && saved > target;
 
-    const { IconComponent: HeaderIcon, hexColor: color } = getGoalVisuals(selectedGoal);
+    const { hexColor: color } = getGoalVisuals(selectedGoal);
 
     const savedInMain = convertItemAmountToMainCurrency({ amount: saved, currency: selectedGoal.currency }, mainCurrency, rates);
     const targetInMain = hasTarget ? convertItemAmountToMainCurrency({ amount: target, currency: selectedGoal.currency }, mainCurrency, rates) : null;
@@ -702,68 +704,76 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
               </div>
             )}
 
-            {selectedGoal.category && selectedGoal.category.trim().toLowerCase() !== 'sin categoría' ? (
-              <span
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setLocalCategoryModal({ isOpen: true, goal: selectedGoal });
-                }}
-                role="button"
-                tabIndex={0}
-                title="Personalizar mi categoría"
-                style={{
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  color: color,
-                  background: `${color}18`,
-                  border: `1px solid ${color}35`,
-                  padding: '0.2rem 0.6rem',
-                  borderRadius: 'var(--radius-full)',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.35rem',
-                  cursor: 'pointer',
-                  transition: 'transform 150ms ease-out',
-                }}
-                onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
-                onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-              >
-                <HeaderIcon size={12} />
-                <span>{selectedGoal.category}</span>
-                <Tag size={10} style={{ opacity: 0.7 }} />
-              </span>
-            ) : (
-              <span
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setLocalCategoryModal({ isOpen: true, goal: selectedGoal });
-                }}
-                role="button"
-                tabIndex={0}
-                title="Personalizar mi categoría"
-                style={{
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  color: 'var(--text-secondary)',
-                  background: 'var(--surface-muted)',
-                  border: '1px dashed var(--border-color)',
-                  padding: '0.2rem 0.6rem',
-                  borderRadius: 'var(--radius-full)',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.35rem',
-                  cursor: 'pointer',
-                  transition: 'transform 150ms ease-out',
-                }}
-                onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
-                onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-              >
-                <Tag size={12} />
-                <span>{selectedGoal.category?.trim() ? selectedGoal.category : 'Mi categoría'}</span>
-              </span>
-            )}
+            {(() => {
+              const catObj = categories.find(c => c.name.toLowerCase() === selectedGoal.category?.toLowerCase());
+              const hasValidCategory = Boolean(selectedGoal.category && selectedGoal.category.trim().toLowerCase() !== 'sin categoría' && catObj);
+              if (hasValidCategory && catObj) {
+                const { IconComponent: CatIcon, hexColor: catHexColor } = resolveCategoryVisuals(catObj, selectedGoal.category || undefined);
+                return (
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setLocalCategoryModal({ isOpen: true, goal: selectedGoal });
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    title="Personalizar mi categoría"
+                    style={{
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      color: catHexColor,
+                      background: `${catHexColor}18`,
+                      border: `1px solid ${catHexColor}35`,
+                      padding: '0.2rem 0.6rem',
+                      borderRadius: 'var(--radius-full)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      cursor: 'pointer',
+                      transition: 'transform 150ms ease-out',
+                    }}
+                    onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+                    onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                  >
+                    <CatIcon size={12} />
+                    <span>{selectedGoal.category}</span>
+                    <Tag size={10} style={{ opacity: 0.7 }} />
+                  </span>
+                );
+              }
+              return (
+                <span
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setLocalCategoryModal({ isOpen: true, goal: selectedGoal });
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  title="Personalizar mi categoría"
+                  style={{
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    color: 'var(--text-secondary)',
+                    background: 'var(--surface-muted)',
+                    border: '1px dashed var(--border-color)',
+                    padding: '0.2rem 0.6rem',
+                    borderRadius: 'var(--radius-full)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    cursor: 'pointer',
+                    transition: 'transform 150ms ease-out',
+                  }}
+                  onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+                  onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                >
+                  <Tag size={12} />
+                  <span>Sin Categoría</span>
+                </span>
+              );
+            })()}
 
             {selectedGoal.target_date && (
               <span style={{
@@ -1650,9 +1660,9 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
       {/* Type Filter Tabs: Todos | Proyectos | Ahorros */}
       <SegmentedTabs
         tabs={[
-          { id: 'all', label: `Todos (${goals.length})` },
-          { id: 'projects', label: `Proyectos (${projectsCount})`, icon: <FolderKanban size={13} /> },
-          { id: 'savings', label: `Ahorros (${savingsCount})`, icon: <PiggyBank size={13} /> },
+          { id: 'all', label: 'Todos', shortLabel: 'Todos', count: goals.length },
+          { id: 'projects', label: 'Proyectos', shortLabel: 'Proy.', count: projectsCount, icon: <FolderKanban size={13} /> },
+          { id: 'savings', label: 'Ahorros', shortLabel: 'Ahorros', count: savingsCount, icon: <PiggyBank size={13} /> },
         ]}
         activeTab={typeTab}
         onChange={(tab) => setTypeTab(tab as 'all' | 'projects' | 'savings')}
@@ -1672,9 +1682,9 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
       }}>
         <SegmentedTabs
           tabs={[
-            { id: 'active', label: `Activos (${activeGoalsCount})` },
-            { id: 'completed', label: `Completados (${completedGoalsCount})` },
-            { id: 'all', label: 'Todos' },
+            { id: 'active', label: 'Activos', shortLabel: 'Activos', count: activeGoalsCount },
+            { id: 'completed', label: 'Completados', shortLabel: 'Completos', count: completedGoalsCount },
+            { id: 'all', label: 'Todos', shortLabel: 'Todos' },
           ]}
           activeTab={statusTab}
           onChange={(tab) => setStatusTab(tab as 'active' | 'completed' | 'all')}
@@ -1790,67 +1800,75 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
                     <MemberAvatars members={goal.shared_members} size={18} />
                   </div>
                 )}
-                {goal.category && goal.category.trim().toLowerCase() !== 'sin categoría' ? (
-                  <span
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setLocalCategoryModal({ isOpen: true, goal });
-                    }}
-                    role="button"
-                    tabIndex={0}
-                    title="Personalizar mi categoría"
-                    style={{
-                      fontSize: '0.7rem',
-                      fontWeight: 600,
-                      color: color,
-                      background: `${color}18`,
-                      border: `1px solid ${color}35`,
-                      padding: '0.12rem 0.5rem',
-                      borderRadius: 'var(--radius-full)',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '0.25rem',
-                      cursor: 'pointer',
-                      transition: 'transform 150ms ease-out',
-                    }}
-                    onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
-                    onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-                  >
-                    <IconComponent size={10} />
-                    <span>{goal.category}</span>
-                  </span>
-                ) : (
-                  <span
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setLocalCategoryModal({ isOpen: true, goal });
-                    }}
-                    role="button"
-                    tabIndex={0}
-                    title="Personalizar mi categoría"
-                    style={{
-                      fontSize: '0.7rem',
-                      fontWeight: 600,
-                      color: 'var(--text-secondary)',
-                      background: 'var(--surface-muted)',
-                      border: '1px dashed var(--border-color)',
-                      padding: '0.12rem 0.5rem',
-                      borderRadius: 'var(--radius-full)',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '0.25rem',
-                      cursor: 'pointer',
-                      transition: 'transform 150ms ease-out',
-                    }}
-                    onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
-                    onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-                  >
-                    <Tag size={10} />
-                    <span>{goal.category?.trim() ? goal.category : 'Categoría'}</span>
-                  </span>
-                )}
+                {(() => {
+                  const catObj = categories.find(c => c.name.toLowerCase() === goal.category?.toLowerCase());
+                  const hasValidCategory = Boolean(goal.category && goal.category.trim().toLowerCase() !== 'sin categoría' && catObj);
+                  if (hasValidCategory && catObj) {
+                    const { IconComponent: CatIcon, hexColor: catHexColor } = resolveCategoryVisuals(catObj, goal.category || undefined);
+                    return (
+                      <span
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setLocalCategoryModal({ isOpen: true, goal });
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        title="Personalizar mi categoría"
+                        style={{
+                          fontSize: '0.7rem',
+                          fontWeight: 600,
+                          color: catHexColor,
+                          background: `${catHexColor}18`,
+                          border: `1px solid ${catHexColor}35`,
+                          padding: '0.12rem 0.5rem',
+                          borderRadius: 'var(--radius-full)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.25rem',
+                          cursor: 'pointer',
+                          transition: 'transform 150ms ease-out',
+                        }}
+                        onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+                        onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                      >
+                        <CatIcon size={10} />
+                        <span>{goal.category}</span>
+                      </span>
+                    );
+                  }
+                  return (
+                    <span
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setLocalCategoryModal({ isOpen: true, goal });
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      title="Personalizar mi categoría"
+                      style={{
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        color: 'var(--text-secondary)',
+                        background: 'var(--surface-muted)',
+                        border: '1px dashed var(--border-color)',
+                        padding: '0.12rem 0.5rem',
+                        borderRadius: 'var(--radius-full)',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
+                        cursor: 'pointer',
+                        transition: 'transform 150ms ease-out',
+                      }}
+                      onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+                      onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                    >
+                      <Tag size={10} />
+                      <span>Sin Categoría</span>
+                    </span>
+                  );
+                })()}
                 {goal.target_date && (
                   <span
                     style={{

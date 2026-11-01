@@ -22,8 +22,8 @@ interface DebtFormProps {
 }
 
 const typeTabs: TabItem<'owed' | 'receivable'>[] = [
-  { id: 'owed', label: 'Debo dinero' },
-  { id: 'receivable', label: 'Me deben dinero' },
+  { id: 'owed', label: 'Debo', shortLabel: 'Debo' },
+  { id: 'receivable', label: 'Me deben', shortLabel: 'Me deben' },
 ];
 
 const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCancel, loading }) => {

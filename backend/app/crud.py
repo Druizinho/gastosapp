@@ -339,26 +339,55 @@ async def ensure_categories_and_debts_schema() -> None:
             r RECORD;
             canon_id UUID;
         BEGIN
-            -- (a) Backfill local_category and debt perspective on share_members from current entities
+            -- (a) Backfill local_category and debt perspective on share_members from current entities (only for creator/owner)
             UPDATE share_members sm
             SET local_category = d.category,
                 perspective_type = COALESCE(sm.perspective_type, d.type),
                 counterpart_label = COALESCE(sm.counterpart_label, d.counterpart)
             FROM debts d
             WHERE sm.entity_id = d.id
+              AND sm.user_id = d.user_id
               AND (sm.local_category IS NULL OR sm.perspective_type IS NULL);
+
+            UPDATE share_members sm
+            SET perspective_type = COALESCE(sm.perspective_type, d.type),
+                counterpart_label = COALESCE(sm.counterpart_label, d.counterpart)
+            FROM debts d
+            WHERE sm.entity_id = d.id
+              AND sm.perspective_type IS NULL;
 
             UPDATE share_members sm
             SET local_category = sg.category
             FROM saving_goals sg
             WHERE sm.entity_id = sg.id
+              AND sm.user_id = sg.user_id
               AND sm.local_category IS NULL;
 
             UPDATE share_members sm
             SET local_category = fe.category
             FROM fixed_expenses fe
             WHERE sm.entity_id = fe.id
+              AND sm.user_id = fe.user_id
               AND sm.local_category IS NULL;
+
+            -- Sanitize corrupted local_category for non-owner share members
+            UPDATE share_members sm
+            SET local_category = 'Sin Categoría'
+            FROM shares s
+            WHERE sm.share_id = s.id
+              AND sm.user_id != s.owner_id
+              AND (
+                  sm.local_category IS NULL
+                  OR btrim(sm.local_category) = ''
+                  OR (
+                      sm.local_category != 'Sin Categoría'
+                      AND NOT EXISTS (
+                          SELECT 1 FROM categories c
+                          WHERE c.user_id = sm.user_id
+                            AND lower(btrim(c.name)) = lower(btrim(sm.local_category))
+                      )
+                  )
+              );
 
             -- (b) Loop over shares having multiple distinct entity_id
             FOR r IN (
@@ -432,6 +461,26 @@ async def ensure_categories_and_debts_schema() -> None:
         EXCEPTION WHEN OTHERS THEN
             NULL;
         END $$;
+        """,
+        # 8b. Sanitize corrupted local_category for non-owner share members
+        """
+        UPDATE share_members sm
+        SET local_category = 'Sin Categoría'
+        FROM shares s
+        WHERE sm.share_id = s.id
+          AND sm.user_id != s.owner_id
+          AND (
+              sm.local_category IS NULL
+              OR btrim(sm.local_category) = ''
+              OR (
+                  sm.local_category != 'Sin Categoría'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM categories c
+                      WHERE c.user_id = sm.user_id
+                        AND lower(btrim(c.name)) = lower(btrim(sm.local_category))
+                  )
+              )
+          )
         """,
         # 9. Migrate legacy categories rows where color holds an icon name
         """
@@ -1624,7 +1673,7 @@ async def delete_category(db: AsyncSession, category_id: UUID, user_id: UUID, re
             models.FixedExpense.__table__.update()
             .where(models.FixedExpense.user_id == user_id)
             .where(models.FixedExpense.category == category_name)
-            .values(category=reassign_to if reassign_to else None)
+            .values(category=target_category)
         )
 
         # 3. Reassign saving goals
@@ -1632,7 +1681,7 @@ async def delete_category(db: AsyncSession, category_id: UUID, user_id: UUID, re
             models.SavingGoal.__table__.update()
             .where(models.SavingGoal.user_id == user_id)
             .where(models.SavingGoal.category == category_name)
-            .values(category=reassign_to if reassign_to else None)
+            .values(category=target_category)
         )
 
         # 4. Reassign debts
@@ -1666,7 +1715,7 @@ async def delete_category(db: AsyncSession, category_id: UUID, user_id: UUID, re
                 models.SavingDeposit.__table__.update()
                 .where(models.SavingDeposit.goal_id.in_(user_goal_ids))
                 .where(models.SavingDeposit.category == category_name)
-                .values(category=reassign_to if reassign_to else None)
+                .values(category=target_category)
             )
 
         # 7. Reassign share_members local_category for this user
@@ -1729,19 +1778,18 @@ async def reset_default_categories(db: AsyncSession, user_id: UUID, kind: str = 
             name for name in existing_res.scalars().all()
             if name and name.strip().lower() != target_category.lower()
         ]
-        if existing_names:
-            await db.execute(
-                update(models.EstimatedIncome)
-                .where(models.EstimatedIncome.user_id == user_id)
-                .where(models.EstimatedIncome.category.in_(existing_names))
-                .values(category=target_category)
-            )
-            await db.execute(
-                update(models.Income)
-                .where(models.Income.user_id == user_id)
-                .where(models.Income.category.in_(existing_names))
-                .values(category=target_category)
-            )
+        await db.execute(
+            update(models.EstimatedIncome)
+            .where(models.EstimatedIncome.user_id == user_id)
+            .where(models.EstimatedIncome.category != target_category)
+            .values(category=target_category)
+        )
+        await db.execute(
+            update(models.Income)
+            .where(models.Income.user_id == user_id)
+            .where(models.Income.category != target_category)
+            .values(category=target_category)
+        )
 
         await db.execute(
             delete(models.IncomeCategory).where(models.IncomeCategory.user_id == user_id)
@@ -1767,56 +1815,62 @@ async def reset_default_categories(db: AsyncSession, user_id: UUID, kind: str = 
         name for name in existing_res.scalars().all()
         if name and name.strip().lower() != target_category.lower()
     ]
+    await db.execute(
+        update(models.Expense)
+        .where(models.Expense.user_id == user_id)
+        .where(models.Expense.category != target_category)
+        .values(category=target_category)
+    )
+    await db.execute(
+        update(models.FixedExpense)
+        .where(models.FixedExpense.user_id == user_id)
+        .where(models.FixedExpense.category != target_category)
+        .values(category=target_category)
+    )
+    await db.execute(
+        update(models.SavingGoal)
+        .where(models.SavingGoal.user_id == user_id)
+        .where(models.SavingGoal.category != target_category)
+        .values(category=target_category)
+    )
+    await db.execute(
+        update(models.Debt)
+        .where(models.Debt.user_id == user_id)
+        .where(models.Debt.category != target_category)
+        .values(category=target_category)
+    )
+    user_debt_ids = select(models.Debt.id).where(models.Debt.user_id == user_id)
+    await db.execute(
+        update(models.DebtPayment)
+        .where(models.DebtPayment.debt_id.in_(user_debt_ids))
+        .where(models.DebtPayment.category != target_category)
+        .values(category=target_category)
+    )
+    user_goal_ids = select(models.SavingGoal.id).where(models.SavingGoal.user_id == user_id)
+    await db.execute(
+        update(models.SavingDeposit)
+        .where(models.SavingDeposit.goal_id.in_(user_goal_ids))
+        .where(models.SavingDeposit.category != target_category)
+        .values(category=target_category)
+    )
+    await db.execute(
+        update(models.ShareMember)
+        .where(models.ShareMember.user_id == user_id)
+        .where(models.ShareMember.local_category != target_category)
+        .values(local_category=target_category)
+    )
+    user_budget_ids = select(models.Budget.id).where(models.Budget.user_id == user_id)
     if existing_names:
-        await db.execute(
-            update(models.Expense)
-            .where(models.Expense.user_id == user_id)
-            .where(models.Expense.category.in_(existing_names))
-            .values(category=target_category)
-        )
-        await db.execute(
-            update(models.FixedExpense)
-            .where(models.FixedExpense.user_id == user_id)
-            .where(models.FixedExpense.category.in_(existing_names))
-            .values(category=target_category)
-        )
-        await db.execute(
-            update(models.SavingGoal)
-            .where(models.SavingGoal.user_id == user_id)
-            .where(models.SavingGoal.category.in_(existing_names))
-            .values(category=target_category)
-        )
-        await db.execute(
-            update(models.Debt)
-            .where(models.Debt.user_id == user_id)
-            .where(models.Debt.category.in_(existing_names))
-            .values(category=target_category)
-        )
-        user_debt_ids = select(models.Debt.id).where(models.Debt.user_id == user_id)
-        await db.execute(
-            update(models.DebtPayment)
-            .where(models.DebtPayment.debt_id.in_(user_debt_ids))
-            .where(models.DebtPayment.category.in_(existing_names))
-            .values(category=target_category)
-        )
-        user_goal_ids = select(models.SavingGoal.id).where(models.SavingGoal.user_id == user_id)
-        await db.execute(
-            update(models.SavingDeposit)
-            .where(models.SavingDeposit.goal_id.in_(user_goal_ids))
-            .where(models.SavingDeposit.category.in_(existing_names))
-            .values(category=target_category)
-        )
-        await db.execute(
-            update(models.ShareMember)
-            .where(models.ShareMember.user_id == user_id)
-            .where(models.ShareMember.local_category.in_(existing_names))
-            .values(local_category=target_category)
-        )
-        user_budget_ids = select(models.Budget.id).where(models.Budget.user_id == user_id)
         await db.execute(
             delete(models.BudgetCategoryLimit)
             .where(models.BudgetCategoryLimit.budget_id.in_(user_budget_ids))
             .where(models.BudgetCategoryLimit.category_name.in_(existing_names))
+        )
+    else:
+        await db.execute(
+            delete(models.BudgetCategoryLimit)
+            .where(models.BudgetCategoryLimit.budget_id.in_(user_budget_ids))
+            .where(models.BudgetCategoryLimit.category_name != target_category)
         )
 
     await db.execute(

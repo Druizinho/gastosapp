@@ -830,11 +830,13 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
               {
                 id: 'all',
                 label: 'Todos',
+                shortLabel: 'Todos',
                 count: subBudgets.length + sharedWithMeBudgets.length,
               },
               {
                 id: 'own',
                 label: 'Mis sub-presupuestos',
+                shortLabel: 'Míos',
                 count: subBudgets.length,
                 icon: <Layers size={13} />,
                 badgeColor: '#10B981',
@@ -842,6 +844,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
               {
                 id: 'shared',
                 label: 'Compartidos conmigo',
+                shortLabel: 'Compartidos',
                 count: sharedWithMeBudgets.length,
                 icon: <Users size={13} />,
                 badgeColor: '#3B82F6',

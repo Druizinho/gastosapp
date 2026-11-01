@@ -242,8 +242,8 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
           <div style={{ marginBottom: '1.25rem' }}>
             <SegmentedTabs
               tabs={[
-                { id: 'saving', label: 'Meta de Ahorro', icon: <PiggyBank size={16} /> },
-                { id: 'project', label: 'Proyecto / Caja', icon: <FolderKanban size={16} /> },
+                { id: 'saving', label: 'Ahorro', shortLabel: 'Ahorro', icon: <PiggyBank size={16} /> },
+                { id: 'project', label: 'Proyecto', shortLabel: 'Proyecto', icon: <FolderKanban size={16} /> },
               ]}
               activeTab={goalType}
               onChange={(tabId) => {
