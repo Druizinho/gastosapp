@@ -125,7 +125,7 @@ export const PanasPage: React.FC = () => {
         actionLabel="Invitar pana"
         actionIcon={<UserPlus size={16} />}
         onAction={() => setIsInviteModalOpen(true)}
-        actionColor="var(--tool-panas, #EC4899)"
+        actionColor="#EC4899"
       />
 
       {error && (

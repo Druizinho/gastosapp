@@ -50,7 +50,6 @@ import {
   convertItemAmountToMainCurrency,
 } from '../utils/currencyFormat';
 import { resolveCategoryVisuals } from '../utils/categoryVisuals';
-import { colorWithOpacity } from '../utils/toolColors';
 import { PageHeader } from './ui/PageHeader';
 import { MonthPicker } from './ui/MonthPicker';
 import { SummaryHeroCard } from './ui/SummaryHeroCard';
@@ -746,91 +745,27 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
     <div style={{ padding: '1rem', paddingBottom: '6rem', maxWidth: '600px', margin: '0 auto' }}>
       <PageHeader
         title="Ingresos"
-        subtitle={activeTab === 'movements' ? 'Movimientos del mes' : 'Plantillas por cobrar'}
-        onBack={onBack}
-        rightAction={
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <MonthPicker
-              value={currentMonthYear}
-              onChange={handleMonthChange}
-              ariaLabel="Seleccionar mes de ingresos"
-            />
-
-            {activeTab === 'movements' ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingMovement(null);
-                  setIsMovementFormOpen(true);
-                }}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.35rem',
-                  background: '#10B981',
-                  color: '#FFFFFF',
-                  border: 'none',
-                  borderRadius: 'var(--radius-md, 12px)',
-                  padding: '0.5rem 0.85rem',
-                  fontSize: '0.82rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  boxShadow: '0 3px 10px rgba(16, 185, 129, 0.35)',
-                  transition: 'transform 150ms ease-out',
-                  flexShrink: 0,
-                }}
-                onMouseDown={(e) => {
-                  e.currentTarget.style.transform = 'scale(0.96)';
-                }}
-                onMouseUp={(e) => {
-                  e.currentTarget.style.transform = 'scale(1)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = 'scale(1)';
-                }}
-              >
-                <Plus size={16} strokeWidth={2.5} />
-                <span>+ Ingreso</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingEstimatedIncome(null);
-                  setIsEstimatedFormOpen(true);
-                }}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.35rem',
-                  background: 'var(--tool-income, #3B82F6)',
-                  color: '#FFFFFF',
-                  border: 'none',
-                  borderRadius: 'var(--radius-md, 12px)',
-                  padding: '0.5rem 0.85rem',
-                  fontSize: '0.82rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  boxShadow: `0 3px 10px ${colorWithOpacity('var(--tool-income, #3B82F6)', 35)}`,
-                  transition: 'transform 150ms ease-out',
-                  flexShrink: 0,
-                }}
-                onMouseDown={(e) => {
-                  e.currentTarget.style.transform = 'scale(0.96)';
-                }}
-                onMouseUp={(e) => {
-                  e.currentTarget.style.transform = 'scale(1)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = 'scale(1)';
-                }}
-              >
-                <Plus size={16} strokeWidth={2.5} />
-                <span>+ Plantilla</span>
-              </button>
-            )}
-          </div>
+        subtitle={
+          <MonthPicker
+            value={currentMonthYear}
+            onChange={handleMonthChange}
+            ariaLabel="Seleccionar mes de ingresos"
+            variant="subtle"
+          />
         }
+        onBack={onBack}
+        actionLabel={activeTab === 'movements' ? 'Ingreso' : 'Plantilla'}
+        actionIcon={<Plus size={16} strokeWidth={2.5} />}
+        actionColor="#10B981"
+        onAction={() => {
+          if (activeTab === 'movements') {
+            setEditingMovement(null);
+            setIsMovementFormOpen(true);
+          } else {
+            setEditingEstimatedIncome(null);
+            setIsEstimatedFormOpen(true);
+          }
+        }}
       />
 
       {/* Monetary Summary Hero Card */}

@@ -548,8 +548,10 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
           onClick={() => { setEditingGoal(selectedGoal); setShowGoalForm(true); }}
           disabled={isMember}
           style={{
-            width: '36px',
-            height: '36px',
+            width: '38px',
+            height: '38px',
+            minWidth: '38px',
+            minHeight: '38px',
             borderRadius: 'var(--radius-full, 9999px)',
             background: 'var(--surface-color)',
             color: isMember ? 'var(--text-tertiary)' : 'var(--text-secondary)',
@@ -559,9 +561,13 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            transition: 'transform 150ms ease-out',
+            transition: 'transform 150ms ease-out, box-shadow 150ms ease-out',
           }}
+          onMouseDown={(e) => { if (!isMember) e.currentTarget.style.transform = 'scale(0.96)'; }}
+          onMouseUp={(e) => { if (!isMember) e.currentTarget.style.transform = 'scale(1)'; }}
+          onMouseLeave={(e) => { if (!isMember) e.currentTarget.style.transform = 'scale(1)'; }}
           title={isMember ? "Solo administradores pueden editar" : "Editar"}
+          aria-label={isMember ? "Solo administradores pueden editar" : "Editar"}
         >
           <Edit3 size={16} />
         </button>
@@ -570,8 +576,10 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
             type="button"
             onClick={() => setLeaveGoalModal({ isOpen: true, goal: selectedGoal })}
             style={{
-              width: '36px',
-              height: '36px',
+              width: '38px',
+              height: '38px',
+              minWidth: '38px',
+              minHeight: '38px',
               borderRadius: 'var(--radius-full, 9999px)',
               background: 'rgba(239, 68, 68, 0.08)',
               color: 'var(--expense-color)',
@@ -580,12 +588,13 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              transition: 'transform 150ms ease-out',
+              transition: 'transform 150ms ease-out, box-shadow 150ms ease-out',
             }}
             onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
             onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
             title="Desvincularme del proyecto/fondo"
+            aria-label="Desvincularme del proyecto/fondo"
           >
             <LogOut size={16} />
           </button>
@@ -601,8 +610,10 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
                 : `Se eliminará el ${isProject ? 'proyecto' : 'fondo de ahorro'} y todo su historial.`,
             })}
             style={{
-              width: '36px',
-              height: '36px',
+              width: '38px',
+              height: '38px',
+              minWidth: '38px',
+              minHeight: '38px',
               borderRadius: 'var(--radius-full, 9999px)',
               background: 'rgba(239, 68, 68, 0.08)',
               color: 'var(--expense-color)',
@@ -611,9 +622,13 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              transition: 'transform 150ms ease-out',
+              transition: 'transform 150ms ease-out, box-shadow 150ms ease-out',
             }}
+            onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+            onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
             title="Eliminar"
+            aria-label="Eliminar"
           >
             <Trash2 size={16} />
           </button>

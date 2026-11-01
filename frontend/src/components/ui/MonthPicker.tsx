@@ -1,5 +1,5 @@
 import React, { useRef, useMemo, useState } from 'react';
-import { Calendar } from 'lucide-react';
+import { Calendar, ChevronDown } from 'lucide-react';
 
 export interface MonthPickerProps {
   /** Month formatted as "YYYY-MM" */
@@ -20,9 +20,17 @@ export interface MonthPickerProps {
   className?: string;
   /** Additional inline styles for outer container */
   style?: React.CSSProperties;
+  /** Visual variant: 'default' button or 'subtle' pill for headers/subtitles */
+  variant?: 'default' | 'subtle';
+  /** Format of the month text ('short' e.g. "Nov 2026", or 'full' e.g. "Noviembre 2026") */
+  monthFormat?: 'short' | 'full';
 }
 
 const SHORT_MONTHS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+const FULL_MONTHS = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+];
 
 const formatShortMonth = (val: string): string => {
   if (!val) return '';
@@ -31,6 +39,16 @@ const formatShortMonth = (val: string): string => {
   const [year, monthStr] = parts;
   const monthIdx = parseInt(monthStr, 10) - 1;
   const name = SHORT_MONTHS[monthIdx] || monthStr;
+  return `${name} ${year}`;
+};
+
+const formatFullMonth = (val: string): string => {
+  if (!val) return '';
+  const parts = val.split('-');
+  if (parts.length < 2) return val;
+  const [year, monthStr] = parts;
+  const monthIdx = parseInt(monthStr, 10) - 1;
+  const name = FULL_MONTHS[monthIdx] || monthStr;
   return `${name} ${year}`;
 };
 
@@ -44,14 +62,20 @@ export const MonthPicker: React.FC<MonthPickerProps> = ({
   ariaLabel = 'Seleccionar mes',
   className = '',
   style,
+  variant = 'default',
+  monthFormat,
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isPressed, setIsPressed] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
 
   const displayLabel = useMemo(() => {
     if (formatLabel) return formatLabel(value);
+    if (monthFormat === 'full' || (variant === 'subtle' && monthFormat !== 'short')) {
+      return formatFullMonth(value);
+    }
     return formatShortMonth(value);
-  }, [value, formatLabel]);
+  }, [value, formatLabel, monthFormat, variant]);
 
   const handleOpenPicker = () => {
     if (disabled) return;
@@ -94,11 +118,17 @@ export const MonthPicker: React.FC<MonthPickerProps> = ({
         type="button"
         disabled={disabled}
         onClick={handleOpenPicker}
+        onMouseEnter={() => {
+          if (!disabled) setIsHovered(true);
+        }}
+        onMouseLeave={() => {
+          setIsHovered(false);
+          setIsPressed(false);
+        }}
         onMouseDown={() => {
           if (!disabled) setIsPressed(true);
         }}
         onMouseUp={() => setIsPressed(false)}
-        onMouseLeave={() => setIsPressed(false)}
         onTouchStart={() => {
           if (!disabled) setIsPressed(true);
         }}
@@ -109,17 +139,29 @@ export const MonthPicker: React.FC<MonthPickerProps> = ({
         style={{
           display: 'inline-flex',
           alignItems: 'center',
-          gap: '0.45rem',
-          background: 'var(--surface-color, #FFFFFF)',
-          color: 'var(--text-primary, #0F172A)',
-          padding: '0.42rem 0.65rem',
-          borderRadius: 'var(--radius-md, 12px)',
-          border: '1px solid var(--border-color, rgba(0,0,0,0.08))',
-          boxShadow: 'var(--shadow-sm, 0 1px 2px rgba(0,0,0,0.04))',
+          gap: variant === 'subtle' ? '0.35rem' : '0.45rem',
+          background: variant === 'subtle'
+            ? (isHovered && !disabled ? 'var(--surface-color, #FFFFFF)' : 'var(--surface-muted, rgba(0, 0, 0, 0.04))')
+            : 'var(--surface-color, #FFFFFF)',
+          color: variant === 'subtle'
+            ? 'var(--text-secondary, #475569)'
+            : 'var(--text-primary, #0F172A)',
+          padding: variant === 'subtle'
+            ? '0.22rem 0.55rem 0.22rem 0.48rem'
+            : '0.42rem 0.65rem',
+          borderRadius: variant === 'subtle'
+            ? 'var(--radius-full, 9999px)'
+            : 'var(--radius-md, 12px)',
+          border: variant === 'subtle'
+            ? (isHovered && !disabled ? '1px solid var(--border-color, rgba(0,0,0,0.18))' : '1px solid var(--border-color, rgba(0,0,0,0.08))')
+            : '1px solid var(--border-color, rgba(0,0,0,0.08))',
+          boxShadow: variant === 'subtle'
+            ? (isHovered && !disabled ? 'var(--shadow-sm, 0 1px 2px rgba(0,0,0,0.04))' : 'none')
+            : 'var(--shadow-sm, 0 1px 2px rgba(0,0,0,0.04))',
           cursor: disabled ? 'not-allowed' : 'pointer',
           opacity: disabled ? 0.6 : 1,
           fontFamily: 'inherit',
-          fontSize: '0.82rem',
+          fontSize: variant === 'subtle' ? '0.78rem' : '0.82rem',
           fontWeight: 600,
           lineHeight: 1.2,
           userSelect: 'none',
@@ -129,12 +171,20 @@ export const MonthPicker: React.FC<MonthPickerProps> = ({
         }}
       >
         <Calendar
-          size={16}
+          size={variant === 'subtle' ? 13 : 16}
           color="var(--text-secondary, #64748B)"
           aria-hidden="true"
           style={{ flexShrink: 0, pointerEvents: 'none' }}
         />
         <span style={{ pointerEvents: 'none' }}>{displayLabel}</span>
+        {variant === 'subtle' && (
+          <ChevronDown
+            size={13}
+            color="var(--text-tertiary, #94A3B8)"
+            aria-hidden="true"
+            style={{ flexShrink: 0, pointerEvents: 'none', marginLeft: '-1px' }}
+          />
+        )}
       </button>
 
       {/* Hidden native month input that provides the calendar picker popup */}

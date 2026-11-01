@@ -488,8 +488,10 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
           type="button"
           onClick={() => setLocalCategoryModal({ isOpen: true, debt: selectedDebt })}
           style={{
-            width: '36px',
-            height: '36px',
+            width: '38px',
+            height: '38px',
+            minWidth: '38px',
+            minHeight: '38px',
             borderRadius: 'var(--radius-full, 9999px)',
             background: 'var(--surface-color)',
             border: '1px solid var(--accent-light, rgba(0,0,0,0.08))',
@@ -512,8 +514,10 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
           onClick={() => { setEditingDebt(selectedDebt); setShowForm(true); }}
           disabled={isMember}
           style={{
-            width: '36px',
-            height: '36px',
+            width: '38px',
+            height: '38px',
+            minWidth: '38px',
+            minHeight: '38px',
             borderRadius: 'var(--radius-full, 9999px)',
             background: 'var(--surface-color)',
             border: '1px solid var(--accent-light, rgba(0,0,0,0.08))',
@@ -525,6 +529,9 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
             opacity: isMember ? 0.4 : 1,
             transition: 'transform 150ms ease-out',
           }}
+          onMouseDown={(e) => { if (!isMember) e.currentTarget.style.transform = 'scale(0.96)'; }}
+          onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
           title={isMember ? "Solo administradores pueden editar la deuda" : "Editar deuda"}
         >
           <Edit3 size={16} />
@@ -534,8 +541,10 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
             type="button"
             onClick={() => setLeaveDebtModal({ isOpen: true, debt: selectedDebt })}
             style={{
-              width: '36px',
-              height: '36px',
+              width: '38px',
+              height: '38px',
+              minWidth: '38px',
+              minHeight: '38px',
               borderRadius: 'var(--radius-full, 9999px)',
               background: 'rgba(239, 68, 68, 0.08)',
               border: '1px solid rgba(239, 68, 68, 0.2)',
@@ -558,8 +567,10 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
             type="button"
             onClick={() => setConfirmDelete({ isOpen: true, debtId: selectedDebt.id })}
             style={{
-              width: '36px',
-              height: '36px',
+              width: '38px',
+              height: '38px',
+              minWidth: '38px',
+              minHeight: '38px',
               borderRadius: 'var(--radius-full, 9999px)',
               background: 'rgba(239, 68, 68, 0.08)',
               border: '1px solid rgba(239, 68, 68, 0.2)',
@@ -570,6 +581,9 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
               cursor: 'pointer',
               transition: 'transform 150ms ease-out',
             }}
+            onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+            onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
             title="Eliminar deuda"
           >
             <Trash2 size={16} />

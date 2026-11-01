@@ -31,6 +31,7 @@ import ListCardBottomSheet from './ListCardBottomSheet';
 import { SkeletonList } from './ui/Skeleton';
 import { SegmentedTabs } from './ui/SegmentedTabs';
 import { useToast } from './ui/Toast';
+import { PageHeader } from './ui/PageHeader';
 
 // Re-export visual helpers for backward compatibility
 export { ICON_MAP, CATEGORY_COLORS, DEFAULT_ICONS, resolveCategoryVisuals };
@@ -253,89 +254,52 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ onCategoriesCh
       `}</style>
       {/* Top Header Card */}
       <div className="category-manager-card soft-card">
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '0.75rem',
-            marginBottom: '1rem',
-          }}
-        >
-          <div>
-            <h2
-              style={{
-                fontSize: '1.25rem',
-                fontWeight: 700,
-                color: 'var(--text-primary)',
-                margin: 0,
-              }}
-            >
-              Mis Categorías
-            </h2>
-            <p
-              style={{
-                fontSize: '0.8rem',
-                color: 'var(--text-secondary)',
-                margin: '0.2rem 0 0 0',
-              }}
-            >
-              Personaliza nombres, colores e íconos en toda tu app
-            </p>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <button
-              type="button"
-              onClick={() => setShowResetModal(true)}
-              disabled={isSeeding}
+        <PageHeader
+          title="Mis Categorías"
+          subtitle="Personaliza nombres, colores e íconos en toda tu app"
+          actionLabel={!isFormOpen ? "Nueva" : undefined}
+          actionIcon={<Plus size={16} strokeWidth={2.5} />}
+          onAction={!isFormOpen ? handleOpenCreate : undefined}
+          actionColor="var(--tool-budgets, #6366F1)"
+          controls={
+            <div
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '0.35rem',
-                padding: '0.45rem 0.75rem',
-                borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--border-color)',
-                background: 'var(--surface-color)',
-                color: 'var(--text-secondary)',
-                fontSize: '0.78rem',
-                fontWeight: 600,
-                cursor: isSeeding ? 'not-allowed' : 'pointer',
-                transition: 'background-color 0.15s ease, transform 0.15s ease',
+                minHeight: '38px',
+                width: '100%',
               }}
-              title="Restaurar o completar las categorías recomendadas del sistema"
             >
-              <RotateCcw size={13} className={isSeeding ? 'spin' : ''} />
-              <span>{isSeeding ? 'Restaurando...' : 'Restaurar por defecto'}</span>
-            </button>
-
-            {!isFormOpen && (
               <button
                 type="button"
-                onClick={handleOpenCreate}
+                onClick={() => setShowResetModal(true)}
+                disabled={isSeeding}
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '0.35rem',
+                  gap: '0.4rem',
                   padding: '0.45rem 0.85rem',
-                  borderRadius: 'var(--radius-sm)',
-                  border: 'none',
-                  background: 'var(--accent-color)',
-                  color: '#FFFFFF',
+                  minHeight: '38px',
+                  borderRadius: 'var(--radius-md, 12px)',
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--surface-color)',
+                  color: 'var(--text-secondary)',
                   fontSize: '0.8rem',
                   fontWeight: 600,
-                  cursor: 'pointer',
-                  boxShadow: 'var(--shadow-sm)',
-                  transition: 'background-color 0.15s ease, transform 0.15s ease',
+                  cursor: isSeeding ? 'not-allowed' : 'pointer',
+                  transition: 'transform 150ms ease-out, background-color 150ms ease',
                 }}
+                onMouseDown={(e) => { if (!isSeeding) e.currentTarget.style.transform = 'scale(0.96)'; }}
+                onMouseUp={(e) => { if (!isSeeding) e.currentTarget.style.transform = 'scale(1)'; }}
+                onMouseLeave={(e) => { if (!isSeeding) e.currentTarget.style.transform = 'scale(1)'; }}
+                title="Restaurar o completar las categorías recomendadas del sistema"
               >
-                <Plus size={15} />
-                <span>Nueva Categoría</span>
+                <RotateCcw size={14} className={isSeeding ? 'spin' : ''} />
+                <span>{isSeeding ? 'Restaurando...' : 'Restaurar por defecto'}</span>
               </button>
-            )}
-          </div>
-        </div>
+            </div>
+          }
+        />
 
         {/* Kind Selector Tabs (Gastos / Ingresos) */}
         <div style={{ marginBottom: '1rem' }}>

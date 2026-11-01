@@ -47,7 +47,6 @@ import { AttributionBadge } from './ui/AttributionBadge';
 import { SkeletonList } from './ui/Skeleton';
 import ListCard from './ListCard';
 import ListCardBottomSheet from './ListCardBottomSheet';
-import { colorWithOpacity } from '../utils/toolColors';
 
 const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
@@ -593,53 +592,22 @@ const FixedExpenses: React.FC = () => {
     <div style={{ padding: '1rem', paddingBottom: '6rem', maxWidth: '600px', margin: '0 auto' }}>
       <PageHeader
         title="Gastos Fijos"
-        subtitle="Pagos recurrentes del mes"
-        onBack={() => navigate('/herramientas')}
-        rightAction={
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <MonthPicker
-              value={currentMonth}
-              onChange={setCurrentMonth}
-              ariaLabel="Seleccionar mes de gastos fijos"
-            />
-
-            <button
-              type="button"
-              onClick={() => {
-                setEditingExpense(null);
-                setIsFormOpen(true);
-              }}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.35rem',
-                background: 'var(--tool-fixed, #F59E0B)',
-                color: '#FFFFFF',
-                border: 'none',
-                borderRadius: 'var(--radius-md, 12px)',
-                padding: '0.5rem 0.85rem',
-                fontSize: '0.82rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                boxShadow: `0 3px 10px ${colorWithOpacity('var(--tool-fixed, #F59E0B)', 35)}`,
-                transition: 'transform 150ms ease-out',
-                flexShrink: 0,
-              }}
-              onMouseDown={(e) => {
-                e.currentTarget.style.transform = 'scale(0.96)';
-              }}
-              onMouseUp={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-              }}
-            >
-              <Plus size={16} strokeWidth={2.5} />
-              <span>Nuevo</span>
-            </button>
-          </div>
+        subtitle={
+          <MonthPicker
+            value={currentMonth}
+            onChange={setCurrentMonth}
+            ariaLabel="Seleccionar mes de gastos fijos"
+            variant="subtle"
+          />
         }
+        onBack={() => navigate('/herramientas')}
+        actionLabel="Nuevo"
+        actionIcon={<Plus size={16} strokeWidth={2.5} />}
+        actionColor="var(--tool-fixed, #F59E0B)"
+        onAction={() => {
+          setEditingExpense(null);
+          setIsFormOpen(true);
+        }}
       />
 
       {/* Summary card with progress bar */}
