@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Plus,
   Minus,
@@ -88,6 +89,10 @@ const formatDate = (dateStr: string) => {
 };
 
 export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
+  const [searchParams] = useSearchParams();
+  const highlightId = searchParams.get('highlightId');
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+
   const { categories } = useCategories();
   const { mainCurrency, setMainCurrency } = useCurrencyPreference();
   const { user } = useAuth();
@@ -210,6 +215,44 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
     fetchData();
   }, [fetchData]);
 
+  // Deep-linking & Highlight Handler
+  useEffect(() => {
+    if (!highlightId || loading || goals.length === 0) return;
+
+    const goal = goals.find((g) => g.id === highlightId);
+    if (!goal) return;
+
+    if (selectedGoal && selectedGoal.id !== goal.id) {
+      setSelectedGoal(null);
+    }
+
+    const isProject = goal.type === 'project';
+    if (isProject && typeTab === 'savings') {
+      setTypeTab('projects');
+    } else if (!isProject && typeTab === 'projects') {
+      setTypeTab('savings');
+    }
+
+    if (goal.is_completed && statusTab === 'active') {
+      setStatusTab('completed');
+    } else if (!goal.is_completed && statusTab === 'completed') {
+      setStatusTab('active');
+    }
+
+    setHighlightedId(goal.id);
+
+    const scrollTimer = setTimeout(() => {
+      const el = document.getElementById(`saving-goal-${goal.id}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 150);
+
+    const timer = setTimeout(() => setHighlightedId(null), 3000);
+    return () => {
+      clearTimeout(scrollTimer);
+      clearTimeout(timer);
+    };
+  }, [highlightId, loading, goals]);
+
   // Convert amount between currencies using rates helper
   const convertAmount = (amount: number, fromCurrency: string) => {
     if (!rates || !amount) return { usd: amount || 0, bs: amount || 0, eur: amount || 0, usdt: amount || 0 };
@@ -242,12 +285,31 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
 
   const calcDepositInGoalCurrency = (d: SavingDeposit, goal: SavingGoal): number => {
     if (d.currency === goal.currency) return Number(d.amount);
-    if (goal.currency === 'USD_BCV' && d.amount_usd) return Number(d.amount_usd);
-    if (goal.currency === 'BS' && d.amount_bs) return Number(d.amount_bs);
-    if (goal.currency === 'EUR_BCV' && d.amount_eur) return Number(d.amount_eur);
-    if (goal.currency === 'USDT' && d.amount_usdt) return Number(d.amount_usdt);
-    if (goal.currency === 'USD_CASH' && d.amount_usd) return Number(d.amount_usd);
-
+    if (goal.currency === 'BS' && d.amount_bs != null) return Number(d.amount_bs);
+    if (goal.currency === 'USD_BCV' && d.amount_usd != null) return Number(d.amount_usd);
+    if (goal.currency === 'EUR_BCV') {
+      if (d.amount_eur != null) return Number(d.amount_eur);
+      if (d.amount_bs != null && d.rate_eur_bs != null && Number(d.rate_eur_bs) > 0) {
+        return Number(d.amount_bs) / Number(d.rate_eur_bs);
+      }
+      if (d.amount_usd != null) return Number(d.amount_usd);
+    }
+    if (goal.currency === 'USDT') {
+      if (d.amount_usdt != null) return Number(d.amount_usdt);
+      if (d.amount_bs != null && d.rate_usdt_bs != null && Number(d.rate_usdt_bs) > 0) {
+        return Number(d.amount_bs) / Number(d.rate_usdt_bs);
+      }
+      if (d.amount_usd != null) return Number(d.amount_usd);
+    }
+    if (goal.currency === 'USD_CASH') {
+      if (d.amount_bs != null && Number(d.amount_bs) > 0) {
+        const validRates = [Number(d.rate_usd_bs || 0), Number(d.rate_eur_bs || 0), Number(d.rate_usdt_bs || 0)].filter(r => r > 0);
+        if (validRates.length > 0) {
+          return Number(d.amount_bs) / Math.max(...validRates);
+        }
+      }
+      if (d.amount_usd != null) return Number(d.amount_usd);
+    }
     const conv = convertAmount(Number(d.amount), d.currency);
     if (goal.currency === 'USD_BCV' || goal.currency === 'USD_CASH') return conv.usd;
     if (goal.currency === 'BS') return conv.bs;
@@ -437,6 +499,9 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
             amount_usd: d.amount_usd,
             amount_eur: d.amount_eur,
             amount_usdt: d.amount_usdt,
+            rate_usd_bs: d.rate_usd_bs,
+            rate_eur_bs: d.rate_eur_bs,
+            rate_usdt_bs: d.rate_usdt_bs,
           },
           mainCurrency,
           rates
@@ -1454,7 +1519,9 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
         {/* Modal: Aporte o Pago */}
         {depositGoal && (
           <SavingDepositForm
-            {...({ goalCategory: depositGoal.category || (depositGoal.type === 'project' ? 'Proyectos' : 'Ahorro') } as any)}
+            goalCategory={depositGoal.category || (depositGoal.type === 'project' ? 'Proyectos' : 'Ahorro')}
+            isShared={depositGoal.is_shared}
+            sharedPartnerName={depositGoal.shared_partner_name}
             initialData={editingDeposit}
             initialTransactionType={depositModalMode}
             goalName={depositGoal.name}
@@ -1846,43 +1913,60 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
               </button>
             );
 
+            const isHighlighted = highlightedId === goal.id;
+
             return (
-              <ListCard
+              <div
                 key={goal.id}
-                statusColor={color}
-                icon={<IconComponent size={20} />}
-                iconBg={`${color}18`}
-                iconColor={color}
-                title={titleNode}
-                badges={badgesNode}
-                primaryAmount={primaryAmount}
-                secondaryAmount={secondaryAmount}
-                progress={hasTarget ? { value: progress, color: isOverBudget ? '#F59E0B' : color } : undefined}
-                quickAction={quickActionNode}
-                onClick={() => setSelectedGoal(goal)}
+                id={`saving-goal-${goal.id}`}
+                style={{
+                  borderRadius: '1.25rem',
+                  boxShadow: isHighlighted
+                    ? '0 0 0 2px #10B981, 0 0 16px rgba(16, 185, 129, 0.45)'
+                    : undefined,
+                  transition: 'box-shadow 0.3s ease',
+                }}
               >
-                {hasTarget && (
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      fontSize: '0.72rem',
-                      color: 'var(--text-secondary)',
-                      marginTop: '0.25rem',
-                      lineHeight: 1.2,
-                    }}
-                  >
-                    {isOverBudget ? (
-                      <span style={{ color: '#F59E0B', fontWeight: 600 }}>
-                        +{formatCurrency(saved - target, goal.currency)} sobre presupuesto
-                      </span>
-                    ) : (
-                      <span>{progress.toFixed(0)}% {isProject ? 'del presupuesto' : 'completado'}</span>
-                    )}
-                  </div>
-                )}
-              </ListCard>
+                <ListCard
+                  statusColor={color}
+                  icon={<IconComponent size={20} />}
+                  iconBg={`${color}18`}
+                  iconColor={color}
+                  title={titleNode}
+                  badges={badgesNode}
+                  primaryAmount={primaryAmount}
+                  secondaryAmount={secondaryAmount}
+                  progress={hasTarget ? { value: progress, color: isOverBudget ? '#F59E0B' : color } : undefined}
+                  quickAction={quickActionNode}
+                  onClick={() => setSelectedGoal(goal)}
+                  style={isHighlighted ? {
+                    boxShadow: '0 0 0 2px #10B981, 0 0 16px rgba(16, 185, 129, 0.45)',
+                    transition: 'box-shadow 0.3s ease',
+                  } : undefined}
+                >
+                  {hasTarget && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        fontSize: '0.72rem',
+                        color: 'var(--text-secondary)',
+                        marginTop: '0.25rem',
+                        lineHeight: 1.2,
+                      }}
+                    >
+                      {isOverBudget ? (
+                        <span style={{ color: '#F59E0B', fontWeight: 600 }}>
+                          +{formatCurrency(saved - target, goal.currency)} sobre presupuesto
+                        </span>
+                      ) : (
+                        <span>{progress.toFixed(0)}% {isProject ? 'del presupuesto' : 'completado'}</span>
+                      )}
+                    </div>
+                  )}
+                </ListCard>
+              </div>
             );
           })}
         </div>
@@ -1901,7 +1985,9 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
       {/* Modal: Aporte o Pago */}
       {depositGoal && (
         <SavingDepositForm
-          {...({ goalCategory: depositGoal.category || (depositGoal.type === 'project' ? 'Proyectos' : 'Ahorro') } as any)}
+          goalCategory={depositGoal.category || (depositGoal.type === 'project' ? 'Proyectos' : 'Ahorro')}
+          isShared={depositGoal.is_shared}
+          sharedPartnerName={depositGoal.shared_partner_name}
           initialData={editingDeposit}
           initialTransactionType={depositModalMode}
           goalName={depositGoal.name}

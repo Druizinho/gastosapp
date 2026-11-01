@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useContext } from 'react';
 import type { FixedExpenseCreate, FixedExpenseUpdate, FixedExpense, CurrencyType, ExchangeRates, Connection } from '../types';
 import { CURRENCY_OPTIONS } from '../types';
 import { getRates, getConnections } from '../api';
-import { Info, Users } from 'lucide-react';
+import { Users } from 'lucide-react';
 import { ParticipantPicker } from './panas/ParticipantPicker';
 import CategorySelect from './CategorySelect';
+import { ExchangeRateField } from './ExchangeRateField';
+import { ToastContext } from './ui/Toast';
 
 interface FixedExpenseFormProps {
   initialData?: FixedExpense | null;
@@ -16,6 +18,7 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
   const isEditing = !!initialData;
   const isSharedExpense = isEditing && !!initialData?.is_shared;
   const isReadOnlyMember = isSharedExpense && initialData?.my_role === 'member';
+  const toast = useContext(ToastContext);
 
   const [name, setName] = useState<string>(initialData?.name || '');
   const [amount, setAmount] = useState<string>(initialData?.amount.toString() || '');
@@ -36,6 +39,7 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
 
   const [rates, setRates] = useState<ExchangeRates | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
     if (initialData) {
@@ -91,13 +95,22 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError(null);
     if (!name || !amount) return;
+
+    const parsedAmount = parseFloat(amount.replace(',', '.'));
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      const err = 'Por favor, ingresa un monto válido.';
+      setSubmitError(err);
+      if (toast) toast.error(err);
+      return;
+    }
 
     setIsSubmitting(true);
     try {
       const submitData: FixedExpenseCreate | FixedExpenseUpdate = {
         name,
-        amount: parseFloat(amount.replace(',', '.')),
+        amount: parsedAmount,
         currency,
         category: category || undefined,
         payment_day: paymentDay ? parseInt(paymentDay) : null,
@@ -132,12 +145,18 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
         setSelectedPartnerIds([]);
         setAdminPartnerIds([]);
       }
+    } catch (err: any) {
+      console.error('Error saving fixed expense:', err);
+      const msg = err?.response?.data?.detail || err?.message || 'Error al guardar el gasto fijo. Inténtalo de nuevo.';
+      const errorMsg = typeof msg === 'string' ? msg : 'Error al guardar el gasto fijo.';
+      setSubmitError(errorMsg);
+      if (toast) {
+        toast.error(errorMsg);
+      }
     } finally {
       setIsSubmitting(false);
     }
   };
-
-  const currentRate = rates?.usd_bs;
 
   return (
     <div
@@ -146,8 +165,25 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
         if (e.target === e.currentTarget) onCancel();
       }}
     >
-      <div className="expense-form-container">
+      <div className="expense-form-container" onClick={(e) => e.stopPropagation()}>
         <h2>{initialData ? 'Editar Gasto Fijo' : 'Nuevo Gasto Fijo'}</h2>
+
+        {submitError && (
+          <div
+            className="error-message"
+            style={{
+              padding: '0.75rem 1rem',
+              marginBottom: '1rem',
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              borderRadius: 'var(--radius-md, 8px)',
+              color: '#ef4444',
+              fontSize: '0.875rem',
+            }}
+          >
+            {submitError}
+          </div>
+        )}
 
         {initialData?.is_shared && (
           <div style={{
@@ -187,11 +223,10 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
             <div className="form-group half">
               <label>Monto</label>
               <input
-                type="number"
-                step="0.01"
-                min="0.01"
+                type="text"
+                inputMode="decimal"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={(e) => setAmount(e.target.value.replace(/[^0-9.,]/g, ''))}
                 required
                 placeholder="0.00"
               />
@@ -206,26 +241,14 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
             </div>
           </div>
 
-          <div className="form-group">
-            <label style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>Tasa de Cambio {initialData ? '(Histórica)' : ''}</span>
-              <span className="form-hint-inline">(Opcional)</span>
-            </label>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={manualRate}
-              onChange={(e) => {
-                const val = e.target.value.replace(/[^0-9.,]/g, '');
-                setManualRate(val);
-              }}
-              placeholder={currentRate ? `Por defecto usa la del mercado` : "Ej. 36.50"}
-            />
-            <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'flex-start', gap: '0.5rem', background: 'rgba(59, 130, 246, 0.1)', color: 'var(--accent-color)', padding: '0.75rem', borderRadius: '8px', fontSize: '0.85rem', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
-              <Info size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
-              <span>{initialData ? "Esta fue la tasa de cambio usada. Modifícala solo si deseas recalcular." : "💡 Déjalo en blanco para usar la tasa automática (BCV o Binance)."}</span>
-            </div>
-          </div>
+          <ExchangeRateField
+            currency={currency}
+            rates={rates}
+            manualRate={manualRate}
+            onManualRateChange={setManualRate}
+            isEditing={Boolean(initialData)}
+            hasDate={false}
+          />
 
           <div className="form-group row">
             <div className="form-group half">
@@ -291,12 +314,15 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
                   style={{ width: '18px', height: '18px', accentColor: 'var(--accent-color)', cursor: 'pointer' }}
                 />
                 <label htmlFor="share_fixed_expense" style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <Users size={16} /> Compartir con Panas (Grupos)
+                  <Users size={16} style={{ color: 'var(--accent-color)' }} /> Compartir con Panas
                 </label>
               </div>
+              <p style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', margin: '0.2rem 0 0 1.65rem', lineHeight: 1.35 }}>
+                Sincroniza el progreso y los movimientos en tiempo real con los participantes que elijas.
+              </p>
 
               {isSharedChecked && (
-                <div style={{ marginTop: '0.75rem' }}>
+                <div className="form-collapse-reveal" style={{ marginTop: '0.75rem' }}>
                   <ParticipantPicker
                     connections={connections}
                     selectedIds={selectedPartnerIds}
@@ -307,9 +333,6 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
                     }}
                     accentColor="var(--accent-color)"
                   />
-                  <p style={{ margin: '0.45rem 0 0', fontSize: '0.75rem', color: 'var(--text-tertiary)', lineHeight: 1.35 }}>
-                    Todos los integrantes verán este gasto fijo y su estado mensual de pago sincronizado.
-                  </p>
                 </div>
               )}
             </div>

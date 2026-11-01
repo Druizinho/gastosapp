@@ -84,16 +84,16 @@ async def get_summary(db: AsyncSession, user_id: UUID):
         return [
             func.coalesce(func.sum(models.Expense.amount_bs), 0),
             func.coalesce(func.sum(models.Expense.amount_usd), 0),
-            func.coalesce(func.sum(models.Expense.amount_eur), 0),
-            func.coalesce(func.sum(models.Expense.amount_usdt), 0)
+            func.coalesce(func.sum(func.coalesce(models.Expense.amount_eur, models.Expense.amount_usd)), 0),
+            func.coalesce(func.sum(func.coalesce(models.Expense.amount_usdt, models.Expense.amount_usd)), 0)
         ]
 
     def income_sum_cols():
         return [
             func.coalesce(func.sum(models.Income.amount_bs), 0),
             func.coalesce(func.sum(models.Income.amount_usd), 0),
-            func.coalesce(func.sum(models.Income.amount_eur), 0),
-            func.coalesce(func.sum(models.Income.amount_usdt), 0)
+            func.coalesce(func.sum(func.coalesce(models.Income.amount_eur, models.Income.amount_usd)), 0),
+            func.coalesce(func.sum(func.coalesce(models.Income.amount_usdt, models.Income.amount_usd)), 0)
         ]
         
     # Total spent
@@ -176,16 +176,16 @@ async def get_summary_range(db: AsyncSession, user_id: UUID, date_from: date, da
         return [
             func.coalesce(func.sum(models.Expense.amount_bs), 0),
             func.coalesce(func.sum(models.Expense.amount_usd), 0),
-            func.coalesce(func.sum(models.Expense.amount_eur), 0),
-            func.coalesce(func.sum(models.Expense.amount_usdt), 0)
+            func.coalesce(func.sum(func.coalesce(models.Expense.amount_eur, models.Expense.amount_usd)), 0),
+            func.coalesce(func.sum(func.coalesce(models.Expense.amount_usdt, models.Expense.amount_usd)), 0)
         ]
 
     def income_sum_cols():
         return [
             func.coalesce(func.sum(models.Income.amount_bs), 0),
             func.coalesce(func.sum(models.Income.amount_usd), 0),
-            func.coalesce(func.sum(models.Income.amount_eur), 0),
-            func.coalesce(func.sum(models.Income.amount_usdt), 0)
+            func.coalesce(func.sum(func.coalesce(models.Income.amount_eur, models.Income.amount_usd)), 0),
+            func.coalesce(func.sum(func.coalesce(models.Income.amount_usdt, models.Income.amount_usd)), 0)
         ]
 
     # Totales del rango (expenses)
@@ -291,6 +291,7 @@ async def ensure_categories_and_debts_schema() -> None:
         "ALTER TABLE debt_payments ADD COLUMN IF NOT EXISTS category VARCHAR(100)",
         "ALTER TABLE debt_payments ADD COLUMN IF NOT EXISTS create_expense BOOLEAN NOT NULL DEFAULT FALSE",
         "ALTER TABLE debt_payments ADD COLUMN IF NOT EXISTS expense_id UUID",
+        "ALTER TABLE debt_payments ADD COLUMN IF NOT EXISTS income_id UUID",
         "ALTER TABLE debt_payments ADD COLUMN IF NOT EXISTS transaction_type VARCHAR(20) NOT NULL DEFAULT 'payment'",
         # 4. estimated_incomes columns
         "ALTER TABLE estimated_incomes ADD COLUMN IF NOT EXISTS category VARCHAR(100) DEFAULT 'Otros ingresos'",
@@ -870,6 +871,26 @@ async def ensure_categories_and_debts_schema() -> None:
                         ALTER TABLE debt_payments 
                         ADD CONSTRAINT fk_debt_payments_expense_id 
                         FOREIGN KEY (expense_id) REFERENCES expenses(id) ON DELETE SET NULL;
+                    END IF;
+                EXCEPTION WHEN OTHERS THEN
+                    NULL;
+                END $$;
+            """))
+    except Exception:
+        pass
+
+    # Foreign key for debt_payments.income_id
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint WHERE conname = 'fk_debt_payments_income_id'
+                    ) THEN
+                        ALTER TABLE debt_payments 
+                        ADD CONSTRAINT fk_debt_payments_income_id 
+                        FOREIGN KEY (income_id) REFERENCES incomes(id) ON DELETE SET NULL;
                     END IF;
                 EXCEPTION WHEN OTHERS THEN
                     NULL;

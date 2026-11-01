@@ -4,7 +4,6 @@ import {
   UserPlus, 
   Check, 
   X, 
-  Clock, 
   AlertCircle, 
   Home, 
   CreditCard, 
@@ -31,7 +30,8 @@ import { SummaryHeroCard } from '../components/ui/SummaryHeroCard';
 import { SegmentedTabs } from '../components/ui/SegmentedTabs';
 import { EmptyState } from '../components/ui/EmptyState';
 import { ListCard } from '../components/ListCard';
-import { SkeletonHeroCard, SkeletonList } from '../components/ui/Skeleton';
+import { SkeletonList } from '../components/ui/Skeleton';
+import { formatCurrencyAmount } from '../utils/currencyFormat';
 
 export const PanasPage: React.FC = () => {
   const navigate = useNavigate();
@@ -42,6 +42,7 @@ export const PanasPage: React.FC = () => {
 
   // Tabs: 'panas' | 'requests'
   const [activeTab, setActiveTab] = useState<'panas' | 'requests'>('panas');
+  const [requestsSubTab, setRequestsSubTab] = useState<'received' | 'sent'>('received');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Modals state
@@ -144,44 +145,46 @@ export const PanasPage: React.FC = () => {
         </div>
       )}
 
-      {overview && (
-        <SummaryHeroCard
-          isLoading={loading}
-          eyebrow="RESUMEN CONJUNTO"
-          badgeText={`${activePanas.length} ${activePanas.length === 1 ? 'Pana activo' : 'Panas activos'}`}
-          badgeIcon={<Users size={13} />}
-          mainAmount={String(activePanas.length)}
-          statusSubtext={activePanas.length === 1 ? '1 pana conectado sincronizando finanzas' : `${activePanas.length} panas conectados sincronizando finanzas`}
-          accentColor="var(--tool-panas, #EC4899)"
-          metrics={[
-            {
-              label: 'Gastos Fijos',
-              value: String(overview?.total_shared_fixed_expenses || 0),
-              subtext: (overview?.pending_shared_fixed_expenses_this_month || 0) > 0 ? `${overview?.pending_shared_fixed_expenses_this_month} pendiente(s)` : 'Al día',
-              icon: <Home size={14} />,
-              valueColor: (overview?.pending_shared_fixed_expenses_this_month || 0) > 0 ? '#F59E0B' : undefined,
-            },
-            {
-              label: 'Deudas',
-              value: String(overview?.total_shared_debts || 0),
-              subtext: Object.keys(overview?.shared_debts_remaining_by_currency || {}).length > 0 ? Object.entries(overview!.shared_debts_remaining_by_currency).map(([c, v]) => `${v} ${c}`).join(' · ') : 'Sin saldo',
-              icon: <CreditCard size={14} />,
-            },
-            {
-              label: 'Ahorros',
-              value: String(overview?.total_shared_saving_goals || 0),
-              subtext: 'Metas conjuntas',
-              icon: <PiggyBank size={14} />,
-            },
-            {
-              label: 'Subpresupuestos',
-              value: String(totalSharedBudgets),
-              subtext: 'Compartidos',
-              icon: <Layers size={14} />,
-            },
-          ]}
-        />
-      )}
+      <SummaryHeroCard
+        isLoading={loading}
+        eyebrow="RESUMEN CONJUNTO"
+        badgeText={loading ? '...' : `${activePanas.length} ${activePanas.length === 1 ? 'Pana activo' : 'Panas activos'}`}
+        badgeIcon={<Users size={13} />}
+        mainAmount={loading ? '...' : String(activePanas.length)}
+        statusSubtext={loading ? 'Sincronizando finanzas...' : (activePanas.length === 1 ? '1 pana conectado sincronizando finanzas' : `${activePanas.length} panas conectados sincronizando finanzas`)}
+        accentColor="var(--tool-panas, #EC4899)"
+        metrics={[
+          {
+            label: 'Gastos Fijos',
+            value: loading ? '...' : String(overview?.total_shared_fixed_expenses || 0),
+            subtext: loading ? undefined : ((overview?.pending_shared_fixed_expenses_this_month || 0) > 0 ? `${overview?.pending_shared_fixed_expenses_this_month} pendiente(s)` : 'Al día'),
+            icon: <Home size={14} />,
+            valueColor: !loading && (overview?.pending_shared_fixed_expenses_this_month || 0) > 0 ? '#F59E0B' : undefined,
+          },
+          {
+            label: 'Deudas',
+            value: loading ? '...' : String(overview?.total_shared_debts || 0),
+            subtext: loading ? undefined : (Object.keys(overview?.shared_debts_remaining_by_currency || {}).length > 0
+              ? Object.entries(overview!.shared_debts_remaining_by_currency)
+                  .map(([c, v]) => formatCurrencyAmount(v, c))
+                  .join(' · ')
+              : 'Sin saldo'),
+            icon: <CreditCard size={14} />,
+          },
+          {
+            label: 'Ahorros',
+            value: loading ? '...' : String(overview?.total_shared_saving_goals || 0),
+            subtext: loading ? undefined : 'Metas conjuntas',
+            icon: <PiggyBank size={14} />,
+          },
+          {
+            label: 'Subpresupuestos',
+            value: loading ? '...' : String(totalSharedBudgets),
+            subtext: loading ? undefined : 'Compartidos',
+            icon: <Layers size={14} />,
+          },
+        ]}
+      />
 
       <SegmentedTabs<'panas' | 'requests'>
         activeTab={activeTab}
@@ -207,7 +210,6 @@ export const PanasPage: React.FC = () => {
 
       {loading ? (
         <div style={{ padding: '8px 0' }}>
-          <SkeletonHeroCard />
           <SkeletonList count={3} />
         </div>
       ) : activeTab === 'panas' ? (
@@ -251,10 +253,35 @@ export const PanasPage: React.FC = () => {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {filteredPanas.map((pana: PanaSummary) => {
-                const avatar = (
-                  <span style={{ fontWeight: 700, fontSize: '1.05rem' }}>
+                const avatar = pana.partner_avatar_url ? (
+                  <img
+                    src={pana.partner_avatar_url}
+                    alt={pana.partner_name}
+                    style={{
+                      width: '40px',
+                      height: '40px',
+                      borderRadius: '50%',
+                      objectFit: 'cover',
+                      display: 'block',
+                    }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: '40px',
+                      height: '40px',
+                      borderRadius: '50%',
+                      background: 'linear-gradient(135deg, #EC4899, #8B5CF6)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#FFFFFF',
+                      fontWeight: 700,
+                      fontSize: '1.05rem',
+                    }}
+                  >
                     {pana.partner_name.charAt(0).toUpperCase()}
-                  </span>
+                  </div>
                 );
 
                 const title = (
@@ -274,89 +301,71 @@ export const PanasPage: React.FC = () => {
 
                 const subtitle = pana.partner_email || 'Conectado';
 
-                const badges = (
+                const hasFixed = (pana.shared_fixed_expenses_count || 0) > 0;
+                const hasDebts = (pana.shared_debts_count || 0) > 0;
+                const hasSavings = (pana.shared_saving_goals_count || 0) > 0;
+                const hasBudgets = (pana.shared_sub_budgets_count || 0) > 0;
+                const hasAnyShared = hasFixed || hasDebts || hasSavings || hasBudgets;
+
+                const badgeStyle: React.CSSProperties = {
+                  fontSize: '0.72rem',
+                  fontWeight: 500,
+                  padding: '0.15rem 0.5rem',
+                  borderRadius: 'var(--radius-sm, 6px)',
+                  background: 'var(--surface-muted)',
+                  color: 'var(--text-secondary)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.3rem',
+                };
+
+                const badges = !hasAnyShared ? (
+                  <span style={badgeStyle}>
+                    Sin elementos compartidos
+                  </span>
+                ) : (
                   <>
-                    <span
-                      style={{
-                        fontSize: '0.72rem',
-                        fontWeight: 500,
-                        padding: '0.15rem 0.5rem',
-                        borderRadius: 'var(--radius-sm, 6px)',
-                        background: 'var(--surface-muted)',
-                        color: 'var(--text-secondary)',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '0.3rem',
-                      }}
-                    >
-                      <Home size={12} style={{ color: 'var(--primary-color)' }} />
-                      <span>{pana.shared_fixed_expenses_count} fijo(s)</span>
-                      {pana.shared_fixed_expenses_count > 0 && (
-                        pana.pending_fixed_expenses_this_month > 0 ? (
+                    {hasFixed && (
+                      <span style={badgeStyle}>
+                        <Home size={12} style={{ color: 'var(--primary-color)' }} />
+                        <span>{pana.shared_fixed_expenses_count} fijo(s)</span>
+                        {pana.pending_fixed_expenses_this_month > 0 ? (
                           <span style={{ color: '#F59E0B', fontWeight: 600 }}>
                             • {pana.pending_fixed_expenses_this_month} pendiente(s)
                           </span>
                         ) : (
                           <span style={{ color: '#10B981', fontWeight: 600 }}>• Al día</span>
-                        )
-                      )}
-                    </span>
+                        )}
+                      </span>
+                    )}
 
-                    <span
-                      style={{
-                        fontSize: '0.72rem',
-                        fontWeight: 500,
-                        padding: '0.15rem 0.5rem',
-                        borderRadius: 'var(--radius-sm, 6px)',
-                        background: 'var(--surface-muted)',
-                        color: 'var(--text-secondary)',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '0.3rem',
-                      }}
-                    >
-                      <CreditCard size={12} style={{ color: '#6366F1' }} />
-                      <span>{pana.shared_debts_count} deuda(s)</span>
-                      {Object.keys(pana.debts_currency_summary || {}).length > 0 && (
-                        <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
-                          • Resta: {Object.entries(pana.debts_currency_summary).map(([curr, amt]) => `${amt} ${curr}`).join(', ')}
-                        </span>
-                      )}
-                    </span>
+                    {hasDebts && (
+                      <span style={badgeStyle}>
+                        <CreditCard size={12} style={{ color: '#6366F1' }} />
+                        <span>{pana.shared_debts_count} deuda(s)</span>
+                        {Object.keys(pana.debts_currency_summary || {}).length > 0 && (
+                          <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
+                            • Resta: {Object.entries(pana.debts_currency_summary)
+                              .map(([curr, amt]) => formatCurrencyAmount(amt, curr))
+                              .join(', ')}
+                          </span>
+                        )}
+                      </span>
+                    )}
 
-                    <span
-                      style={{
-                        fontSize: '0.72rem',
-                        fontWeight: 500,
-                        padding: '0.15rem 0.5rem',
-                        borderRadius: 'var(--radius-sm, 6px)',
-                        background: 'var(--surface-muted)',
-                        color: 'var(--text-secondary)',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '0.3rem',
-                      }}
-                    >
-                      <PiggyBank size={12} style={{ color: '#10B981' }} />
-                      <span>{pana.shared_saving_goals_count || 0} ahorro(s)</span>
-                    </span>
+                    {hasSavings && (
+                      <span style={badgeStyle}>
+                        <PiggyBank size={12} style={{ color: '#10B981' }} />
+                        <span>{pana.shared_saving_goals_count} ahorro(s)</span>
+                      </span>
+                    )}
 
-                    <span
-                      style={{
-                        fontSize: '0.72rem',
-                        fontWeight: 500,
-                        padding: '0.15rem 0.5rem',
-                        borderRadius: 'var(--radius-sm, 6px)',
-                        background: 'var(--surface-muted)',
-                        color: 'var(--text-secondary)',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '0.3rem',
-                      }}
-                    >
-                      <Layers size={12} style={{ color: '#8B5CF6' }} />
-                      <span>{pana.shared_sub_budgets_count || 0} presupuestos</span>
-                    </span>
+                    {hasBudgets && (
+                      <span style={badgeStyle}>
+                        <Layers size={12} style={{ color: '#8B5CF6' }} />
+                        <span>{pana.shared_sub_budgets_count} presupuestos</span>
+                      </span>
+                    )}
                   </>
                 );
 
@@ -364,7 +373,7 @@ export const PanasPage: React.FC = () => {
                   <ListCard
                     key={pana.id}
                     icon={avatar}
-                    iconBg="var(--surface-muted)"
+                    iconBg="transparent"
                     iconColor="var(--primary-color)"
                     title={title}
                     subtitle={subtitle}
@@ -379,155 +388,204 @@ export const PanasPage: React.FC = () => {
         </div>
       ) : (
         /* TAB 2: SOLICITUDES */
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          {/* Solicitudes Recibidas */}
-          <div>
-            <h2 style={{ 
-              fontSize: '0.85rem', 
-              fontWeight: 700, 
-              color: 'var(--text-secondary)', 
-              textTransform: 'uppercase', 
-              letterSpacing: '0.05em', 
-              marginBottom: '0.75rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.4rem'
-            }}>
-              <Clock size={15} style={{ color: 'var(--primary-color)' }} />
-              Solicitudes Recibidas ({pendingReceived.length})
-            </h2>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <SegmentedTabs<'received' | 'sent'>
+            activeTab={requestsSubTab}
+            onChange={setRequestsSubTab}
+            activeColor="var(--tool-panas, #EC4899)"
+            tabs={[
+              {
+                id: 'received',
+                label: 'Recibidas',
+                count: pendingReceived.length,
+                badgeColor: pendingReceived.length > 0 ? '#EF4444' : undefined,
+              },
+              {
+                id: 'sent',
+                label: 'Enviadas',
+                count: pendingSent.length,
+              },
+            ]}
+          />
 
-            {pendingReceived.length === 0 ? (
-              <div className="soft-card" style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '0.85rem' }}>
-                No tienes solicitudes pendientes por responder.
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                {pendingReceived.map(conn => (
-                  <ListCard
-                    key={conn.id}
-                    statusColor="#6366F1"
-                    icon={
-                      <span style={{ fontWeight: 700, fontSize: '1rem' }}>
-                        {conn.partner_name.charAt(0).toUpperCase()}
-                      </span>
-                    }
-                    iconBg="rgba(99, 102, 241, 0.12)"
-                    iconColor="var(--primary-color)"
-                    title={conn.partner_name}
-                    subtitle="Quiere conectar como Pana contigo"
-                    quickAction={
-                      <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+          {requestsSubTab === 'received' ? (
+            /* Sub-tab: Recibidas */
+            <div>
+              {pendingReceived.length === 0 ? (
+                <div className="soft-card" style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '0.85rem' }}>
+                  No tienes solicitudes pendientes por responder.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                  {pendingReceived.map(conn => (
+                    <ListCard
+                      key={conn.id}
+                      statusColor="#6366F1"
+                      icon={
+                        conn.partner_avatar_url ? (
+                          <img
+                            src={conn.partner_avatar_url}
+                            alt={conn.partner_name}
+                            style={{
+                              width: '40px',
+                              height: '40px',
+                              borderRadius: '50%',
+                              objectFit: 'cover',
+                              display: 'block',
+                            }}
+                          />
+                        ) : (
+                          <div
+                            style={{
+                              width: '40px',
+                              height: '40px',
+                              borderRadius: '50%',
+                              background: 'linear-gradient(135deg, #6366F1, #8B5CF6)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: '#FFFFFF',
+                              fontWeight: 700,
+                              fontSize: '1rem',
+                            }}
+                          >
+                            {conn.partner_name.charAt(0).toUpperCase()}
+                          </div>
+                        )
+                      }
+                      iconBg="transparent"
+                      iconColor="var(--primary-color)"
+                      title={conn.partner_name}
+                      subtitle="Quiere conectar como Pana contigo"
+                      quickAction={
+                        <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleAccept(conn.id)}
+                            title="Aceptar"
+                            style={{ 
+                              padding: '0.5rem', 
+                              background: 'rgba(16, 185, 129, 0.12)', 
+                              color: '#10B981', 
+                              border: 'none', 
+                              borderRadius: 'var(--radius-md, 8px)', 
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              transition: 'transform 150ms ease-out',
+                            }}
+                            onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+                            onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                          >
+                            <Check size={18} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleReject(conn.id)}
+                            title="Rechazar"
+                            style={{ 
+                              padding: '0.5rem', 
+                              background: 'rgba(239, 68, 68, 0.12)', 
+                              color: '#EF4444', 
+                              border: 'none', 
+                              borderRadius: 'var(--radius-md, 8px)', 
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              transition: 'transform 150ms ease-out',
+                            }}
+                            onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+                            onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                          >
+                            <X size={18} />
+                          </button>
+                        </div>
+                      }
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            /* Sub-tab: Enviadas */
+            <div>
+              {pendingSent.length === 0 ? (
+                <div className="soft-card" style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '0.85rem' }}>
+                  No tienes invitaciones pendientes enviadas.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                  {pendingSent.map(conn => (
+                    <ListCard
+                      key={conn.id}
+                      icon={
+                        conn.partner_avatar_url ? (
+                          <img
+                            src={conn.partner_avatar_url}
+                            alt={conn.partner_name}
+                            style={{
+                              width: '40px',
+                              height: '40px',
+                              borderRadius: '50%',
+                              objectFit: 'cover',
+                              display: 'block',
+                            }}
+                          />
+                        ) : (
+                          <div
+                            style={{
+                              width: '40px',
+                              height: '40px',
+                              borderRadius: '50%',
+                              background: 'var(--surface-muted)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: 'var(--text-tertiary)',
+                              fontWeight: 700,
+                              fontSize: '1rem',
+                            }}
+                          >
+                            {conn.partner_name.charAt(0).toUpperCase()}
+                          </div>
+                        )
+                      }
+                      iconBg="transparent"
+                      iconColor="var(--text-tertiary)"
+                      title={conn.partner_name}
+                      subtitle="Esperando que acepte la solicitud"
+                      quickAction={
                         <button
                           type="button"
-                          onClick={() => handleAccept(conn.id)}
-                          title="Aceptar"
+                          onClick={() => handleCancel(conn.id)}
                           style={{ 
-                            padding: '0.5rem', 
-                            background: 'rgba(16, 185, 129, 0.12)', 
-                            color: '#10B981', 
+                            background: 'transparent', 
                             border: 'none', 
-                            borderRadius: 'var(--radius-md, 8px)', 
+                            color: 'var(--expense-color, #EF4444)', 
+                            fontSize: '0.8rem', 
+                            fontWeight: 600,
                             cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
+                            padding: '0.4rem 0.6rem',
+                            borderRadius: 'var(--radius-sm, 6px)',
                             transition: 'transform 150ms ease-out',
                           }}
                           onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
                           onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
                           onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
                         >
-                          <Check size={18} />
+                          Cancelar
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => handleReject(conn.id)}
-                          title="Rechazar"
-                          style={{ 
-                            padding: '0.5rem', 
-                            background: 'rgba(239, 68, 68, 0.12)', 
-                            color: '#EF4444', 
-                            border: 'none', 
-                            borderRadius: 'var(--radius-md, 8px)', 
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            transition: 'transform 150ms ease-out',
-                          }}
-                          onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
-                          onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-                        >
-                          <X size={18} />
-                        </button>
-                      </div>
-                    }
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Invitaciones Enviadas */}
-          <div>
-            <h2 style={{ 
-              fontSize: '0.85rem', 
-              fontWeight: 700, 
-              color: 'var(--text-secondary)', 
-              textTransform: 'uppercase', 
-              letterSpacing: '0.05em', 
-              marginBottom: '0.75rem' 
-            }}>
-              Invitaciones Enviadas ({pendingSent.length})
-            </h2>
-
-            {pendingSent.length === 0 ? (
-              <div className="soft-card" style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '0.85rem' }}>
-                No tienes invitaciones pendientes enviadas.
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                {pendingSent.map(conn => (
-                  <ListCard
-                    key={conn.id}
-                    icon={
-                      <span style={{ fontWeight: 700, fontSize: '1rem' }}>
-                        {conn.partner_name.charAt(0).toUpperCase()}
-                      </span>
-                    }
-                    iconBg="var(--surface-muted)"
-                    iconColor="var(--text-tertiary)"
-                    title={conn.partner_name}
-                    subtitle="Esperando que acepte la solicitud"
-                    quickAction={
-                      <button
-                        type="button"
-                        onClick={() => handleCancel(conn.id)}
-                        style={{ 
-                          background: 'transparent', 
-                          border: 'none', 
-                          color: 'var(--expense-color, #EF4444)', 
-                          fontSize: '0.8rem', 
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          padding: '0.4rem 0.6rem',
-                          borderRadius: 'var(--radius-sm, 6px)',
-                          transition: 'transform 150ms ease-out',
-                        }}
-                        onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
-                        onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-                      >
-                        Cancelar
-                      </button>
-                    }
-                  />
-                ))}
-              </div>
-            )}
-          </div>
+                      }
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

@@ -1,22 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import {
   Users,
   PiggyBank,
-  SlidersHorizontal,
   FolderKanban,
   Info
 } from 'lucide-react';
-import type { SavingGoal, SavingGoalCreate, SavingGoalUpdate, Connection, Category } from '../types';
+import type { SavingGoal, SavingGoalCreate, SavingGoalUpdate, Connection, Category, ExchangeRates, CurrencyType } from '../types';
 import { CURRENCY_OPTIONS } from '../types';
-import { getConnections, getCategories } from '../api';
+import { getConnections, getCategories, getRates } from '../api';
 import { ParticipantPicker } from './panas/ParticipantPicker';
 import CategorySelect from './CategorySelect';
 import { SegmentedTabs } from './ui/SegmentedTabs';
 import { resolveCategoryVisuals } from '../utils/categoryVisuals';
+import { formatRateForInput } from '../utils/currencyFormat';
+import { ExchangeRateField } from './ExchangeRateField';
+import { ToastContext } from './ui/Toast';
 
 interface SavingGoalFormProps {
   initialData?: SavingGoal;
-  onSubmit: (data: SavingGoalCreate | SavingGoalUpdate) => void;
+  onSubmit: (data: SavingGoalCreate | SavingGoalUpdate) => void | Promise<void>;
   onCancel: () => void;
   loading: boolean;
 }
@@ -31,6 +33,14 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
   const isReadOnlyMember = Boolean(initialData?.is_shared && initialData?.my_role === 'member');
   const [goalType, setGoalType] = useState<'saving' | 'project'>(initialData?.type || 'saving');
 
+  const toast = useContext(ToastContext);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [rates, setRates] = useState<ExchangeRates | null>(null);
+  const [targetAmount, setTargetAmount] = useState<string>(() =>
+    initialData?.target_amount != null ? String(initialData.target_amount) : ''
+  );
+  const [manualRate, setManualRate] = useState<string>('');
+
   // Categories & Panas connections
   const [categories, setCategories] = useState<Category[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
@@ -41,7 +51,6 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
   const [adminPartnerIds, setAdminPartnerIds] = useState<string[]>(() =>
     (initialData?.shared_members || []).filter(m => m.role === 'admin').map(m => String(m.user_id))
   );
-  const [showManualRate, setShowManualRate] = useState(false);
 
   const initialCategory = initialData?.category || (initialData?.type === 'project' ? 'Proyectos' : 'Ahorro');
 
@@ -64,6 +73,10 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
       .then(setCategories)
       .catch((err) => console.error('Error fetching categories:', err));
 
+    getRates()
+      .then(setRates)
+      .catch((err) => console.error('Error fetching rates in SavingGoalForm:', err));
+
     if (!isReadOnlyMember) {
       (getConnections as any)(true)
         .then((data: Connection[]) => {
@@ -77,6 +90,7 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
   useEffect(() => {
     if (initialData) {
       setGoalType(initialData.type || 'saving');
+      setTargetAmount(initialData.target_amount != null ? String(initialData.target_amount) : '');
       setFormData({
         name: initialData.name,
         type: initialData.type || 'saving',
@@ -97,8 +111,15 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
       setAdminPartnerIds(
         (initialData.shared_members || []).filter(m => m.role === 'admin').map(m => String(m.user_id))
       );
-      if (initialData.rate_usd_bs || initialData.rate_eur_bs || initialData.rate_usdt_bs) {
-        setShowManualRate(true);
+
+      if (initialData.currency === 'EUR_BCV' && initialData.rate_eur_bs) {
+        setManualRate(formatRateForInput(initialData.rate_eur_bs));
+      } else if (initialData.currency === 'USDT' && initialData.rate_usdt_bs) {
+        setManualRate(formatRateForInput(initialData.rate_usdt_bs));
+      } else if ((initialData.currency === 'USD_BCV' || initialData.currency === 'BS') && initialData.rate_usd_bs) {
+        setManualRate(formatRateForInput(initialData.rate_usd_bs));
+      } else {
+        setManualRate('');
       }
     }
   }, [initialData]);
@@ -106,6 +127,7 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
     const checked = (e.target as HTMLInputElement).checked;
+    setSubmitError(null);
 
     setFormData(prev => ({
       ...prev,
@@ -113,13 +135,23 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError(null);
+
     const submitData: any = { ...formData };
     submitData.type = goalType;
 
-    if (submitData.target_amount !== undefined && submitData.target_amount !== null && submitData.target_amount !== '') {
-      submitData.target_amount = Number(submitData.target_amount);
+    const targetStr = targetAmount.trim();
+    if (targetStr !== '') {
+      const parsed = parseFloat(targetStr.replace(',', '.'));
+      if (isNaN(parsed) || parsed < 0) {
+        const msg = 'El monto objetivo debe ser un número válido';
+        setSubmitError(msg);
+        toast?.showToast(msg, 'error');
+        return;
+      }
+      submitData.target_amount = parsed;
     } else {
       submitData.target_amount = null;
     }
@@ -136,8 +168,13 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
     submitData.color = visuals.hexColor;
     submitData.icon = visuals.iconName;
 
-    if (showManualRate && submitData.manual_rate) {
-      submitData.manual_rate = Number(submitData.manual_rate);
+    if (manualRate.trim()) {
+      const parsedRate = parseFloat(manualRate.replace(',', '.'));
+      if (!isNaN(parsedRate) && parsedRate > 0) {
+        submitData.manual_rate = parsedRate;
+      } else {
+        delete submitData.manual_rate;
+      }
     } else {
       delete submitData.manual_rate;
     }
@@ -158,7 +195,14 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
       }
     }
 
-    onSubmit(submitData);
+    try {
+      await onSubmit(submitData);
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || 'Error al guardar la meta';
+      const msg = typeof detail === 'string' ? detail : 'Error al guardar la meta';
+      setSubmitError(msg);
+      toast?.showToast(msg, 'error');
+    }
   };
 
   const isProject = goalType === 'project';
@@ -272,7 +316,7 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
             fontSize: '0.8rem',
             border: '1px solid rgba(99, 102, 241, 0.2)'
           }}>
-            <Users size={16} style={{ color: 'var(--primary-color)', flexShrink: 0 }} />
+            <Users size={16} style={{ color: headerColor, flexShrink: 0 }} />
             <span>
               {isProject ? 'Proyecto compartido con' : 'Fondo compartido con'} <strong>{initialData.shared_partner_name}</strong>. Progreso sincronizado.
             </span>
@@ -280,6 +324,22 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
         )}
 
         <form onSubmit={handleSubmit}>
+          {submitError && (
+            <div
+              style={{
+                marginBottom: '1rem',
+                padding: '0.75rem',
+                background: 'rgba(239, 68, 68, 0.1)',
+                color: '#ef4444',
+                borderRadius: '8px',
+                fontSize: '0.85rem',
+                border: '1px solid rgba(239, 68, 68, 0.2)',
+              }}
+            >
+              {submitError}
+            </div>
+          )}
+
           {/* Nombre */}
           <div className="form-group">
             <label>
@@ -303,14 +363,16 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
                 <span className="form-hint-inline">(Opcional)</span>
               </label>
               <input
-                type="number"
-                step="0.01"
-                min="0.01"
+                type="text"
+                inputMode="decimal"
                 name="target_amount"
                 required={false}
                 placeholder={isProject ? "Dejar vacío si es abierto" : "Dejar vacío si es ahorro libre / fondo de emergencia"}
-                value={formData.target_amount ?? ''}
-                onChange={handleChange}
+                value={targetAmount}
+                onChange={(e) => {
+                  setSubmitError(null);
+                  setTargetAmount(e.target.value.replace(/[^0-9.,]/g, ''));
+                }}
               />
             </div>
             <div className="form-group half">
@@ -328,6 +390,18 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
               </select>
             </div>
           </div>
+
+          {/* Tasa de Cambio (Referencia / Manual) */}
+          {(targetAmount.trim() !== '' || formData.currency !== 'BS') && (
+            <ExchangeRateField
+              currency={(formData.currency || 'USD_BCV') as CurrencyType}
+              rates={rates}
+              manualRate={manualRate}
+              onManualRateChange={setManualRate}
+              isEditing={isEditing}
+              hasDate={false}
+            />
+          )}
 
           {/* Fila: Categoría y Fecha Límite */}
           <div className="form-group row">
@@ -392,7 +466,7 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
                       setAdminPartnerIds([]);
                     }
                   }}
-                  style={{ width: '17px', height: '17px', accentColor: 'var(--primary-color)', cursor: 'pointer' }}
+                  style={{ width: '17px', height: '17px', accentColor: headerColor, cursor: 'pointer' }}
                 />
                 <label 
                   htmlFor="share_saving_goal" 
@@ -407,12 +481,15 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
                     margin: 0
                   }}
                 >
-                  <Users size={15} style={{ color: 'var(--primary-color)' }} /> Compartir con Panas (Grupos)
+                  <Users size={16} style={{ color: headerColor }} /> Compartir con Panas
                 </label>
               </div>
+              <p style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', margin: '0.2rem 0 0 1.65rem', lineHeight: 1.35 }}>
+                Sincroniza el progreso y los movimientos en tiempo real con los participantes que elijas.
+              </p>
 
               {isSharedChecked && (
-                <div style={{ marginTop: '0.65rem' }}>
+                <div className="form-collapse-reveal" style={{ marginTop: '0.75rem' }}>
                   <ParticipantPicker
                     connections={connections}
                     selectedIds={selectedPartnerIds}
@@ -421,69 +498,7 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
                       setSelectedPartnerIds(s);
                       setAdminPartnerIds(a);
                     }}
-                    accentColor="var(--primary-color)"
-                  />
-                  <p style={{ margin: '0.45rem 0 0', fontSize: '0.72rem', color: 'var(--text-tertiary)', lineHeight: 1.35 }}>
-                    Todos los integrantes verán la meta y los aportes sumarán al objetivo común en tiempo real.
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Tasa Manual Opcional (Discreta / Desplegable) */}
-          {formData.currency !== 'BS' && (
-            <div style={{ marginBottom: '0.75rem' }}>
-              {!showManualRate ? (
-                <button
-                  type="button"
-                  onClick={() => setShowManualRate(true)}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--text-tertiary)',
-                    fontSize: '0.75rem',
-                    cursor: 'pointer',
-                    padding: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.3rem',
-                  }}
-                >
-                  <SlidersHorizontal size={12} />
-                  <span>+ Agregar tasa de cambio manual (opcional)</span>
-                </button>
-              ) : (
-                <div style={{
-                  background: 'var(--surface-muted)',
-                  padding: '0.65rem 0.85rem',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--accent-light)'
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
-                    <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, margin: 0 }}>
-                      Tasa Manual de Conversión
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowManualRate(false);
-                        setFormData(prev => ({ ...prev, manual_rate: '' as any }));
-                      }}
-                      style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', fontSize: '0.72rem', cursor: 'pointer' }}
-                    >
-                      Quitar
-                    </button>
-                  </div>
-                  <input
-                    type="number"
-                    step="0.0001"
-                    min="0.0001"
-                    name="manual_rate"
-                    placeholder="Usar tasa oficial del día si se deja vacío"
-                    value={formData.manual_rate || ''}
-                    onChange={handleChange}
-                    style={{ padding: '0.55rem 0.75rem', fontSize: '0.85rem' }}
+                    accentColor={headerColor}
                   />
                 </div>
               )}

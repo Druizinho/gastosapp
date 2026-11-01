@@ -599,6 +599,7 @@ class ConnectionResponse(BaseModel):
     # Extra fields populated for frontend
     partner_id: UUID
     partner_name: str
+    partner_avatar_url: Optional[str] = None
     is_requester: bool
 
     model_config = ConfigDict(from_attributes=True)
@@ -607,8 +608,8 @@ class ConnectionResponse(BaseModel):
 class SharedFixedExpenseBrief(BaseModel):
     id: UUID
     name: str
-    amount: Decimal
-    currency: str
+    amount: Decimal = Decimal(0)
+    currency: str = "BS"
     category: Optional[str] = None
     payment_day: Optional[int] = None
     is_active: bool = True
@@ -618,21 +619,90 @@ class SharedFixedExpenseBrief(BaseModel):
     members_count: int = 2
     member_names: List[str] = []
 
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("amount", mode="before")
+    @classmethod
+    def _val_amount(cls, v: Any) -> Any:
+        return Decimal(0) if v is None else v
+
+    @field_validator("currency", mode="before")
+    @classmethod
+    def _val_currency(cls, v: Any) -> Any:
+        return "BS" if v is None else v
+
+    @field_validator("is_active", mode="before")
+    @classmethod
+    def _val_is_active(cls, v: Any) -> Any:
+        return True if v is None else v
+
+    @field_validator("is_paid_this_month", mode="before")
+    @classmethod
+    def _val_is_paid_this_month(cls, v: Any) -> Any:
+        return False if v is None else v
+
+    @field_validator("members_count", mode="before")
+    @classmethod
+    def _val_members_count(cls, v: Any) -> Any:
+        return 2 if v is None else v
+
+    @field_validator("member_names", mode="before")
+    @classmethod
+    def _val_member_names(cls, v: Any) -> Any:
+        return [] if v is None else v
+
 
 class SharedDebtBrief(BaseModel):
     id: UUID
     concept: str
     counterpart: str
-    total_amount: Decimal
-    remaining_amount: Decimal
-    currency: str
-    type: str
-    is_settled: bool
-    paid_percentage: float
+    total_amount: Decimal = Decimal(0)
+    remaining_amount: Decimal = Decimal(0)
+    currency: str = "BS"
+    type: str = "owed"
+    is_settled: bool = False
+    paid_percentage: float = 0.0
     last_payment_by: Optional[str] = None
     last_payment_date: Optional[datetime.date] = None
     members_count: int = 2
     member_names: List[str] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("total_amount", "remaining_amount", mode="before")
+    @classmethod
+    def _val_amounts(cls, v: Any) -> Any:
+        return Decimal(0) if v is None else v
+
+    @field_validator("currency", mode="before")
+    @classmethod
+    def _val_currency(cls, v: Any) -> Any:
+        return "BS" if v is None else v
+
+    @field_validator("type", mode="before")
+    @classmethod
+    def _val_type(cls, v: Any) -> Any:
+        return "owed" if v is None else v
+
+    @field_validator("is_settled", mode="before")
+    @classmethod
+    def _val_is_settled(cls, v: Any) -> Any:
+        return False if v is None else v
+
+    @field_validator("paid_percentage", mode="before")
+    @classmethod
+    def _val_paid_percentage(cls, v: Any) -> Any:
+        return 0.0 if v is None else v
+
+    @field_validator("members_count", mode="before")
+    @classmethod
+    def _val_members_count(cls, v: Any) -> Any:
+        return 2 if v is None else v
+
+    @field_validator("member_names", mode="before")
+    @classmethod
+    def _val_member_names(cls, v: Any) -> Any:
+        return [] if v is None else v
 
 
 class SharedSavingGoalBrief(BaseModel):
@@ -640,18 +710,65 @@ class SharedSavingGoalBrief(BaseModel):
     name: str
     target_amount: Optional[Decimal] = None
     type: str = 'saving'
-    current_amount: Decimal
-    currency: str
+    current_amount: Decimal = Decimal(0)
+    currency: str = "BS"
     category: Optional[str] = None
     color: Optional[str] = '#10B981'
     icon: Optional[str] = 'piggy-bank'
-    is_completed: bool
-    progress_percentage: float
+    is_completed: bool = False
+    progress_percentage: float = 0.0
     last_deposit_by: Optional[str] = None
     last_deposit_amount: Optional[Decimal] = None
     last_deposit_date: Optional[datetime.date] = None
     members_count: int = 2
     member_names: List[str] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("type", mode="before")
+    @classmethod
+    def _val_type(cls, v: Any) -> Any:
+        return "saving" if v is None else v
+
+    @field_validator("current_amount", mode="before")
+    @classmethod
+    def _val_current_amount(cls, v: Any) -> Any:
+        return Decimal(0) if v is None else v
+
+    @field_validator("currency", mode="before")
+    @classmethod
+    def _val_currency(cls, v: Any) -> Any:
+        return "BS" if v is None else v
+
+    @field_validator("color", mode="before")
+    @classmethod
+    def _val_color(cls, v: Any) -> Any:
+        return "#10B981" if v is None else v
+
+    @field_validator("icon", mode="before")
+    @classmethod
+    def _val_icon(cls, v: Any) -> Any:
+        return "piggy-bank" if v is None else v
+
+    @field_validator("is_completed", mode="before")
+    @classmethod
+    def _val_is_completed(cls, v: Any) -> Any:
+        return False if v is None else v
+
+    @field_validator("progress_percentage", mode="before")
+    @classmethod
+    def _val_progress_percentage(cls, v: Any) -> Any:
+        return 0.0 if v is None else v
+
+    @field_validator("members_count", mode="before")
+    @classmethod
+    def _val_members_count(cls, v: Any) -> Any:
+        return 2 if v is None else v
+
+    @field_validator("member_names", mode="before")
+    @classmethod
+    def _val_member_names(cls, v: Any) -> Any:
+        return [] if v is None else v
 
 
 class SharedSubBudgetBrief(BaseModel):
@@ -669,11 +786,49 @@ class SharedSubBudgetBrief(BaseModel):
     members_count: int = 1
     member_names: List[str] = []
 
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("currency", mode="before")
+    @classmethod
+    def _val_currency(cls, v: Any) -> Any:
+        return "USD_BCV" if v is None else v
+
+    @field_validator("effective_global_limit", "total_spent_budget_currency", "global_spent_percentage", mode="before")
+    @classmethod
+    def _val_floats(cls, v: Any) -> Any:
+        return 0.0 if v is None else v
+
+    @field_validator("global_traffic_light", mode="before")
+    @classmethod
+    def _val_traffic_light(cls, v: Any) -> Any:
+        return "green" if v is None else v
+
+    @field_validator("categories_count", mode="before")
+    @classmethod
+    def _val_categories_count(cls, v: Any) -> Any:
+        return 0 if v is None else v
+
+    @field_validator("is_mine", mode="before")
+    @classmethod
+    def _val_is_mine(cls, v: Any) -> Any:
+        return True if v is None else v
+
+    @field_validator("members_count", mode="before")
+    @classmethod
+    def _val_members_count(cls, v: Any) -> Any:
+        return 1 if v is None else v
+
+    @field_validator("member_names", mode="before")
+    @classmethod
+    def _val_member_names(cls, v: Any) -> Any:
+        return [] if v is None else v
+
 
 class PanaSummary(BaseModel):
     id: UUID
     partner_id: UUID
     partner_name: str
+    partner_avatar_url: Optional[str] = None
     partner_email: Optional[str] = None
     status: str
     created_at: datetime.datetime
@@ -700,11 +855,19 @@ class PanaDetail(BaseModel):
     connection_id: UUID
     partner_id: UUID
     partner_name: str
+    partner_avatar_url: Optional[str] = None
     partner_email: Optional[str] = None
-    shared_fixed_expenses: List[SharedFixedExpenseBrief]
-    shared_debts: List[SharedDebtBrief]
+    shared_fixed_expenses: List[SharedFixedExpenseBrief] = []
+    shared_debts: List[SharedDebtBrief] = []
     shared_saving_goals: List[SharedSavingGoalBrief] = []
     shared_sub_budgets: List[SharedSubBudgetBrief] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("shared_fixed_expenses", "shared_debts", "shared_saving_goals", "shared_sub_budgets", mode="before")
+    @classmethod
+    def _val_detail_lists(cls, v: Any) -> Any:
+        return [] if v is None else v
 
 
 # Saving Goals Schemas

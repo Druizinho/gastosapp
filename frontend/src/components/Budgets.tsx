@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus,
   Edit3,
@@ -254,6 +254,8 @@ export const BudgetHeroCard: React.FC<BudgetHeroCardProps> = ({
 
 export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const subId = searchParams.get('subId');
   const toast = useToast();
 
   // Current viewed month (YYYY-MM)
@@ -457,6 +459,37 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
   useEffect(() => {
     fetchData();
   }, [currentMonthYear]);
+
+  // Deep-linking: automatically select and open subId if present
+  useEffect(() => {
+    if (!subId || isLoading || !budgetResponse) return;
+
+    const allBudgets = [
+      ...(budgetResponse.budgets || []),
+      ...(budgetResponse.shared_with_me_budgets || []),
+    ];
+    const targetBudget = allBudgets.find((b) => b.id === subId);
+
+    if (targetBudget) {
+      setSelectedBudgetId(subId);
+      const isSharedWithMe = budgetResponse.shared_with_me_budgets?.some((b) => b.id === subId);
+      setSubBudgetTab((prev) => {
+        if (isSharedWithMe && prev === 'own') return 'all';
+        if (!isSharedWithMe && prev === 'shared') return 'all';
+        return prev;
+      });
+    }
+  }, [subId, isLoading, budgetResponse]);
+
+  // Scroll to sub-budget card when viewed in master list
+  useEffect(() => {
+    if (!subId || selectedBudgetId !== null) return;
+    const timer = setTimeout(() => {
+      const el = document.getElementById(`sub-budget-${subId}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [subId, selectedBudgetId]);
 
   // Load panas once when Budgets mounts so modals render instantly with no layout shift
   useEffect(() => {
@@ -1175,29 +1208,30 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                 );
 
                 return (
-                  <ListCard
-                    key={b.id}
-                    statusColor={statusColor}
-                    icon={<Layers size={20} />}
-                    iconBg={isSharedWithMe ? 'rgba(59, 130, 246, 0.1)' : 'var(--surface-muted)'}
-                    iconColor={isSharedWithMe ? '#3B82F6' : 'var(--text-primary)'}
-                    title={b.name}
-                    subtitle={subtitle}
-                    badges={badges}
-                    progress={
-                      b.effective_global_limit && b.effective_global_limit > 0
-                        ? {
-                            value: b.total_spent_budget_currency,
-                            max: b.effective_global_limit,
-                            color: statusColor,
-                          }
-                        : undefined
-                    }
-                    primaryAmount={primaryAmount}
-                    secondaryAmount={secondaryAmount}
-                    quickAction={quickAction}
-                    onClick={() => setSelectedBudgetId(b.id)}
-                  />
+                  <div key={b.id} id={`sub-budget-${b.id}`}>
+                    <ListCard
+                      statusColor={statusColor}
+                      icon={<Layers size={20} />}
+                      iconBg={isSharedWithMe ? 'rgba(59, 130, 246, 0.1)' : 'var(--surface-muted)'}
+                      iconColor={isSharedWithMe ? '#3B82F6' : 'var(--text-primary)'}
+                      title={b.name}
+                      subtitle={subtitle}
+                      badges={badges}
+                      progress={
+                        b.effective_global_limit && b.effective_global_limit > 0
+                          ? {
+                              value: b.total_spent_budget_currency,
+                              max: b.effective_global_limit,
+                              color: statusColor,
+                            }
+                          : undefined
+                      }
+                      primaryAmount={primaryAmount}
+                      secondaryAmount={secondaryAmount}
+                      quickAction={quickAction}
+                      onClick={() => setSelectedBudgetId(b.id)}
+                    />
+                  </div>
                 );
               })}
             </div>

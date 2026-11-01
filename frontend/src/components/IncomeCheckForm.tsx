@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 
 import { checkIncome, getRates } from '../api';
 import type { EstimatedIncome, IncomeCheckCreate, CurrencyType, ExchangeRates } from '../types';
 import { CURRENCY_OPTIONS } from '../types';
+import { ExchangeRateField, resolveRateForCurrency } from './ExchangeRateField';
+import { ToastContext } from './ui/Toast';
 
 interface IncomeCheckFormProps {
   income: EstimatedIncome;
@@ -17,6 +19,7 @@ const getLocalToday = () => {
 };
 
 const IncomeCheckForm: React.FC<IncomeCheckFormProps> = ({ income, monthYear, onClose, onSaved }) => {
+  const toast = useContext(ToastContext);
   const isPreviouslyPartial = Boolean(income.checks?.[0]?.is_partial);
   const remainingAmount = isPreviouslyPartial
     ? Math.max(Number(income.expected_amount) - Number(income.checks![0].real_amount), 0).toString()
@@ -54,9 +57,11 @@ const IncomeCheckForm: React.FC<IncomeCheckFormProps> = ({ income, monthYear, on
     e.preventDefault();
     setError(null);
 
-    const amountNum = parseFloat(realAmount);
+    const amountNum = parseFloat(realAmount.replace(',', '.'));
     if (isNaN(amountNum) || amountNum <= 0) {
-      setError('Por favor, ingresa un monto válido.');
+      const err = 'Por favor, ingresa un monto válido.';
+      setError(err);
+      if (toast) toast.error(err);
       return;
     }
 
@@ -77,21 +82,59 @@ const IncomeCheckForm: React.FC<IncomeCheckFormProps> = ({ income, monthYear, on
       onSaved();
     } catch (err: any) {
       console.error('Error checking income:', err);
-      setError(err.response?.data?.detail || 'Error al confirmar el ingreso.');
+      const msg = err?.response?.data?.detail || err?.message || 'Error al confirmar el ingreso.';
+      const errorMsg = typeof msg === 'string' ? msg : 'Error al confirmar el ingreso.';
+      setError(errorMsg);
+      if (toast) {
+        toast.error(errorMsg);
+      }
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const isUsdtRateMissing = currency === 'USDT' && rates !== null && (rates.usdt_bs === null || rates.usdt_bs === undefined || rates.usdt_bs <= 0);
-  const suggestedRate = currency === 'EUR_BCV' ? rates?.eur_bs : currency === 'USDT' ? rates?.usdt_bs : rates?.usd_bs;
+  const receivedAmount = realAmount;
+  const parsedAmount = parseFloat(receivedAmount.replace(',', '.'));
+  const currentAmount = !isNaN(parsedAmount) ? parsedAmount : 0;
+  const isSameCurrency = currency === income.currency;
+  const suggestedRate = resolveRateForCurrency(currency, rates);
+  const manualRateNum = manualRate ? parseFloat(manualRate.replace(',', '.')) : 0;
+  const effectiveRate = manualRateNum > 0 ? manualRateNum : (suggestedRate ? Number(suggestedRate) : 0);
+  const amountInBs = currency === 'BS' ? currentAmount : (effectiveRate > 0 ? currentAmount * effectiveRate : 0);
+  const targetCurrencyRate = resolveRateForCurrency(income.currency, rates);
+  const targetRate = targetCurrencyRate ? Number(targetCurrencyRate) : 0;
+  const convertedEquivalent = isSameCurrency
+    ? currentAmount
+    : income.currency === 'BS'
+      ? (amountInBs > 0 ? amountInBs : null)
+      : (targetRate > 0 && amountInBs > 0 ? amountInBs / targetRate : null);
 
   return (
-    <div className="modal-backdrop">
-      <div className="expense-form-container">
+    <div
+      className="modal-backdrop"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="expense-form-container" onClick={(e) => e.stopPropagation()}>
         <h2>{income.checks?.[0]?.is_partial ? `Completar Cobro: ${income.name}` : `Confirmar Ingreso: ${income.name}`}</h2>
 
-        {error && <div className="error-message">{error}</div>}
+        {error && (
+          <div
+            className="error-message"
+            style={{
+              padding: '0.75rem 1rem',
+              marginBottom: '1rem',
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              borderRadius: 'var(--radius-md, 8px)',
+              color: '#ef4444',
+              fontSize: '0.875rem',
+            }}
+          >
+            {error}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit}>
           <div className="form-group" style={{ display: 'flex', gap: '1.5rem', marginBottom: '1.5rem', padding: '1rem', background: 'var(--surface-color)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
@@ -119,12 +162,11 @@ const IncomeCheckForm: React.FC<IncomeCheckFormProps> = ({ income, monthYear, on
             <div className="form-group half">
               <label>Monto Recibido</label>
               <input
-                type="number"
+                type="text"
+                inputMode="decimal"
                 value={realAmount}
-                onChange={(e) => setRealAmount(e.target.value)}
+                onChange={(e) => setRealAmount(e.target.value.replace(/[^0-9.,]/g, ''))}
                 placeholder="0.00"
-                step="0.01"
-                min="0.01"
                 required
               />
             </div>
@@ -142,6 +184,41 @@ const IncomeCheckForm: React.FC<IncomeCheckFormProps> = ({ income, monthYear, on
             </div>
           </div>
 
+          {!isSameCurrency && currentAmount > 0 && convertedEquivalent !== null && convertedEquivalent > 0 && (
+            <div
+              className="conversion-preview-pill"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '0.6rem 0.85rem',
+                marginBottom: '0.85rem',
+                borderRadius: 'var(--radius-sm)',
+                background: 'rgba(16, 185, 129, 0.08)',
+                border: '1px solid rgba(16, 185, 129, 0.25)',
+                fontSize: '0.82rem',
+                color: 'var(--text-primary)'
+              }}
+            >
+              <span style={{ color: 'var(--text-secondary)' }}>
+                Equivalente en moneda del ingreso ({income.currency === 'USD_CASH' ? '$ Efectivo' : income.currency}):
+              </span>
+              <strong style={{ color: 'var(--income-color)', fontSize: '0.9rem' }}>
+                {income.currency === 'BS' ? 'Bs.' : ((income.currency as string) === 'EUR' || (income.currency as string) === 'EUR_BCV') ? '€' : '$'}{' '}
+                {convertedEquivalent.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </strong>
+            </div>
+          )}
+
+          <ExchangeRateField
+            currency={currency}
+            rates={rates}
+            manualRate={manualRate}
+            onManualRateChange={setManualRate}
+            hasDate={true}
+            mode="income"
+          />
+
           <div className="form-group">
             <label>Fecha de Cobro</label>
             <input
@@ -150,28 +227,6 @@ const IncomeCheckForm: React.FC<IncomeCheckFormProps> = ({ income, monthYear, on
               onChange={(e) => setPaymentDate(e.target.value)}
               required
             />
-          </div>
-
-          <div className="form-group">
-            <label style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>Tasa de Cambio en Bs</span>
-              <span className="form-hint-inline">(Opcional)</span>
-            </label>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={manualRate}
-              onChange={(e) => {
-                const val = e.target.value.replace(/[^0-9.,]/g, '');
-                setManualRate(val);
-              }}
-              placeholder={isUsdtRateMissing ? "No hay precio en esta fecha — tasa manual opcional" : (suggestedRate && suggestedRate > 0 ? `Por defecto: Bs. ${Number(suggestedRate).toFixed(2)}` : "Dejar vacío para usar tasa del día")}
-            />
-            {isUsdtRateMissing && !manualRate && (
-              <p style={{ fontSize: '0.8rem', color: 'var(--warning-color, #D97706)', marginTop: '0.35rem' }}>
-                No hay precio de USDT en esta fecha. Puedes ingresar una tasa manual (opcional).
-              </p>
-            )}
           </div>
 
           {isPartial && (

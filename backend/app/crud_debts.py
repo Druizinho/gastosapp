@@ -267,6 +267,17 @@ async def delete_debt(db: AsyncSession, debt_id: UUID, user_id: UUID):
         if linked_exp_ids:
             await db.execute(delete(models.Expense).where(models.Expense.id.in_(linked_exp_ids)))
 
+        # Purge linked incomes before deleting debt and payments
+        linked_inc_res = await db.execute(
+            select(models.DebtPayment.income_id).where(
+                models.DebtPayment.debt_id == debt_id,
+                models.DebtPayment.income_id.isnot(None)
+            )
+        )
+        linked_inc_ids = [iid for iid in linked_inc_res.scalars().all() if iid is not None]
+        if linked_inc_ids:
+            await db.execute(delete(models.Income).where(models.Income.id.in_(linked_inc_ids)))
+
         await db.delete(db_debt)
         await db.delete(share)
     else:
@@ -280,6 +291,17 @@ async def delete_debt(db: AsyncSession, debt_id: UUID, user_id: UUID):
         linked_exp_ids = [eid for eid in linked_exp_res.scalars().all() if eid is not None]
         if linked_exp_ids:
             await db.execute(delete(models.Expense).where(models.Expense.id.in_(linked_exp_ids)))
+
+        # Purge linked incomes for personal debt
+        linked_inc_res = await db.execute(
+            select(models.DebtPayment.income_id).where(
+                models.DebtPayment.debt_id == debt_id,
+                models.DebtPayment.income_id.isnot(None)
+            )
+        )
+        linked_inc_ids = [iid for iid in linked_inc_res.scalars().all() if iid is not None]
+        if linked_inc_ids:
+            await db.execute(delete(models.Income).where(models.Income.id.in_(linked_inc_ids)))
 
         await db.delete(db_debt)
 
@@ -323,7 +345,10 @@ async def add_debt_payment(db: AsyncSession, debt_id: UUID, user_id: UUID, payme
             is_owner = (membership[0].owner_id == user_id)
             effective_category = (membership[1].local_category if membership[1].local_category else None) or (db_debt.category if is_owner else None) or "Sin Categoría"
         else:
-            effective_category = db_debt.category or "Deudas"
+            if db_debt.type == "receivable":
+                effective_category = db_debt.category or "Otros ingresos"
+            else:
+                effective_category = db_debt.category or "Deudas"
     data["category"] = effective_category
     data["create_expense"] = should_create_expense
 
@@ -348,22 +373,41 @@ async def add_debt_payment(db: AsyncSession, debt_id: UUID, user_id: UUID, payme
 
     if should_create_expense:
         raw_curr = data["currency"].value if hasattr(data["currency"], "value") else str(data["currency"])
-        expense_data = {
-            "amount": data["amount"],
-            "currency": raw_curr,
-            "description": f"Abono: {db_debt.concept} -> {db_debt.counterpart}",
-            "category": effective_category,
-            "date": data.get("payment_date") or date.today(),
-            "user_id": user_id
-        }
-        for key in ["amount_usd", "amount_bs", "amount_eur", "amount_usdt", "rate_usd_bs", "rate_eur_bs", "rate_usdt_bs"]:
-            if extra_data and key in extra_data:
-                expense_data[key] = extra_data[key]
-                
-        db_expense = models.Expense(**expense_data)
-        db.add(db_expense)
-        await db.flush()
-        db_payment.expense_id = db_expense.id
+        if db_debt.type == "receivable":
+            income_cat = effective_category if effective_category and effective_category != "Sin Categoría" else "Otros ingresos"
+            income_data = {
+                "amount": payment.amount,
+                "currency": raw_curr,
+                "description": f"Cobro: {db_debt.concept} <- {db_debt.counterpart}",
+                "category": income_cat,
+                "date": data.get("payment_date") or date.today(),
+                "user_id": user_id
+            }
+            for key in ["amount_usd", "amount_bs", "amount_eur", "amount_usdt", "rate_usd_bs", "rate_eur_bs", "rate_usdt_bs"]:
+                if extra_data and key in extra_data:
+                    income_data[key] = extra_data[key]
+
+            db_income = models.Income(**income_data)
+            db.add(db_income)
+            await db.flush()
+            db_payment.income_id = db_income.id
+        else:
+            expense_data = {
+                "amount": data["amount"],
+                "currency": raw_curr,
+                "description": f"Abono: {db_debt.concept} -> {db_debt.counterpart}",
+                "category": effective_category,
+                "date": data.get("payment_date") or date.today(),
+                "user_id": user_id
+            }
+            for key in ["amount_usd", "amount_bs", "amount_eur", "amount_usdt", "rate_usd_bs", "rate_eur_bs", "rate_usdt_bs"]:
+                if extra_data and key in extra_data:
+                    expense_data[key] = extra_data[key]
+                    
+            db_expense = models.Expense(**expense_data)
+            db.add(db_expense)
+            await db.flush()
+            db_payment.expense_id = db_expense.id
 
     await sharing.recompute_settlement(db, "debt", [debt_id])
     if db_debt.is_settled:
@@ -417,7 +461,7 @@ async def add_debt_payment(db: AsyncSession, debt_id: UUID, user_id: UUID, payme
     _exp = db.expire_all()
     if hasattr(_exp, "__await__"):
         await _exp
-    if should_create_expense:
+    if should_create_expense and db_debt.type == "owed":
         pay_date = data.get("payment_date") or date.today()
         await check_and_notify_budget_thresholds(db, user_id, pay_date, allow_notify=True)
     return await get_debt(db, debt_id, user_id)
@@ -479,6 +523,14 @@ async def update_debt_payment(
                 if linked_exp:
                     linked_exp.category = new_cat
 
+            if getattr(payment, "income_id", None) and payment.paid_by_user_id == user_id:
+                inc_res = await db.execute(
+                    select(models.Income).where(models.Income.id == payment.income_id)
+                )
+                linked_inc = inc_res.scalars().first()
+                if linked_inc:
+                    linked_inc.category = new_cat
+
         if not (update_dict or register_as_expense is not None or manual_rate is not None):
             await db.commit()
             db.expire_all()
@@ -519,30 +571,106 @@ async def update_debt_payment(
     if eff_tx_type == "increase":
         target_create_expense = False
     payment.create_expense = target_create_expense
-    effective_cat = payment.category or db_debt.category or "Sin Categoría"
+    if db_debt.type == "receivable":
+        effective_cat = payment.category or db_debt.category or "Otros ingresos"
+    else:
+        effective_cat = payment.category or db_debt.category or "Sin Categoría"
     if not payment.category:
         payment.category = effective_cat
 
-    # Synchronize linked expense
-    if payment.expense_id:
-        exp_res = await db.execute(
-            select(models.Expense).where(models.Expense.id == payment.expense_id)
-        )
-        linked_exp = exp_res.scalars().first()
-        if linked_exp:
-            if not target_create_expense:
-                await db.delete(linked_exp)
-                payment.expense_id = None
-            else:
-                linked_exp.amount = payment.amount
+    if db_debt.type == "receivable":
+        # Synchronize linked income
+        if getattr(payment, "income_id", None):
+            inc_res = await db.execute(
+                select(models.Income).where(models.Income.id == payment.income_id)
+            )
+            linked_inc = inc_res.scalars().first()
+            if linked_inc:
+                if not target_create_expense:
+                    await db.delete(linked_inc)
+                    payment.income_id = None
+                else:
+                    linked_inc.amount = payment.amount
+                    raw_curr = payment.currency.value if hasattr(payment.currency, "value") else str(payment.currency)
+                    linked_inc.currency = raw_curr
+                    linked_inc.date = payment.payment_date or linked_inc.date
+                    linked_inc.category = effective_cat if effective_cat != "Sin Categoría" else "Otros ingresos"
+                    linked_inc.description = f"Cobro: {db_debt.concept} <- {db_debt.counterpart}"
+                    for key in ["amount_usd", "amount_bs", "amount_eur", "amount_usdt", "rate_usd_bs", "rate_eur_bs", "rate_usdt_bs"]:
+                        if hasattr(payment, key):
+                            setattr(linked_inc, key, getattr(payment, key))
+            elif target_create_expense:
                 raw_curr = payment.currency.value if hasattr(payment.currency, "value") else str(payment.currency)
-                linked_exp.currency = raw_curr
-                linked_exp.date = payment.payment_date or linked_exp.date
-                linked_exp.category = payment.category or effective_cat
-                linked_exp.description = f"Abono: {db_debt.concept} -> {db_debt.counterpart}"
+                new_inc_data = {
+                    "amount": payment.amount,
+                    "currency": raw_curr,
+                    "description": f"Cobro: {db_debt.concept} <- {db_debt.counterpart}",
+                    "category": effective_cat if effective_cat != "Sin Categoría" else "Otros ingresos",
+                    "date": payment.payment_date or date.today(),
+                    "user_id": payment.paid_by_user_id or user_id
+                }
                 for key in ["amount_usd", "amount_bs", "amount_eur", "amount_usdt", "rate_usd_bs", "rate_eur_bs", "rate_usdt_bs"]:
                     if hasattr(payment, key):
-                        setattr(linked_exp, key, getattr(payment, key))
+                        new_inc_data[key] = getattr(payment, key)
+                new_inc = models.Income(**new_inc_data)
+                db.add(new_inc)
+                await db.flush()
+                payment.income_id = new_inc.id
+        elif target_create_expense:
+            raw_curr = payment.currency.value if hasattr(payment.currency, "value") else str(payment.currency)
+            new_inc_data = {
+                "amount": payment.amount,
+                "currency": raw_curr,
+                "description": f"Cobro: {db_debt.concept} <- {db_debt.counterpart}",
+                "category": effective_cat if effective_cat != "Sin Categoría" else "Otros ingresos",
+                "date": payment.payment_date or date.today(),
+                "user_id": payment.paid_by_user_id or user_id
+            }
+            for key in ["amount_usd", "amount_bs", "amount_eur", "amount_usdt", "rate_usd_bs", "rate_eur_bs", "rate_usdt_bs"]:
+                if hasattr(payment, key):
+                    new_inc_data[key] = getattr(payment, key)
+            new_inc = models.Income(**new_inc_data)
+            db.add(new_inc)
+            await db.flush()
+            payment.income_id = new_inc.id
+    else:
+        # Synchronize linked expense
+        if payment.expense_id:
+            exp_res = await db.execute(
+                select(models.Expense).where(models.Expense.id == payment.expense_id)
+            )
+            linked_exp = exp_res.scalars().first()
+            if linked_exp:
+                if not target_create_expense:
+                    await db.delete(linked_exp)
+                    payment.expense_id = None
+                else:
+                    linked_exp.amount = payment.amount
+                    raw_curr = payment.currency.value if hasattr(payment.currency, "value") else str(payment.currency)
+                    linked_exp.currency = raw_curr
+                    linked_exp.date = payment.payment_date or linked_exp.date
+                    linked_exp.category = payment.category or effective_cat
+                    linked_exp.description = f"Abono: {db_debt.concept} -> {db_debt.counterpart}"
+                    for key in ["amount_usd", "amount_bs", "amount_eur", "amount_usdt", "rate_usd_bs", "rate_eur_bs", "rate_usdt_bs"]:
+                        if hasattr(payment, key):
+                            setattr(linked_exp, key, getattr(payment, key))
+            elif target_create_expense:
+                raw_curr = payment.currency.value if hasattr(payment.currency, "value") else str(payment.currency)
+                new_exp_data = {
+                    "amount": payment.amount,
+                    "currency": raw_curr,
+                    "description": f"Abono: {db_debt.concept} -> {db_debt.counterpart}",
+                    "category": payment.category or effective_cat,
+                    "date": payment.payment_date or date.today(),
+                    "user_id": payment.paid_by_user_id or user_id
+                }
+                for key in ["amount_usd", "amount_bs", "amount_eur", "amount_usdt", "rate_usd_bs", "rate_eur_bs", "rate_usdt_bs"]:
+                    if hasattr(payment, key):
+                        new_exp_data[key] = getattr(payment, key)
+                new_exp = models.Expense(**new_exp_data)
+                db.add(new_exp)
+                await db.flush()
+                payment.expense_id = new_exp.id
         elif target_create_expense:
             raw_curr = payment.currency.value if hasattr(payment.currency, "value") else str(payment.currency)
             new_exp_data = {
@@ -560,23 +688,6 @@ async def update_debt_payment(
             db.add(new_exp)
             await db.flush()
             payment.expense_id = new_exp.id
-    elif target_create_expense:
-        raw_curr = payment.currency.value if hasattr(payment.currency, "value") else str(payment.currency)
-        new_exp_data = {
-            "amount": payment.amount,
-            "currency": raw_curr,
-            "description": f"Abono: {db_debt.concept} -> {db_debt.counterpart}",
-            "category": payment.category or effective_cat,
-            "date": payment.payment_date or date.today(),
-            "user_id": payment.paid_by_user_id or user_id
-        }
-        for key in ["amount_usd", "amount_bs", "amount_eur", "amount_usdt", "rate_usd_bs", "rate_eur_bs", "rate_usdt_bs"]:
-            if hasattr(payment, key):
-                new_exp_data[key] = getattr(payment, key)
-        new_exp = models.Expense(**new_exp_data)
-        db.add(new_exp)
-        await db.flush()
-        payment.expense_id = new_exp.id
 
     await db.flush()
     await sharing.recompute_settlement(db, "debt", [payment.debt_id])
@@ -585,7 +696,7 @@ async def update_debt_payment(
     _exp = db.expire_all()
     if hasattr(_exp, "__await__"):
         await _exp
-    if target_create_expense:
+    if target_create_expense and db_debt.type == "owed":
         pay_date = payment.payment_date or date.today()
         await check_and_notify_budget_thresholds(db, user_id, pay_date, allow_notify=True)
     return await get_debt(db, payment.debt_id, user_id)
@@ -610,6 +721,7 @@ async def delete_debt_payment(db: AsyncSession, payment_id: UUID, user_id: UUID)
     debt_id = payment.debt_id
     amount_label = f"{payment.amount} {payment.currency}"
     linked_expense_id = payment.expense_id
+    linked_income_id = getattr(payment, "income_id", None)
 
     membership = await sharing.get_membership(db, debt_id, user_id)
 
@@ -630,6 +742,10 @@ async def delete_debt_payment(db: AsyncSession, payment_id: UUID, user_id: UUID)
         if linked_expense_id:
             await db.execute(
                 delete(models.Expense).where(models.Expense.id == linked_expense_id)
+            )
+        if linked_income_id:
+            await db.execute(
+                delete(models.Income).where(models.Income.id == linked_income_id)
             )
 
         await db.delete(payment)
@@ -653,6 +769,10 @@ async def delete_debt_payment(db: AsyncSession, payment_id: UUID, user_id: UUID)
         if linked_expense_id:
             await db.execute(
                 delete(models.Expense).where(models.Expense.id == linked_expense_id)
+            )
+        if linked_income_id:
+            await db.execute(
+                delete(models.Income).where(models.Income.id == linked_income_id)
             )
         await db.flush()
         await sharing.recompute_settlement(db, "debt", [debt_id])

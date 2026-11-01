@@ -545,6 +545,186 @@ class TestHistoricalRates(unittest.IsolatedAsyncioTestCase):
             mock_res.assert_awaited_once()
             mock_update.assert_awaited_once()
 
+    # 9. resolve_rates_for_update preserves USDT or EUR when USD is None
+    async def test_resolve_rates_for_update_preserves_usdt_or_eur_when_usd_is_none(self):
+        rec_date = date(2026, 2, 1)
+
+        # Case A: EUR exists, USD is None
+        rec_eur = MagicMock()
+        rec_eur.rate_usd_bs = None
+        rec_eur.rate_eur_bs = Decimal("40.0")
+        rec_eur.rate_usdt_bs = None
+
+        rates_eur = await bcv_service.resolve_rates_for_update(
+            existing_record=rec_eur,
+            target_date=rec_date,
+            existing_date=rec_date,
+            db=None,
+        )
+        self.assertIsNone(rates_eur["usd_bs"])
+        self.assertEqual(rates_eur["eur_bs"], Decimal("40.0"))
+        self.assertIsNone(rates_eur["usdt_bs"])
+        self.assertTrue(rates_eur["is_historical"])
+        self.assertEqual(rates_eur["rate_date"], rec_date)
+
+        # Case B: USDT exists, USD is None
+        rec_usdt = MagicMock()
+        rec_usdt.rate_usd_bs = None
+        rec_usdt.rate_eur_bs = None
+        rec_usdt.rate_usdt_bs = Decimal("45.0")
+
+        rates_usdt = await bcv_service.resolve_rates_for_update(
+            existing_record=rec_usdt,
+            target_date=rec_date,
+            existing_date=rec_date,
+            db=None,
+        )
+        self.assertIsNone(rates_usdt["usd_bs"])
+        self.assertIsNone(rates_usdt["eur_bs"])
+        self.assertEqual(rates_usdt["usdt_bs"], Decimal("45.0"))
+        self.assertTrue(rates_usdt["is_historical"])
+        self.assertEqual(rates_usdt["rate_date"], rec_date)
+
+    # 10. resolve_manual_rate_for_update preserves legacy non-cash rate when rate column is None
+    def test_resolve_manual_rate_for_update_preserves_legacy_non_cash_rate_when_rate_col_is_none(self):
+        # Case A: USD_BCV legacy (rate_usd_bs is None)
+        rec_usd = MagicMock()
+        rec_usd.currency = "USD_BCV"
+        rec_usd.amount = Decimal("100")
+        rec_usd.amount_bs = Decimal("3600")
+        rec_usd.rate_usd_bs = None
+
+        rate_usd = bcv_service.resolve_manual_rate_for_update(
+            existing_record=rec_usd,
+            new_currency="USD_BCV",
+            explicit_manual_rate=None,
+            date_changed=False,
+        )
+        self.assertEqual(rate_usd, Decimal("36.0000"))
+
+        # Case B: BS legacy (rate_usd_bs is None)
+        rec_bs = MagicMock()
+        rec_bs.currency = "BS"
+        rec_bs.amount = Decimal("3600")
+        rec_bs.amount_usd = Decimal("100")
+        rec_bs.rate_usd_bs = None
+
+        rate_bs = bcv_service.resolve_manual_rate_for_update(
+            existing_record=rec_bs,
+            new_currency="BS",
+            explicit_manual_rate=None,
+            date_changed=False,
+        )
+        self.assertEqual(rate_bs, Decimal("36.0000"))
+
+        # Case C: EUR_BCV legacy (rate_eur_bs is None)
+        rec_eur = MagicMock()
+        rec_eur.currency = "EUR_BCV"
+        rec_eur.amount = Decimal("50")
+        rec_eur.amount_bs = Decimal("2100")
+        rec_eur.rate_eur_bs = None
+
+        rate_eur = bcv_service.resolve_manual_rate_for_update(
+            existing_record=rec_eur,
+            new_currency="EUR_BCV",
+            explicit_manual_rate=None,
+            date_changed=False,
+        )
+        self.assertEqual(rate_eur, Decimal("42.0000"))
+
+        # Case D: USDT legacy (rate_usdt_bs is None)
+        rec_usdt = MagicMock()
+        rec_usdt.currency = "USDT"
+        rec_usdt.amount = Decimal("20")
+        rec_usdt.amount_bs = Decimal("900")
+        rec_usdt.rate_usdt_bs = None
+
+        rate_usdt = bcv_service.resolve_manual_rate_for_update(
+            existing_record=rec_usdt,
+            new_currency="USDT",
+            explicit_manual_rate=None,
+            date_changed=False,
+        )
+        self.assertEqual(rate_usdt, Decimal("45.0000"))
+
+        # Case E: Non-legacy record where rate column is present -> returns None
+        rec_usd_modern = MagicMock()
+        rec_usd_modern.currency = "USD_BCV"
+        rec_usd_modern.amount = Decimal("100")
+        rec_usd_modern.amount_bs = Decimal("3600")
+        rec_usd_modern.rate_usd_bs = Decimal("36.0")
+
+        rate_modern = bcv_service.resolve_manual_rate_for_update(
+            existing_record=rec_usd_modern,
+            new_currency="USD_BCV",
+            explicit_manual_rate=None,
+            date_changed=False,
+        )
+        self.assertIsNone(rate_modern)
+
+    # 11. budget expense_amount_in_currency uses historical snapshot not live rates
+    def test_budget_expense_amount_in_currency_uses_historical_snapshot_not_live_rates(self):
+        from app.crud_budgets import _expense_amount_in_currency
+
+        live_rates = {
+            "usd_bs": Decimal("100.0"),
+            "eur_bs": Decimal("110.0"),
+            "usdt_bs": Decimal("120.0"),
+        }
+
+        # 1. Target EUR_BCV with exp.rate_eur_bs
+        exp_eur = MagicMock()
+        exp_eur.currency = "BS"
+        exp_eur.amount = Decimal("1000")
+        exp_eur.amount_bs = Decimal("1000")
+        exp_eur.amount_eur = None
+        exp_eur.rate_eur_bs = Decimal("50.0")
+        exp_eur.rate_usd_bs = None
+        exp_eur.rate_usdt_bs = None
+
+        res_eur = _expense_amount_in_currency(exp_eur, "EUR_BCV", live_rates)
+        self.assertEqual(res_eur, Decimal("20"))
+
+        # 2. Target EUR_BCV with fallback to exp.amount_usd
+        exp_eur_usd = MagicMock()
+        exp_eur_usd.currency = "BS"
+        exp_eur_usd.amount = Decimal("1000")
+        exp_eur_usd.amount_bs = Decimal("1000")
+        exp_eur_usd.amount_eur = None
+        exp_eur_usd.rate_eur_bs = None
+        exp_eur_usd.rate_usd_bs = Decimal("25.0")
+        exp_eur_usd.amount_usd = Decimal("40.0")
+
+        res_eur_usd = _expense_amount_in_currency(exp_eur_usd, "EUR_BCV", live_rates)
+        self.assertEqual(res_eur_usd, Decimal("40.0"))
+
+        # 3. Target USDT with exp.amount_usd fallback when rate_usdt_bs is None
+        exp_usdt_fallback = MagicMock()
+        exp_usdt_fallback.currency = "BS"
+        exp_usdt_fallback.amount = Decimal("1000")
+        exp_usdt_fallback.amount_bs = Decimal("1000")
+        exp_usdt_fallback.amount_usdt = None
+        exp_usdt_fallback.rate_usdt_bs = None
+        exp_usdt_fallback.rate_usd_bs = Decimal("50.0")
+        exp_usdt_fallback.rate_eur_bs = None
+        exp_usdt_fallback.amount_usd = Decimal("20.0")
+
+        res_usdt_fallback = _expense_amount_in_currency(exp_usdt_fallback, "USDT", live_rates)
+        self.assertEqual(res_usdt_fallback, Decimal("20.0"))
+
+        # 4. Target USD_CASH using max valid historical rate on exp
+        exp_cash = MagicMock()
+        exp_cash.currency = "BS"
+        exp_cash.amount = Decimal("1000")
+        exp_cash.amount_bs = Decimal("1000")
+        exp_cash.amount_usdt = None
+        exp_cash.rate_usdt_bs = Decimal("50.0")
+        exp_cash.rate_usd_bs = Decimal("40.0")
+        exp_cash.rate_eur_bs = None
+
+        res_cash = _expense_amount_in_currency(exp_cash, "USD_CASH", live_rates)
+        self.assertEqual(res_cash, Decimal("20"))
+
 
 if __name__ == "__main__":
     unittest.main()

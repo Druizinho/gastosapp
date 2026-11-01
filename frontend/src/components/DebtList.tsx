@@ -94,6 +94,8 @@ interface DebtListProps {
 
 const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
   const [searchParams, setSearchParams] = useSearchParams();
+  const highlightId = searchParams.get('highlightId');
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const queryTab = searchParams.get('tab') as 'owed' | 'receivable' | null;
   const initialTab: 'all' | 'owed' | 'receivable' = queryTab || (propType === 'owed' || propType === 'receivable' ? propType : 'all');
   const [activeTab, setActiveTab] = useState<'all' | 'owed' | 'receivable'>(initialTab);
@@ -223,6 +225,26 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
     fetchDebts();
   }, [fetchDebts]);
 
+  useEffect(() => {
+    if (loading || !highlightId || debts.length === 0) return;
+    const debt = debts.find((d) => d.id === highlightId);
+    if (!debt) return;
+
+    setHighlightedId(debt.id);
+    setActiveTab((prev) => (prev !== 'all' && prev !== debt.type ? 'all' : prev));
+
+    const scrollTimer = setTimeout(() => {
+      const el = document.getElementById(`debt-${debt.id}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 150);
+
+    const timer = setTimeout(() => setHighlightedId(null), 3000);
+    return () => {
+      clearTimeout(scrollTimer);
+      clearTimeout(timer);
+    };
+  }, [highlightId, loading, debts]);
+
   const handleCreateOrUpdate = async (data: DebtCreate | DebtUpdate) => {
     try {
       setSubmitting(true);
@@ -330,8 +352,30 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
 
   const getPaymentAmountInDebtCurrency = (pay: DebtPayment, debtCurrency: string) => {
     if (pay.currency === debtCurrency) return Number(pay.amount);
+    if (debtCurrency === 'BS' && pay.amount_bs != null) return Number(pay.amount_bs);
     if (debtCurrency === 'USD_BCV' && pay.amount_usd != null) return Number(pay.amount_usd);
+    if (debtCurrency === 'EUR_BCV') {
+      if (pay.amount_eur != null) return Number(pay.amount_eur);
+      if (pay.amount_bs != null && toNumeric(pay.rate_eur_bs) > 0) {
+        return Number(pay.amount_bs) / toNumeric(pay.rate_eur_bs);
+      }
+      if (pay.amount_usd != null) return Number(pay.amount_usd);
+    }
+    if (debtCurrency === 'USDT') {
+      if (pay.amount_usdt != null) return Number(pay.amount_usdt);
+      if (pay.amount_bs != null && toNumeric(pay.rate_usdt_bs) > 0) {
+        return Number(pay.amount_bs) / toNumeric(pay.rate_usdt_bs);
+      }
+      if (pay.amount_usd != null) return Number(pay.amount_usd);
+    }
     if (debtCurrency === 'USD_CASH') {
+      if (pay.amount_bs != null && Number(pay.amount_bs) > 0) {
+        const histRates = [toNumeric(pay.rate_usd_bs), toNumeric(pay.rate_eur_bs), toNumeric(pay.rate_usdt_bs)].filter(r => r > 0);
+        if (histRates.length > 0) {
+          return Number(pay.amount_bs) / Math.max(...histRates);
+        }
+      }
+      if (pay.amount_usd != null) return Number(pay.amount_usd);
       const payInBs = pay.amount_bs != null && !isNaN(Number(pay.amount_bs))
         ? Number(pay.amount_bs)
         : convertItemAmountToMainCurrency({ amount: Number(pay.amount), currency: pay.currency }, 'BS', rates);
@@ -341,10 +385,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
       const cashRate = Math.max(rUsd, rEur, rUsdt) || (rUsd > 0 ? rUsd : 1);
       return cashRate > 0 ? payInBs / cashRate : 0;
     }
-    if (debtCurrency === 'BS' && pay.amount_bs != null) return Number(pay.amount_bs);
-    if (debtCurrency === 'EUR_BCV' && pay.amount_eur != null) return Number(pay.amount_eur);
-    if (debtCurrency === 'USDT' && pay.amount_usdt != null) return Number(pay.amount_usdt);
-    const payInBs = convertItemAmountToMainCurrency({ amount: Number(pay.amount), currency: pay.currency, amount_bs: pay.amount_bs }, 'BS', rates);
+    const payInBs = convertItemAmountToMainCurrency({ amount: Number(pay.amount), currency: pay.currency, amount_bs: pay.amount_bs, rate_usd_bs: pay.rate_usd_bs, rate_eur_bs: pay.rate_eur_bs, rate_usdt_bs: pay.rate_usdt_bs }, 'BS', rates);
     const debtOneUnitInBs = convertItemAmountToMainCurrency({ amount: 1, currency: debtCurrency }, 'BS', rates);
     return debtOneUnitInBs > 0 ? payInBs / debtOneUnitInBs : 0;
   };
@@ -958,7 +999,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
                         border: '1px solid rgba(16, 185, 129, 0.25)'
                       }}>
                         <Receipt size={10} />
-                        Registrado en gastos
+                        {isOwed ? 'Registrado en gastos' : 'Registrado en ingresos'}
                       </span>
                     )}
                   </>
@@ -1056,7 +1097,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
                 {(selectedPaymentForSheet.create_expense || selectedPaymentForSheet.expense_id) && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#10B981', fontWeight: 600, marginTop: '0.25rem' }}>
                     <Receipt size={14} />
-                    <span>Registrado en gastos{selectedPaymentForSheet.category ? `: ${selectedPaymentForSheet.category}` : ''}</span>
+                    <span>{selectedDebt.type === 'owed' ? 'Registrado en gastos' : 'Registrado en ingresos'}{selectedPaymentForSheet.category ? `: ${selectedPaymentForSheet.category}` : ''}</span>
                   </div>
                 )}
               </div>
@@ -1454,27 +1495,40 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
             );
 
             return (
-              <ListCard
+              <div
                 key={debt.id}
-                statusColor={debt.is_settled ? 'var(--income-color)' : itemThemeColor}
-                icon={debt.type === 'owed' ? <TrendingDown size={20} /> : <TrendingUp size={20} />}
-                iconBg={debt.type === 'owed' ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.12)'}
-                iconColor={debt.type === 'owed' ? 'var(--expense-color)' : 'var(--income-color)'}
-                title={debt.concept}
-                subtitle={subtitleNode}
-                badges={badgesNode}
-                primaryAmount={primaryAmount}
-                secondaryAmount={secondaryAmount}
-                progress={{
-                  value: progress,
-                  color: debt.is_settled ? 'var(--income-color)' : itemThemeColor,
+                id={`debt-${debt.id}`}
+                style={{
+                  borderRadius: '1.25rem',
+                  transition: 'box-shadow 0.3s ease',
+                  ...(highlightedId === debt.id
+                    ? {
+                        boxShadow: '0 0 0 2px #8B5CF6, 0 0 16px rgba(139, 92, 246, 0.45)',
+                      }
+                    : {}),
                 }}
-                quickAction={quickActionNode}
-                onClick={() => {
-                  const freshDebt = debts.find(d => d.id === debt.id) || debt;
-                  setSelectedDebtForSheet(freshDebt);
-                }}
-              />
+              >
+                <ListCard
+                  statusColor={debt.is_settled ? 'var(--income-color)' : itemThemeColor}
+                  icon={debt.type === 'owed' ? <TrendingDown size={20} /> : <TrendingUp size={20} />}
+                  iconBg={debt.type === 'owed' ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.12)'}
+                  iconColor={debt.type === 'owed' ? 'var(--expense-color)' : 'var(--income-color)'}
+                  title={debt.concept}
+                  subtitle={subtitleNode}
+                  badges={badgesNode}
+                  primaryAmount={primaryAmount}
+                  secondaryAmount={secondaryAmount}
+                  progress={{
+                    value: progress,
+                    color: debt.is_settled ? 'var(--income-color)' : itemThemeColor,
+                  }}
+                  quickAction={quickActionNode}
+                  onClick={() => {
+                    const freshDebt = debts.find(d => d.id === debt.id) || debt;
+                    setSelectedDebtForSheet(freshDebt);
+                  }}
+                />
+              </div>
             );
           })}
         </div>

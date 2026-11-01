@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 
-import { createEstimatedIncome, updateEstimatedIncome, getCategories } from '../api';
-import type { EstimatedIncome, EstimatedIncomeCreate, EstimatedIncomeUpdate, CurrencyType, Category } from '../types';
+import { createEstimatedIncome, updateEstimatedIncome, getCategories, getRates } from '../api';
+import type { EstimatedIncome, EstimatedIncomeCreate, EstimatedIncomeUpdate, CurrencyType, Category, ExchangeRates } from '../types';
 import { CURRENCY_OPTIONS } from '../types';
 import CategorySelect from './CategorySelect';
+import { ExchangeRateField } from './ExchangeRateField';
+import { ToastContext } from './ui/Toast';
 
 interface EstimatedIncomeFormProps {
   income?: EstimatedIncome | null;
@@ -14,6 +16,7 @@ interface EstimatedIncomeFormProps {
 
 const EstimatedIncomeForm: React.FC<EstimatedIncomeFormProps> = ({ income, initialData, onClose, onSaved }) => {
   const targetIncome = income || initialData;
+  const toast = useContext(ToastContext);
   const [name, setName] = useState('');
   const [expectedAmount, setExpectedAmount] = useState('');
   const [currency, setCurrency] = useState<CurrencyType>('USD_CASH');
@@ -21,8 +24,14 @@ const EstimatedIncomeForm: React.FC<EstimatedIncomeFormProps> = ({ income, initi
   const [categories, setCategories] = useState<Category[]>([]);
   const [paymentDay, setPaymentDay] = useState('');
   const [notes, setNotes] = useState('');
+  const [rates, setRates] = useState<ExchangeRates | null>(null);
+  const [manualRate, setManualRate] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    getRates().then(setRates).catch(console.error);
+  }, []);
 
   useEffect(() => {
     getCategories('income')
@@ -46,9 +55,11 @@ const EstimatedIncomeForm: React.FC<EstimatedIncomeFormProps> = ({ income, initi
     e.preventDefault();
     setError(null);
 
-    const amountNum = parseFloat(expectedAmount);
+    const amountNum = parseFloat(expectedAmount.replace(',', '.'));
     if (isNaN(amountNum) || amountNum <= 0) {
-      setError('Por favor, ingresa un monto válido.');
+      const err = 'Por favor, ingresa un monto válido.';
+      setError(err);
+      if (toast) toast.error(err);
       return;
     }
 
@@ -56,7 +67,9 @@ const EstimatedIncomeForm: React.FC<EstimatedIncomeFormProps> = ({ income, initi
     if (paymentDay.trim() !== '') {
       dayNum = parseInt(paymentDay, 10);
       if (isNaN(dayNum) || dayNum < 1 || dayNum > 31) {
-        setError('El día de pago debe ser entre 1 y 31.');
+        const err = 'El día de pago debe ser entre 1 y 31.';
+        setError(err);
+        if (toast) toast.error(err);
         return;
       }
     }
@@ -88,18 +101,43 @@ const EstimatedIncomeForm: React.FC<EstimatedIncomeFormProps> = ({ income, initi
       onSaved();
     } catch (err: any) {
       console.error('Error saving income:', err);
-      setError(err.response?.data?.detail || 'Error al guardar el ingreso.');
+      const msg = err?.response?.data?.detail || err?.message || 'Error al guardar el ingreso.';
+      const errorMsg = typeof msg === 'string' ? msg : 'Error al guardar el ingreso.';
+      setError(errorMsg);
+      if (toast) {
+        toast.error(errorMsg);
+      }
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="modal-backdrop">
-      <div className="expense-form-container">
+    <div
+      className="modal-backdrop"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="expense-form-container" onClick={(e) => e.stopPropagation()}>
         <h2>{targetIncome ? 'Editar Ingreso Estimado' : 'Nuevo Ingreso Estimado'}</h2>
 
-        {error && <div className="error-message">{error}</div>}
+        {error && (
+          <div
+            className="error-message"
+            style={{
+              padding: '0.75rem 1rem',
+              marginBottom: '1rem',
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              borderRadius: 'var(--radius-md, 8px)',
+              color: '#ef4444',
+              fontSize: '0.875rem',
+            }}
+          >
+            {error}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">
@@ -117,12 +155,11 @@ const EstimatedIncomeForm: React.FC<EstimatedIncomeFormProps> = ({ income, initi
             <div className="form-group half">
               <label>Monto</label>
               <input
-                type="number"
+                type="text"
+                inputMode="decimal"
                 value={expectedAmount}
-                onChange={(e) => setExpectedAmount(e.target.value)}
+                onChange={(e) => setExpectedAmount(e.target.value.replace(/[^0-9.,]/g, ''))}
                 placeholder="0.00"
-                step="0.01"
-                min="0.01"
                 required
               />
             </div>
@@ -139,6 +176,18 @@ const EstimatedIncomeForm: React.FC<EstimatedIncomeFormProps> = ({ income, initi
               </select>
             </div>
           </div>
+
+          {(expectedAmount.trim() !== '' || currency !== 'BS') && (
+            <ExchangeRateField
+              currency={currency}
+              rates={rates}
+              manualRate={manualRate}
+              onManualRateChange={setManualRate}
+              isEditing={Boolean(targetIncome)}
+              hasDate={false}
+              mode="income"
+            />
+          )}
 
           <div className="form-group row">
             <div className="form-group half">

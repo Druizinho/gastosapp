@@ -35,52 +35,64 @@ export const CurrencyBreakdownCard: React.FC<CurrencyBreakdownCardProps> = ({
   fallbackRates,
   isPendingReference = false
 }) => {
-  const itemRef = {
-    amount: originalAmount,
-    currency: originalCurrency,
-    amount_bs: amountBs,
-    amount_usd: amountUsd,
-    amount_eur: amountEur,
-    amount_usdt: amountUsdt,
-    rate_usd_bs: rateUsdBs,
-    rate_eur_bs: rateEurBs,
-    rate_usdt_bs: rateUsdtBs,
-  };
+  const itemRef = isPendingReference
+    ? {
+        amount: originalAmount,
+        currency: originalCurrency,
+        rate_usd_bs: undefined,
+        rate_eur_bs: undefined,
+        rate_usdt_bs: undefined,
+        amount_bs: undefined,
+        amount_usd: undefined,
+        amount_eur: undefined,
+        amount_usdt: undefined,
+      }
+    : {
+        amount: originalAmount,
+        currency: originalCurrency,
+        amount_bs: amountBs,
+        amount_usd: amountUsd,
+        amount_eur: amountEur,
+        amount_usdt: amountUsdt,
+        rate_usd_bs: rateUsdBs,
+        rate_eur_bs: rateEurBs,
+        rate_usdt_bs: rateUsdtBs,
+      };
 
   const rateInfo = getHistoricalRateDisplay(itemRef, fallbackRates);
 
   // Determine if this item has historical rates recorded
   const hasHistoricalRates = !isPendingReference && Boolean(
-    (rateUsdBs != null && Number(rateUsdBs) > 0) ||
-    (amountBs != null && Number(amountBs) > 0) ||
-    (rateEurBs != null && Number(rateEurBs) > 0) ||
-    (rateUsdtBs != null && Number(rateUsdtBs) > 0) ||
+    (itemRef.rate_usd_bs != null && Number(itemRef.rate_usd_bs) > 0) ||
+    (itemRef.amount_bs != null && Number(itemRef.amount_bs) > 0) ||
+    (itemRef.rate_eur_bs != null && Number(itemRef.rate_eur_bs) > 0) ||
+    (itemRef.rate_usdt_bs != null && Number(itemRef.rate_usdt_bs) > 0) ||
     rateInfo.isHistorical
   );
 
   // Compute resolved equivalents
-  const resolvedBs = amountBs != null && !isNaN(amountBs)
-    ? amountBs
+  const resolvedBs = itemRef.amount_bs != null && !isNaN(itemRef.amount_bs)
+    ? itemRef.amount_bs
     : isSameCurrency(originalCurrency, 'BS')
       ? originalAmount
       : convertItemAmountToMainCurrency(itemRef, 'BS', fallbackRates);
 
-  const resolvedUsd = amountUsd != null && !isNaN(amountUsd)
-    ? amountUsd
+  const resolvedUsd = itemRef.amount_usd != null && !isNaN(itemRef.amount_usd)
+    ? itemRef.amount_usd
     : isSameCurrency(originalCurrency, 'USD')
       ? originalAmount
-      : (rateUsdBs != null && Number(rateUsdBs) > 0 && resolvedBs != null && Number(resolvedBs) > 0)
-        ? Number(resolvedBs) / Number(rateUsdBs)
+      : (itemRef.rate_usd_bs != null && Number(itemRef.rate_usd_bs) > 0 && resolvedBs != null && Number(resolvedBs) > 0)
+        ? Number(resolvedBs) / Number(itemRef.rate_usd_bs)
         : convertItemAmountToMainCurrency(itemRef, 'USD', fallbackRates);
 
   // EUR: only use amountEur, transaction rateEurBs, or (if not historical) fallbackRates
   let resolvedEur: number | null = null;
   if (isSameCurrency(originalCurrency, 'EUR')) {
     resolvedEur = originalAmount;
-  } else if (amountEur != null && !isNaN(Number(amountEur))) {
-    resolvedEur = Number(amountEur);
-  } else if (rateEurBs != null && Number(rateEurBs) > 0 && resolvedBs != null && Number(resolvedBs) > 0) {
-    resolvedEur = Number(resolvedBs) / Number(rateEurBs);
+  } else if (itemRef.amount_eur != null && !isNaN(Number(itemRef.amount_eur))) {
+    resolvedEur = Number(itemRef.amount_eur);
+  } else if (itemRef.rate_eur_bs != null && Number(itemRef.rate_eur_bs) > 0 && resolvedBs != null && Number(resolvedBs) > 0) {
+    resolvedEur = Number(resolvedBs) / Number(itemRef.rate_eur_bs);
   } else if (!hasHistoricalRates) {
     const converted = convertItemAmountToMainCurrency(itemRef, 'EUR', fallbackRates);
     resolvedEur = !isNaN(converted) && converted > 0 ? converted : null;
@@ -92,10 +104,10 @@ export const CurrencyBreakdownCard: React.FC<CurrencyBreakdownCardProps> = ({
   let resolvedUsdt: number | null = null;
   if (isSameCurrency(originalCurrency, 'USDT')) {
     resolvedUsdt = originalAmount;
-  } else if (amountUsdt != null && !isNaN(Number(amountUsdt))) {
-    resolvedUsdt = Number(amountUsdt);
-  } else if (rateUsdtBs != null && Number(rateUsdtBs) > 0 && resolvedBs != null && Number(resolvedBs) > 0) {
-    resolvedUsdt = Number(resolvedBs) / Number(rateUsdtBs);
+  } else if (itemRef.amount_usdt != null && !isNaN(Number(itemRef.amount_usdt))) {
+    resolvedUsdt = Number(itemRef.amount_usdt);
+  } else if (itemRef.rate_usdt_bs != null && Number(itemRef.rate_usdt_bs) > 0 && resolvedBs != null && Number(resolvedBs) > 0) {
+    resolvedUsdt = Number(resolvedBs) / Number(itemRef.rate_usdt_bs);
   } else if (!hasHistoricalRates) {
     const converted = convertItemAmountToMainCurrency(itemRef, 'USDT', fallbackRates);
     resolvedUsdt = !isNaN(converted) && converted > 0 ? converted : null;

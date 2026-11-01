@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { Users } from 'lucide-react';
 import type { Debt, DebtCreate, DebtUpdate, Connection } from '../types';
 import { CURRENCY_OPTIONS } from '../types';
@@ -6,11 +6,17 @@ import { getConnections } from '../api';
 import { ParticipantPicker } from './panas/ParticipantPicker';
 import CategorySelect from './CategorySelect';
 import { SegmentedTabs, type TabItem } from './ui/SegmentedTabs';
+import { ToastContext } from './ui/Toast';
+
+const getLocalToday = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
 interface DebtFormProps {
   initialData?: Debt;
   type: 'owed' | 'receivable';
-  onSubmit: (data: DebtCreate | DebtUpdate) => void;
+  onSubmit: (data: DebtCreate | DebtUpdate) => void | Promise<void>;
   onCancel: () => void;
   loading: boolean;
 }
@@ -24,6 +30,12 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
   const isEditing = !!initialData;
   const isSharedDebt = isEditing && !!initialData?.is_shared;
   const isReadOnlyMember = isSharedDebt && initialData?.my_role === 'member';
+
+  const toast = useContext(ToastContext);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [totalAmount, setTotalAmount] = useState<string>(() =>
+    initialData?.total_amount != null ? String(initialData.total_amount) : ''
+  );
 
   const [connections, setConnections] = useState<Connection[]>([]);
   const [isSharedChecked, setIsSharedChecked] = useState(() => Boolean(initialData?.is_shared));
@@ -41,7 +53,7 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
     category: initialData?.category ?? (!initialData ? 'Deudas' : ''),
     total_amount: '' as any,
     currency: 'USD_BCV',
-    start_date: new Date().toISOString().split('T')[0],
+    start_date: getLocalToday(),
     due_date: '',
     is_settled: false,
     notes: '',
@@ -68,6 +80,7 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
         notes: initialData.notes || '',
         shared_with: null
       });
+      setTotalAmount(initialData.total_amount != null ? String(initialData.total_amount) : '');
       setIsSharedChecked(Boolean(initialData.is_shared));
       setSelectedPartnerIds(
         (initialData.shared_members || []).filter(m => (m as any).role !== 'owner' && !m.is_owner).map(m => String(m.user_id))
@@ -80,6 +93,7 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
+    setSubmitError(null);
 
     setFormData(prev => ({
       ...prev,
@@ -87,10 +101,20 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError(null);
+
+    const parsedAmount = parseFloat(totalAmount.replace(',', '.'));
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      const msg = 'El monto total debe ser un número válido mayor a 0';
+      setSubmitError(msg);
+      toast?.showToast(msg, 'error');
+      return;
+    }
+
     const submitData: any = { ...formData };
-    submitData.total_amount = Number(submitData.total_amount);
+    submitData.total_amount = parsedAmount;
     submitData.category = submitData.category || 'Sin Categoría';
     if (!submitData.due_date) submitData.due_date = null;
     if (!isReadOnlyMember) {
@@ -108,7 +132,15 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
         submitData.admin_ids = [];
       }
     }
-    onSubmit(submitData);
+
+    try {
+      await onSubmit(submitData);
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || 'Error al guardar la deuda';
+      const msg = typeof detail === 'string' ? detail : 'Error al guardar la deuda';
+      setSubmitError(msg);
+      toast?.showToast(msg, 'error');
+    }
   };
 
   const currentType = formData.type || type;
@@ -143,6 +175,22 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
         )}
 
         <form onSubmit={handleSubmit}>
+          {submitError && (
+            <div
+              style={{
+                marginBottom: '1rem',
+                padding: '0.75rem',
+                background: 'rgba(239, 68, 68, 0.1)',
+                color: '#ef4444',
+                borderRadius: '8px',
+                fontSize: '0.85rem',
+                border: '1px solid rgba(239, 68, 68, 0.2)',
+              }}
+            >
+              {submitError}
+            </div>
+          )}
+
           {isSharedDebt && (
             <div style={{
               background: 'rgba(59, 130, 246, 0.1)',
@@ -208,15 +256,17 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
             <div className="form-group half">
               <label>Monto Total *</label>
               <input
-                type="number"
+                type="text"
+                inputMode="decimal"
                 name="total_amount"
                 required
-                min="0.01"
-                step="0.01"
                 placeholder="0.00"
                 disabled={isReadOnlyMember}
-                value={formData.total_amount || ''}
-                onChange={handleChange}
+                value={totalAmount}
+                onChange={(e) => {
+                  setSubmitError(null);
+                  setTotalAmount(e.target.value.replace(/[^0-9.,]/g, ''));
+                }}
               />
             </div>
 
@@ -258,12 +308,15 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
                   style={{ width: '18px', height: '18px', accentColor: themeColor, cursor: 'pointer' }}
                 />
                 <label htmlFor="share_debt" style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', margin: 0 }}>
-                  <Users size={16} /> Compartir con Panas (Grupos)
+                  <Users size={16} style={{ color: themeColor }} /> Compartir con Panas
                 </label>
               </div>
+              <p style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', margin: '0.2rem 0 0 1.65rem', lineHeight: 1.35 }}>
+                Sincroniza el progreso y los movimientos en tiempo real con los participantes que elijas.
+              </p>
 
               {isSharedChecked && (
-                <div style={{ marginTop: '0.75rem' }}>
+                <div className="form-collapse-reveal" style={{ marginTop: '0.75rem' }}>
                   <ParticipantPicker
                     connections={connections}
                     selectedIds={selectedPartnerIds}
@@ -274,9 +327,6 @@ const DebtForm: React.FC<DebtFormProps> = ({ initialData, type, onSubmit, onCanc
                     }}
                     accentColor={themeColor}
                   />
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '0.45rem', marginBottom: 0, lineHeight: 1.35 }}>
-                    Todos los integrantes verán la deuda completa y sus abonos. Puedes asignar quién es Administrador o Miembro.
-                  </p>
                 </div>
               )}
             </div>

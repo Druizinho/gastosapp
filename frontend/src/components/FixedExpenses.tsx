@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus, Receipt, Pause, Play, Trash2, Edit3, Calendar, CheckCircle2, Circle, Undo2, Share2, Tag, LogOut } from 'lucide-react';
 import {
   getFixedExpenses,
@@ -53,6 +53,9 @@ const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Juli
 
 const FixedExpenses: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const highlightId = searchParams.get('highlightId');
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const { categories } = useCategories();
   const { mainCurrency } = useCurrencyPreference();
   const [displayCurrency, setDisplayCurrency] = useState<MainCurrencyPreference>(mainCurrency);
@@ -162,6 +165,29 @@ const FixedExpenses: React.FC = () => {
     fetchData();
   }, [currentMonth]);
 
+  useEffect(() => {
+    if (isLoading || !highlightId || expenses.length === 0) return;
+    const expense = expenses.find((e) => e.id === highlightId);
+    if (!expense) return;
+
+    const isPaid = (expense as any).is_paid_this_month !== undefined
+      ? Boolean((expense as any).is_paid_this_month)
+      : Boolean(expense.checks?.some((c) => c.month_year === currentMonth));
+    setActiveTab(isPaid ? 'paid' : 'pending');
+    setHighlightedId(expense.id);
+
+    const scrollTimer = setTimeout(() => {
+      const el = document.getElementById(`fixed-expense-${expense.id}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 150);
+
+    const timer = setTimeout(() => setHighlightedId(null), 3000);
+    return () => {
+      clearTimeout(scrollTimer);
+      clearTimeout(timer);
+    };
+  }, [highlightId, isLoading, expenses, currentMonth]);
+
   // Separate expenses into paid and pending for the current viewed month
   const { paidExpenses, pendingExpenses, pausedExpenses } = useMemo(() => {
     const paid: FixedExpense[] = [];
@@ -220,6 +246,9 @@ const FixedExpenses: React.FC = () => {
             amount_bs: check.amount_bs,
             amount_eur: check.amount_eur,
             amount_usdt: check.amount_usdt,
+            rate_usd_bs: check.rate_usd_bs,
+            rate_eur_bs: check.rate_eur_bs,
+            rate_usdt_bs: check.rate_usdt_bs,
           },
           displayCurrency,
           rates
@@ -232,10 +261,6 @@ const FixedExpenses: React.FC = () => {
         {
           amount: exp.amount,
           currency: exp.currency,
-          amount_usd: exp.amount_usd,
-          amount_bs: exp.amount_bs,
-          amount_eur: exp.amount_eur,
-          amount_usdt: exp.amount_usdt,
         },
         displayCurrency,
         rates
@@ -520,34 +545,46 @@ const FixedExpenses: React.FC = () => {
           amount_bs: check.amount_bs,
           amount_eur: check.amount_eur,
           amount_usdt: check.amount_usdt,
+          rate_usd_bs: check.rate_usd_bs,
+          rate_eur_bs: check.rate_eur_bs,
+          rate_usdt_bs: check.rate_usdt_bs,
         }
       : {
           amount: expense.amount,
           currency: expense.currency,
-          amount_usd: expense.amount_usd,
-          amount_bs: expense.amount_bs,
-          amount_eur: expense.amount_eur,
-          amount_usdt: expense.amount_usdt,
         };
 
     const { primaryAmount, secondaryAmount } = formatListCardAmounts(itemForAmounts, mainCurrency, rates);
 
     return (
-      <ListCard
+      <div
         key={expense.id}
-        statusColor={statusColor}
-        icon={<IconComponent size={22} />}
-        iconBg={`${hexColor}18`}
-        iconColor={hexColor}
-        title={expense.name}
-        subtitle={subtitle}
-        badges={badges}
-        isPaused={!expense.is_active}
-        primaryAmount={primaryAmount}
-        secondaryAmount={secondaryAmount}
-        quickAction={quickAction}
-        onClick={() => setSelectedExpenseForSheet(expense)}
-      />
+        id={`fixed-expense-${expense.id}`}
+        style={{
+          borderRadius: '1.25rem',
+          transition: 'box-shadow 0.3s ease',
+          ...(highlightedId === expense.id
+            ? {
+                boxShadow: '0 0 0 2px #F59E0B, 0 0 16px rgba(245, 158, 11, 0.45)',
+              }
+            : {}),
+        }}
+      >
+        <ListCard
+          statusColor={statusColor}
+          icon={<IconComponent size={22} />}
+          iconBg={`${hexColor}18`}
+          iconColor={hexColor}
+          title={expense.name}
+          subtitle={subtitle}
+          badges={badges}
+          isPaused={!expense.is_active}
+          primaryAmount={primaryAmount}
+          secondaryAmount={secondaryAmount}
+          quickAction={quickAction}
+          onClick={() => setSelectedExpenseForSheet(expense)}
+        />
+      </div>
     );
   };
 
@@ -933,13 +970,13 @@ const FixedExpenses: React.FC = () => {
               <CurrencyBreakdownCard
                 originalAmount={isPaid && check ? check.paid_amount : selectedExpenseForSheet.amount}
                 originalCurrency={isPaid && check ? check.currency : selectedExpenseForSheet.currency}
-                amountBs={isPaid && check ? check.amount_bs : selectedExpenseForSheet.amount_bs}
-                amountUsd={isPaid && check ? check.amount_usd : selectedExpenseForSheet.amount_usd}
-                amountEur={isPaid && check ? check.amount_eur : selectedExpenseForSheet.amount_eur}
-                amountUsdt={isPaid && check ? check.amount_usdt : selectedExpenseForSheet.amount_usdt}
-                rateUsdBs={isPaid && check ? check.rate_usd_bs : selectedExpenseForSheet.rate_usd_bs}
-                rateEurBs={isPaid && check ? check.rate_eur_bs : selectedExpenseForSheet.rate_eur_bs}
-                rateUsdtBs={isPaid && check ? check.rate_usdt_bs : selectedExpenseForSheet.rate_usdt_bs}
+                amountBs={isPaid && check ? check.amount_bs : undefined}
+                amountUsd={isPaid && check ? check.amount_usd : undefined}
+                amountEur={isPaid && check ? check.amount_eur : undefined}
+                amountUsdt={isPaid && check ? check.amount_usdt : undefined}
+                rateUsdBs={isPaid && check ? check.rate_usd_bs : undefined}
+                rateEurBs={isPaid && check ? check.rate_eur_bs : undefined}
+                rateUsdtBs={isPaid && check ? check.rate_usdt_bs : undefined}
                 fallbackRates={rates}
                 isPendingReference={!isPaid}
               />

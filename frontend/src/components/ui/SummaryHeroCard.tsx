@@ -165,59 +165,103 @@ export const SummaryHeroCard: React.FC<SummaryHeroCardProps> = ({
         )}
       </div>
 
-      {/* Zone 3: Metrics Grid (2 or 3 columns) */}
+      {/* Zone 3: Metrics Grid (2 or 3 columns, responsive on mobile / 4+ items) */}
       {metrics && metrics.length > 0 && (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: `repeat(${metrics.length}, 1fr)`,
-          gap: '0.75rem',
-          borderTop: '1px solid var(--border-color, rgba(0, 0, 0, 0.07))',
-          paddingTop: '0.85rem',
-        }}>
-          {metrics.map((item, idx) => (
-            <div
-              key={idx}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                borderRight: idx < metrics.length - 1 ? '1px solid var(--border-color, rgba(0, 0, 0, 0.07))' : 'none',
-                paddingRight: idx < metrics.length - 1 ? '0.75rem' : 0,
-              }}
-            >
-              <div style={{
-                fontSize: '0.68rem',
-                color: 'var(--text-tertiary, #94A3B8)',
-                fontWeight: 600,
-                textTransform: 'uppercase',
-                letterSpacing: '0.04em',
-                marginBottom: '0.15rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.3rem',
-              }}>
-                {item.icon}
-                <span>{item.label}</span>
-              </div>
-              <div style={{
-                fontSize: '0.95rem',
-                fontWeight: 700,
-                color: item.valueColor || 'var(--text-primary, #0F172A)',
-                letterSpacing: '-0.01em',
-              }}>
-                {isLoading || item.value === '...' ? (
-                  <Skeleton width={68} height={16} borderRadius={6} style={{ marginTop: 2 }} />
-                ) : (
-                  item.value
+        <>
+          <style>{`
+            .summary-hero-metrics-grid {
+              display: grid;
+              gap: 0.75rem;
+              border-top: 1px solid var(--border-color, rgba(0, 0, 0, 0.07));
+              padding-top: 0.85rem;
+            }
+            .summary-hero-metrics-grid.multi-row {
+              grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+            }
+            .summary-hero-metrics-grid.multi-row .summary-hero-metric-item:nth-child(2n) {
+              border-right: none !important;
+              padding-right: 0 !important;
+            }
+            .summary-hero-metrics-grid.multi-row .summary-hero-metric-item:last-child {
+              border-right: none !important;
+              padding-right: 0 !important;
+            }
+            .summary-hero-metrics-grid.multi-row.has-multiple-rows .summary-hero-metric-item:nth-child(-n+2) {
+              border-bottom: 1px solid var(--border-color, rgba(0, 0, 0, 0.07));
+              padding-bottom: 0.65rem;
+            }
+            @media (max-width: 480px) {
+              .summary-hero-metrics-grid {
+                grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)) !important;
+              }
+              .summary-hero-metrics-grid .summary-hero-metric-item:nth-child(2n) {
+                border-right: none !important;
+                padding-right: 0 !important;
+              }
+              .summary-hero-metrics-grid .summary-hero-metric-item:last-child {
+                border-right: none !important;
+                padding-right: 0 !important;
+              }
+              .summary-hero-metrics-grid.has-multiple-rows .summary-hero-metric-item:nth-child(-n+2) {
+                border-bottom: 1px solid var(--border-color, rgba(0, 0, 0, 0.07));
+                padding-bottom: 0.65rem;
+              }
+            }
+          `}</style>
+          <div
+            className={`summary-hero-metrics-grid ${metrics.length >= 4 ? 'multi-row' : ''} ${metrics.length > 2 ? 'has-multiple-rows' : ''}`}
+            style={{
+              gridTemplateColumns: metrics.length >= 4
+                ? 'repeat(auto-fit, minmax(130px, 1fr))'
+                : `repeat(${metrics.length}, 1fr)`,
+            }}
+          >
+            {metrics.map((item, idx) => (
+              <div
+                key={idx}
+                className="summary-hero-metric-item"
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  borderRight: idx < metrics.length - 1 ? '1px solid var(--border-color, rgba(0, 0, 0, 0.07))' : 'none',
+                  paddingRight: idx < metrics.length - 1 ? '0.75rem' : 0,
+                }}
+              >
+                <div style={{
+                  fontSize: '0.68rem',
+                  color: 'var(--text-tertiary, #94A3B8)',
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                  marginBottom: '0.15rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.3rem',
+                }}>
+                  {item.icon}
+                  <span>{item.label}</span>
+                </div>
+                <div style={{
+                  fontSize: '0.95rem',
+                  fontWeight: 700,
+                  color: item.valueColor || 'var(--text-primary, #0F172A)',
+                  letterSpacing: '-0.01em',
+                }}>
+                  {isLoading || item.value === '...' ? (
+                    <Skeleton width={68} height={16} borderRadius={6} style={{ marginTop: 2 }} />
+                  ) : (
+                    item.value
+                  )}
+                </div>
+                {item.subtext && (
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-tertiary, #94A3B8)', marginTop: '2px' }}>
+                    {item.subtext}
+                  </div>
                 )}
               </div>
-              {item.subtext && (
-                <div style={{ fontSize: '0.68rem', color: 'var(--text-tertiary, #94A3B8)', marginTop: '2px' }}>
-                  {item.subtext}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </>
       )}
 
       {/* Zone 4: Progress Bar */}

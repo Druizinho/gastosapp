@@ -2,7 +2,7 @@ import { useState, useEffect, useContext } from 'react';
 import type { ExpenseCreate, ExpenseUpdate, Expense, CurrencyType, ExchangeRates, Income, IncomeCreate, IncomeUpdate, EstimatedIncome } from '../types';
 import { CURRENCY_OPTIONS, getCurrencyLabel } from '../types';
 import { getRates, getMonthlyIncomes } from '../api';
-import { Info } from 'lucide-react';
+import { ExchangeRateField } from './ExchangeRateField';
 import CategorySelect from './CategorySelect';
 import { useCategories } from '../context/CategoriesContext';
 import { SegmentedTabs } from './ui/SegmentedTabs';
@@ -35,6 +35,7 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
 }) => {
   const { categories, incomeCategories, refreshCategories } = useCategories();
   const toast = useContext(ToastContext);
+  const isEditing = Boolean(initialData || initialIncomeData);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [mode, setMode] = useState<'expense' | 'income'>(
     initialIncomeData ? 'income' : (initialData ? 'expense' : defaultMode)
@@ -58,7 +59,37 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
   const [currency, setCurrency] = useState<CurrencyType>(
     initialIncomeData ? initialIncomeData.currency : (initialData?.currency || 'BS')
   );
-  const [manualRate, setManualRate] = useState<string>('');
+  const [manualRate, setManualRate] = useState<string>(() => {
+    const item = initialIncomeData || initialData;
+    if (!item || item.currency === 'BS') return '';
+    if (item.currency === 'USD_CASH') {
+      const customRate = (item as any).manual_rate;
+      return customRate ? formatRateForInput(customRate) : '';
+    }
+    if (item.currency === 'EUR_BCV' && item.rate_eur_bs) return formatRateForInput(item.rate_eur_bs);
+    if (item.currency === 'USDT' && item.rate_usdt_bs) return formatRateForInput(item.rate_usdt_bs);
+    if (item.currency === 'USD_BCV' && item.rate_usd_bs) return formatRateForInput(item.rate_usd_bs);
+    return '';
+  });
+  const [showManualRate, setShowManualRate] = useState<boolean>(() => {
+    if (initialIncomeData) {
+      if (initialIncomeData.currency === 'BS') return false;
+      if (initialIncomeData.currency === 'USD_CASH') {
+        const customRate = (initialIncomeData as any).manual_rate;
+        return Boolean(customRate && Number(customRate) > 0);
+      }
+      return Boolean(initialIncomeData.rate_usd_bs || initialIncomeData.rate_eur_bs || initialIncomeData.rate_usdt_bs);
+    }
+    if (initialData) {
+      if (initialData.currency === 'BS') return false;
+      if (initialData.currency === 'USD_CASH') {
+        const customRate = (initialData as any).manual_rate;
+        return Boolean(customRate && Number(customRate) > 0);
+      }
+      return Boolean(initialData.rate_usd_bs || initialData.rate_eur_bs || initialData.rate_usdt_bs);
+    }
+    return false;
+  });
 
   const [rates, setRates] = useState<ExchangeRates | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -77,12 +108,19 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
 
       if (initialIncomeData.currency === 'EUR_BCV' && initialIncomeData.rate_eur_bs) {
         setManualRate(formatRateForInput(initialIncomeData.rate_eur_bs));
+        setShowManualRate(true);
       } else if (initialIncomeData.currency === 'USDT' && initialIncomeData.rate_usdt_bs) {
         setManualRate(formatRateForInput(initialIncomeData.rate_usdt_bs));
+        setShowManualRate(true);
       } else if (initialIncomeData.currency === 'USD_BCV' && initialIncomeData.rate_usd_bs) {
         setManualRate(formatRateForInput(initialIncomeData.rate_usd_bs));
+        setShowManualRate(true);
+      } else if (initialIncomeData.currency === 'USD_CASH' && (initialIncomeData as any).manual_rate) {
+        setManualRate(formatRateForInput((initialIncomeData as any).manual_rate));
+        setShowManualRate(true);
       } else {
         setManualRate('');
+        setShowManualRate(false);
       }
     } else if (initialData) {
       setMode('expense');
@@ -95,12 +133,19 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
       // Cargar la tasa histórica solo para divisas estándar (no inicializar rate_usd_bs para USD_CASH)
       if (initialData.currency === 'EUR_BCV' && initialData.rate_eur_bs) {
         setManualRate(formatRateForInput(initialData.rate_eur_bs));
+        setShowManualRate(true);
       } else if (initialData.currency === 'USDT' && initialData.rate_usdt_bs) {
         setManualRate(formatRateForInput(initialData.rate_usdt_bs));
+        setShowManualRate(true);
       } else if (initialData.currency === 'USD_BCV' && initialData.rate_usd_bs) {
         setManualRate(formatRateForInput(initialData.rate_usd_bs));
+        setShowManualRate(true);
+      } else if (initialData.currency === 'USD_CASH' && (initialData as any).manual_rate) {
+        setManualRate(formatRateForInput((initialData as any).manual_rate));
+        setShowManualRate(true);
       } else {
         setManualRate('');
+        setShowManualRate(false);
       }
     } else {
       if (mode === 'income') {
@@ -209,9 +254,6 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
     }
   };
 
-  const isUsdtRateMissing = currency === 'USDT' && rates !== null && (rates.usdt_bs === null || rates.usdt_bs === undefined || rates.usdt_bs <= 0);
-  const currentRate = currency === 'EUR_BCV' ? rates?.eur_bs : currency === 'USDT' ? rates?.usdt_bs : rates?.usd_bs;
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitError(null);
@@ -306,6 +348,8 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
         setAmount('');
         setDescription('');
         setSelectedTemplateId('');
+        setManualRate('');
+        setShowManualRate(false);
       }
     } catch (err: any) {
       console.error('Error saving:', err);
@@ -319,8 +363,6 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
       setIsSubmitting(false);
     }
   };
-
-  const isEditing = Boolean(initialData || initialIncomeData);
 
   return (
     <div
@@ -457,93 +499,18 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
             </div>
           </div>
 
-          <div className="form-group">
-            <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                <span>Tasa de Cambio {isEditing ? '(Histórica)' : ''}</span>
-                {currency !== 'BS' && currency !== 'USD_CASH' && (
-                  <span
-                    style={{
-                      fontSize: '0.72rem',
-                      fontWeight: 700,
-                      padding: '0.15rem 0.5rem',
-                      borderRadius: 'var(--radius-full)',
-                      background: isUsdtRateMissing ? 'rgba(239, 68, 68, 0.12)' : 'var(--surface-muted, rgba(0, 0, 0, 0.05))',
-                      color: isUsdtRateMissing ? '#ef4444' : 'var(--text-secondary)',
-                    }}
-                  >
-                    {isUsdtRateMissing
-                      ? 'No hay precio en esta fecha'
-                      : currentRate && Number(currentRate) > 0
-                        ? `Bs. ${Number(currentRate).toFixed(2)}`
-                        : 'Sin tasa'}
-                  </span>
-                )}
-              </span>
-              <span className="form-hint-inline">
-                (Opcional)
-              </span>
-            </label>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={manualRate}
-              onChange={(e) => {
-                const val = e.target.value.replace(/[^0-9.,]/g, '');
-                setManualRate(val);
-              }}
-              placeholder={
-                isUsdtRateMissing
-                  ? "No hay precio en esta fecha — tasa manual opcional"
-                  : currentRate && Number(currentRate) > 0
-                    ? `Por defecto: Bs. ${Number(currentRate).toFixed(2)}`
-                    : "Ej. 36.50"
-              }
-            />
-            {isUsdtRateMissing ? (
-              <div
-                style={{
-                  marginTop: '0.5rem',
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: '0.5rem',
-                  background: 'rgba(234, 179, 8, 0.12)',
-                  color: '#b45309',
-                  padding: '0.75rem',
-                  borderRadius: '8px',
-                  fontSize: '0.85rem',
-                  border: '1px solid rgba(234, 179, 8, 0.25)',
-                }}
-              >
-                <Info size={16} style={{ flexShrink: 0, marginTop: '2px', color: '#b45309' }} />
-                <span>No hay precio de USDT en esta fecha. Puedes ingresar una tasa manual (opcional).</span>
-              </div>
-            ) : (
-              <div
-                style={{
-                  marginTop: '0.5rem',
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: '0.5rem',
-                  background: 'rgba(59, 130, 246, 0.1)',
-                  color: 'var(--accent-color)',
-                  padding: '0.75rem',
-                  borderRadius: '8px',
-                  fontSize: '0.85rem',
-                  border: '1px solid rgba(59, 130, 246, 0.2)',
-                }}
-              >
-                <Info size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
-                <span>
-                  {isEditing
-                    ? (mode === 'income'
-                        ? "Esta fue la tasa de cambio usada en su momento. Modifícala solo si deseas recalcular el ingreso."
-                        : "Esta fue la tasa de cambio usada en su momento. Modifícala solo si deseas recalcular el gasto.")
-                    : "💡 Déjalo en blanco para usar la tasa de cambio automática del sistema (BCV o Binance)."}
-                </span>
-              </div>
-            )}
-          </div>
+          {/* Exchange Rate Section */}
+          <ExchangeRateField
+            currency={currency}
+            rates={rates}
+            manualRate={manualRate}
+            onManualRateChange={setManualRate}
+            isEditing={isEditing}
+            showManualRate={showManualRate}
+            onShowManualRateChange={setShowManualRate}
+            mode={mode}
+          />
+
 
           <div className="form-group">
             <label>Descripción</label>

@@ -1,4 +1,4 @@
-import React, { useState, useId } from 'react';
+import React, { useState, useRef, useEffect, useId } from 'react';
 import type { Category, CategoryKind } from '../types';
 import { useCategories } from '../context/CategoriesContext';
 import { createCategory } from '../api';
@@ -7,7 +7,7 @@ import {
   CATEGORY_COLORS,
   ICON_MAP
 } from '../utils/categoryVisuals';
-import { Plus, X, Check, Loader2, Sparkles } from 'lucide-react';
+import { Plus, X, Check, Loader2 } from 'lucide-react';
 
 export interface CategorySelectProps {
   value: string;
@@ -26,7 +26,7 @@ export interface CategorySelectProps {
   style?: React.CSSProperties;
 }
 
-const POPULAR_ICONS = [
+const INLINE_ICONS = [
   'Utensils',
   'Car',
   'Home',
@@ -67,11 +67,57 @@ export const CategorySelect: React.FC<CategorySelectProps> = ({
 
   // Inline creator state
   const [showInlineCreator, setShowInlineCreator] = useState(false);
+  const [showPalettePopover, setShowPalettePopover] = useState(false);
   const [newCatName, setNewCatName] = useState('');
   const [newCatColor, setNewCatColor] = useState<string>(CATEGORY_COLORS[0].value);
   const [newCatIcon, setNewCatIcon] = useState<string>('Utensils');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [creatorError, setCreatorError] = useState<string | null>(null);
+
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const paletteTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (showInlineCreator) {
+      setTimeout(() => {
+        nameInputRef.current?.focus();
+      }, 50);
+    } else {
+      setShowPalettePopover(false);
+    }
+  }, [showInlineCreator]);
+
+  useEffect(() => {
+    if (!showPalettePopover) return;
+
+    const handlePointerDown = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as Node;
+      if (
+        popoverRef.current &&
+        !popoverRef.current.contains(target) &&
+        (!paletteTriggerRef.current || !paletteTriggerRef.current.contains(target))
+      ) {
+        setShowPalettePopover(false);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowPalettePopover(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showPalettePopover]);
 
   // Find visual representation for currently selected category
   const selectedCatObj = categories.find(
@@ -83,12 +129,7 @@ export const CategorySelect: React.FC<CategorySelectProps> = ({
   );
 
   const handleSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const val = e.target.value;
-    if (val === '__CREATE_NEW__') {
-      setShowInlineCreator(true);
-      return;
-    }
-    onChange(val);
+    onChange(e.target.value);
   };
 
   const handleSaveInline = async (e?: React.MouseEvent | React.KeyboardEvent) => {
@@ -122,9 +163,10 @@ export const CategorySelect: React.FC<CategorySelectProps> = ({
       // Auto-select newly created category
       onChange(created.name);
 
-      // Reset & close inline creator
+      // Reset & close inline creator & popover
       setNewCatName('');
       setShowInlineCreator(false);
+      setShowPalettePopover(false);
     } catch (err: any) {
       console.error('Error creating category inline:', err);
       const msg = err.response?.data?.detail || 'Error al crear la categoría';
@@ -134,19 +176,25 @@ export const CategorySelect: React.FC<CategorySelectProps> = ({
     }
   };
 
-  const handleCancelInline = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const handleCancelInline = (e?: React.MouseEvent | React.KeyboardEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     setShowInlineCreator(false);
+    setShowPalettePopover(false);
     setNewCatName('');
     setCreatorError(null);
   };
 
-  const PreviewIcon = ICON_MAP[newCatIcon] || ICON_MAP.Package;
+  const NewPreviewIcon = ICON_MAP[newCatIcon] || ICON_MAP.Package;
 
   return (
-    <div className={`category-select-container ${className || ''}`} style={{ width: '100%', ...style }}>
-      {label && (
+    <div
+      className={`category-select-container ${showInlineCreator ? 'category-select-container--creating' : ''} ${className || ''}`.trim()}
+      style={{ width: '100%', position: 'relative', ...style }}
+    >
+      {Boolean(label || !disabled) && (
         <div
           style={{
             display: 'flex',
@@ -157,235 +205,317 @@ export const CategorySelect: React.FC<CategorySelectProps> = ({
             marginBottom: '0.35rem',
           }}
         >
-          <label
-            htmlFor={selectId}
-            style={{
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              color: 'var(--text-secondary)',
-              margin: 0,
-            }}
-          >
-            {label}
-            {required && ' *'}
-          </label>
+          {label ? (
+            <label
+              htmlFor={selectId}
+              style={{
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                color: 'var(--text-secondary)',
+                margin: 0,
+              }}
+            >
+              {label}
+              {required && ' *'}
+            </label>
+          ) : (
+            <span />
+          )}
 
-          {!disabled && !showInlineCreator && (
+          {!disabled && (
             <button
               type="button"
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                setShowInlineCreator(true);
+                if (showInlineCreator) {
+                  handleCancelInline();
+                } else {
+                  setShowInlineCreator(true);
+                }
               }}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '0.25rem',
-                background: 'none',
                 border: 'none',
-                color: 'var(--accent-color)',
+                background: showInlineCreator ? 'var(--surface-muted)' : 'none',
+                color: showInlineCreator ? 'var(--text-secondary)' : 'var(--accent-color)',
                 fontSize: '0.78rem',
                 fontWeight: 600,
                 cursor: 'pointer',
-                padding: '0.15rem 0.4rem',
-                borderRadius: '6px',
-                transition: 'background-color 0.15s ease, transform 0.15s ease',
+                padding: showInlineCreator ? '0.15rem 0.5rem' : '0.15rem 0.4rem',
+                borderRadius: showInlineCreator ? '999px' : '6px',
+                transition: 'background-color 0.15s ease, transform 0.15s ease, color 0.15s ease',
               }}
-              title="Crear nueva categoría"
+              title={showInlineCreator ? 'Cancelar creación' : 'Crear nueva categoría'}
             >
-              <Plus size={13} />
-              <span>+ Nueva</span>
+              {showInlineCreator ? (
+                <>
+                  <X size={12} />
+                  <span>Cancelar</span>
+                </>
+              ) : (
+                <>
+                  <Plus size={13} />
+                  <span>Nueva</span>
+                </>
+              )}
             </button>
           )}
         </div>
       )}
 
-      {/* Main Select Dropdown Row */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.5rem',
-          position: 'relative',
-        }}
-      >
-        {/* Visual category icon badge preview */}
+      {/* Either the Select Row OR the 1-Line Inline Creator */}
+      {!showInlineCreator ? (
         <div
           style={{
-            width: '36px',
-            height: '36px',
-            borderRadius: '10px',
-            backgroundColor: value ? `${currentHexColor}18` : 'var(--surface-muted)',
-            border: `1px solid ${value ? `${currentHexColor}40` : 'var(--border-color)'}`,
-            color: value ? currentHexColor : 'var(--text-tertiary)',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-            transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
+            gap: '0.5rem',
+            position: 'relative',
           }}
-          title={value || emptyLabel}
         >
-          <CurrentIcon size={18} />
-        </div>
-
-        {/* The Native Select for accessible & mobile-friendly usage */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <select
-            id={selectId}
-            name={name}
-            value={value || ''}
-            onChange={handleSelectChange}
-            disabled={disabled}
-            required={required}
+          {/* Visual category icon badge preview */}
+          <div
             style={{
-              width: '100%',
-              padding: '0.65rem 0.8rem',
-              borderRadius: 'var(--radius-sm)',
-              border: '1px solid var(--border-color)',
-              background: 'var(--surface-color)',
-              color: value ? 'var(--text-primary)' : 'var(--text-tertiary)',
-              fontSize: '0.9rem',
-              fontWeight: 500,
-              cursor: disabled ? 'not-allowed' : 'pointer',
-              outline: 'none',
-              boxSizing: 'border-box',
-              transition: 'border-color 0.15s ease',
+              width: '36px',
+              height: '36px',
+              borderRadius: '10px',
+              backgroundColor: value ? `${currentHexColor}18` : 'var(--surface-muted)',
+              border: `1px solid ${value ? `${currentHexColor}40` : 'var(--border-color)'}`,
+              color: value ? currentHexColor : 'var(--text-tertiary)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
             }}
+            title={value || emptyLabel}
           >
-            {allowEmpty && <option value="">{emptyLabel}</option>}
-            {categories.map((c) => (
-              <option key={c.id} value={c.name}>
-                {c.name}
-              </option>
-            ))}
-            {!disabled && (
-              <option value="__CREATE_NEW__" style={{ fontWeight: 600, color: 'var(--accent-color)' }}>
-                ➕ Crear nueva categoría...
-              </option>
-            )}
-          </select>
-        </div>
-      </div>
-
-      {/* Inline Mini-Creator Panel */}
-      {showInlineCreator && (
-        <div
-          style={{
-            marginTop: '0.65rem',
-            padding: '0.85rem',
-            background: 'var(--surface-muted)',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--border-color)',
-            boxShadow: 'var(--shadow-sm)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '0.65rem',
-            animation: 'fadeIn 0.15s ease-out',
-            boxSizing: 'border-box',
-            width: '100%',
-            overflow: 'hidden',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span
-              style={{
-                fontSize: '0.78rem',
-                fontWeight: 700,
-                color: 'var(--text-primary)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.35rem',
-              }}
-            >
-              <Sparkles size={13} color="var(--accent-color)" />
-              Nueva Categoría Rápida
-            </span>
-            <button
-              type="button"
-              onClick={handleCancelInline}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'var(--text-tertiary)',
-                cursor: 'pointer',
-                padding: '0.15rem',
-                display: 'flex',
-                borderRadius: '4px',
-              }}
-              title="Cancelar"
-            >
-              <X size={15} />
-            </button>
+            <CurrentIcon size={18} />
           </div>
 
-          {creatorError && (
-            <div
+          {/* The Native Select */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <select
+              id={selectId}
+              name={name}
+              value={value || ''}
+              onChange={handleSelectChange}
+              disabled={disabled}
+              required={required}
               style={{
-                fontSize: '0.75rem',
-                color: '#EF4444',
-                background: 'rgba(239, 68, 68, 0.1)',
-                padding: '0.35rem 0.5rem',
-                borderRadius: '6px',
-              }}
-            >
-              {creatorError}
-            </div>
-          )}
-
-          {/* Name Input + Live Preview Badge */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <div
-              style={{
-                width: '32px',
-                height: '32px',
-                borderRadius: '8px',
-                backgroundColor: `${newCatColor}20`,
-                border: `1px solid ${newCatColor}45`,
-                color: newCatColor,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
-              <PreviewIcon size={16} />
-            </div>
-
-            <input
-              type="text"
-              autoFocus
-              placeholder="Nombre (ej. Mascotas, Suscripciones)"
-              value={newCatName}
-              onChange={(e) => setNewCatName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  handleSaveInline();
-                }
-              }}
-              style={{
-                flex: '1 1 130px',
-                minWidth: 0,
-                padding: '0.55rem 0.7rem',
-                fontSize: '0.85rem',
+                width: '100%',
+                padding: '0.65rem 0.8rem',
                 borderRadius: 'var(--radius-sm)',
                 border: '1px solid var(--border-color)',
                 background: 'var(--surface-color)',
-                color: 'var(--text-primary)',
+                color: value ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                fontSize: '0.9rem',
+                fontWeight: 500,
+                cursor: disabled ? 'not-allowed' : 'pointer',
                 outline: 'none',
+                boxSizing: 'border-box',
+                transition: 'border-color 0.15s ease',
               }}
-            />
+            >
+              {allowEmpty && <option value="">{emptyLabel}</option>}
+              {categories.map((c) => (
+                <option key={c.id} value={c.name}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      ) : (
+        <div
+          className="form-collapse-reveal"
+          style={{
+            minHeight: '40px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.375rem',
+            position: 'relative',
+            width: '100%',
+          }}
+        >
+          {/* 1. Palette Trigger Button */}
+          <button
+            ref={paletteTriggerRef}
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setShowPalettePopover((prev) => !prev);
+            }}
+            style={{
+              width: '38px',
+              height: '40px',
+              padding: 0,
+              borderRadius: 'var(--radius-sm, 10px)',
+              border: `1.5px solid ${newCatColor}`,
+              background: `${newCatColor}20`,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              flexShrink: 0,
+              transition: 'transform 150ms ease-out, background-color 150ms ease',
+            }}
+            title="Personalizar icono y color"
+          >
+            <NewPreviewIcon size={16} color={newCatColor} />
+          </button>
+
+          {/* 2. Category Name Input */}
+          <input
+            ref={nameInputRef}
+            type="text"
+            autoFocus
+            placeholder="Nombre de categoría..."
+            value={newCatName}
+            onChange={(e) => setNewCatName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                handleSaveInline();
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                handleCancelInline();
+              }
+            }}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              height: '40px',
+              padding: '0 0.65rem',
+              fontSize: '0.85rem',
+              borderRadius: 'var(--radius-sm, 10px)',
+              border: '1px solid var(--border-color)',
+              background: 'var(--surface-color)',
+              color: 'var(--text-primary)',
+              outline: 'none',
+              boxSizing: 'border-box',
+            }}
+          />
+
+          {/* 3. Save Button */}
+          <button
+            type="button"
+            onClick={handleSaveInline}
+            disabled={isSubmitting || !newCatName.trim()}
+            style={{
+              width: '38px',
+              height: '40px',
+              padding: 0,
+              borderRadius: 'var(--radius-sm, 10px)',
+              border: 'none',
+              background: 'var(--accent-color, #111827)',
+              color: 'var(--text-inverse, #FFFFFF)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: isSubmitting || !newCatName.trim() ? 'not-allowed' : 'pointer',
+              opacity: isSubmitting || !newCatName.trim() ? 0.6 : 1,
+              flexShrink: 0,
+              transition: 'transform 150ms ease-out, opacity 150ms ease',
+            }}
+            title="Guardar categoría"
+          >
+            {isSubmitting ? <Loader2 size={16} className="spin" /> : <Check size={16} />}
+          </button>
+        </div>
+      )}
+
+      {/* Inline error line right below the bar */}
+      {showInlineCreator && creatorError && (
+        <div
+          style={{
+            marginTop: '0.35rem',
+            fontSize: '0.75rem',
+            color: '#ef4444',
+            lineHeight: 1.2,
+          }}
+        >
+          {creatorError}
+        </div>
+      )}
+
+      {/* Floating Palette Popover */}
+      {showInlineCreator && showPalettePopover && (
+        <div
+          ref={popoverRef}
+          className="form-collapse-reveal"
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 6px)',
+            left: 0,
+            zIndex: 60,
+            width: 'min(290px, 90vw)',
+            background: 'var(--surface-color)',
+            border: '1px solid var(--border-color)',
+            borderRadius: 'var(--radius-md)',
+            padding: '0.85rem',
+            boxShadow: 'var(--shadow-xl)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.65rem',
+          }}
+        >
+          {/* Header with live preview badge + Listo button */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+              <div
+                style={{
+                  width: '24px',
+                  height: '24px',
+                  borderRadius: '6px',
+                  backgroundColor: `${newCatColor}20`,
+                  border: `1px solid ${newCatColor}40`,
+                  color: newCatColor,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <NewPreviewIcon size={14} />
+              </div>
+              <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                Icono y color
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setShowPalettePopover(false);
+              }}
+              style={{
+                color: 'var(--text-primary)',
+                background: 'var(--surface-muted)',
+                border: '1px solid var(--border-color)',
+                padding: '0.2rem 0.6rem',
+                borderRadius: 'var(--radius-xs, 6px)',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Listo ✓
+            </button>
           </div>
 
-          {/* Color Palette (Compact Dots) */}
+          {/* 12 Color Swatches */}
           <div>
             <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: '0.3rem' }}>
               Color
             </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
               {CATEGORY_COLORS.map((c) => {
                 const isSelected = newCatColor === c.value;
                 return (
@@ -403,14 +533,14 @@ export const CategorySelect: React.FC<CategorySelectProps> = ({
                       borderRadius: '50%',
                       background: c.value,
                       border: isSelected ? '2px solid var(--surface-color)' : '1px solid transparent',
-                      boxShadow: isSelected ? `0 0 0 2px ${c.value}` : 'none',
+                      outline: isSelected ? '2px solid var(--accent-color)' : 'none',
+                      outlineOffset: isSelected ? '2px' : '0',
                       cursor: 'pointer',
                       padding: 0,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      outline: 'none',
-                      transition: 'transform 0.15s ease',
+                      transition: 'transform 150ms ease-out',
                     }}
                     title={c.label}
                   >
@@ -421,7 +551,7 @@ export const CategorySelect: React.FC<CategorySelectProps> = ({
             </div>
           </div>
 
-          {/* Quick Icons (Grid) */}
+          {/* 12 Icons */}
           <div>
             <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: '0.3rem' }}>
               Ícono
@@ -429,11 +559,11 @@ export const CategorySelect: React.FC<CategorySelectProps> = ({
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(28px, 1fr))',
+                gridTemplateColumns: 'repeat(6, 1fr)',
                 gap: '0.35rem',
               }}
             >
-              {POPULAR_ICONS.map((iconKey) => {
+              {INLINE_ICONS.map((iconKey) => {
                 const IconComp = ICON_MAP[iconKey] || ICON_MAP.Package;
                 const isSelected = newCatIcon === iconKey;
                 return (
@@ -449,14 +579,14 @@ export const CategorySelect: React.FC<CategorySelectProps> = ({
                       height: '28px',
                       borderRadius: '6px',
                       border: isSelected ? `1.5px solid ${newCatColor}` : '1px solid var(--border-color)',
-                      background: isSelected ? `${newCatColor}18` : 'var(--surface-color)',
+                      background: isSelected ? `${newCatColor}20` : 'var(--bg-color)',
                       color: isSelected ? newCatColor : 'var(--text-secondary)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       cursor: 'pointer',
                       padding: 0,
-                      transition: 'transform 0.15s ease, background-color 0.15s ease',
+                      transition: 'transform 150ms ease-out, background-color 150ms ease',
                     }}
                     title={iconKey}
                   >
@@ -465,64 +595,6 @@ export const CategorySelect: React.FC<CategorySelectProps> = ({
                 );
               })}
             </div>
-          </div>
-
-          {/* Actions */}
-          <div
-            style={{
-              display: 'flex',
-              gap: '0.5rem',
-              justifyContent: 'flex-end',
-              flexWrap: 'wrap',
-              marginTop: '0.25rem',
-            }}
-          >
-            <button
-              type="button"
-              onClick={handleCancelInline}
-              disabled={isSubmitting}
-              style={{
-                flex: '1 1 auto',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '0.4rem 0.75rem',
-                fontSize: '0.78rem',
-                borderRadius: '6px',
-                border: '1px solid var(--border-color)',
-                background: 'var(--surface-color)',
-                color: 'var(--text-secondary)',
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              onClick={handleSaveInline}
-              disabled={isSubmitting || !newCatName.trim()}
-              style={{
-                flex: '1 1 auto',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '0.4rem 0.85rem',
-                fontSize: '0.78rem',
-                borderRadius: '6px',
-                border: 'none',
-                background: newCatColor,
-                color: '#FFFFFF',
-                fontWeight: 600,
-                cursor: isSubmitting || !newCatName.trim() ? 'not-allowed' : 'pointer',
-                opacity: isSubmitting || !newCatName.trim() ? 0.6 : 1,
-                gap: '0.3rem',
-                boxShadow: 'var(--shadow-sm)',
-              }}
-            >
-              {isSubmitting && <Loader2 size={12} className="spin" />}
-              Guardar Categoría
-            </button>
           </div>
         </div>
       )}

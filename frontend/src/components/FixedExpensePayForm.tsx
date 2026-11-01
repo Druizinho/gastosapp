@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import type { FixedExpense, FixedExpenseCheckCreate, CurrencyType, ExchangeRates } from '../types';
 import { CURRENCY_OPTIONS } from '../types';
 import { getRates } from '../api';
 import { CategorySelect } from './CategorySelect';
-import { Receipt } from 'lucide-react';
+import { Receipt, Users } from 'lucide-react';
+import { ExchangeRateField, resolveRateForCurrency } from './ExchangeRateField';
+import { ToastContext } from './ui/Toast';
 
 interface FixedExpensePayFormProps {
   expense?: FixedExpense;
@@ -28,6 +30,7 @@ const FixedExpensePayForm: React.FC<FixedExpensePayFormProps> = ({
   onCancel,
 }) => {
   const activeExpense = expense || fixedExpense;
+  const toast = useContext(ToastContext);
   const [paidDate, setPaidDate] = useState<string>(getLocalToday());
   const [paidAmount, setPaidAmount] = useState<string>(activeExpense ? activeExpense.amount.toString() : '0');
   const [currency, setCurrency] = useState<CurrencyType>(activeExpense ? activeExpense.currency : 'USD_BCV');
@@ -52,6 +55,14 @@ const FixedExpensePayForm: React.FC<FixedExpensePayFormProps> = ({
     setError(null);
     if (!paidAmount) return;
 
+    const parsedPaidAmount = parseFloat(paidAmount.replace(',', '.'));
+    if (isNaN(parsedPaidAmount) || parsedPaidAmount <= 0) {
+      const err = 'Por favor, ingresa un monto válido.';
+      setError(err);
+      if (toast) toast.error(err);
+      return;
+    }
+
     const parsedRate = manualRate ? parseFloat(manualRate.replace(',', '.')) : undefined;
 
     setIsSubmitting(true);
@@ -62,7 +73,7 @@ const FixedExpensePayForm: React.FC<FixedExpensePayFormProps> = ({
       if (onSubmit) {
         await onSubmit({
           month_year: effectiveMonthYear,
-          paid_amount: parseFloat(paidAmount.replace(',', '.')),
+          paid_amount: parsedPaidAmount,
           currency,
           paid_date: paidDate,
           create_expense: createExpense,
@@ -77,7 +88,12 @@ const FixedExpensePayForm: React.FC<FixedExpensePayFormProps> = ({
       }
     } catch (err: any) {
       console.error('Error paying fixed expense:', err);
-      setError(err?.response?.data?.detail || 'Error al registrar el pago.');
+      const msg = err?.response?.data?.detail || err?.message || 'Error al registrar el pago.';
+      const errorMsg = typeof msg === 'string' ? msg : 'Error al registrar el pago.';
+      setError(errorMsg);
+      if (toast) {
+        toast.error(errorMsg);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -89,8 +105,20 @@ const FixedExpensePayForm: React.FC<FixedExpensePayFormProps> = ({
     return `${months[parseInt(m, 10) - 1]} ${y}`;
   })();
 
-  const isUsdtRateMissing = currency === 'USDT' && rates !== null && (rates.usdt_bs === null || rates.usdt_bs === undefined || rates.usdt_bs <= 0);
-  const currentRate = currency === 'EUR_BCV' ? rates?.eur_bs : currency === 'USDT' ? rates?.usdt_bs : rates?.usd_bs;
+  const parsedAmount = parseFloat(paidAmount.replace(',', '.'));
+  const currentAmount = !isNaN(parsedAmount) ? parsedAmount : 0;
+  const isSameCurrency = currency === activeExpense.currency;
+  const suggestedRate = resolveRateForCurrency(currency, rates);
+  const manualRateNum = manualRate ? parseFloat(manualRate.replace(',', '.')) : 0;
+  const effectiveRate = manualRateNum > 0 ? manualRateNum : (suggestedRate ? Number(suggestedRate) : 0);
+  const amountInBs = currency === 'BS' ? currentAmount : (effectiveRate > 0 ? currentAmount * effectiveRate : 0);
+  const targetCurrencyRate = resolveRateForCurrency(activeExpense.currency, rates);
+  const targetRate = targetCurrencyRate ? Number(targetCurrencyRate) : 0;
+  const convertedEquivalent = isSameCurrency
+    ? currentAmount
+    : activeExpense.currency === 'BS'
+      ? (amountInBs > 0 ? amountInBs : null)
+      : (targetRate > 0 && amountInBs > 0 ? amountInBs / targetRate : null);
 
   return (
     <div
@@ -99,25 +127,58 @@ const FixedExpensePayForm: React.FC<FixedExpensePayFormProps> = ({
         if (e.target === e.currentTarget) onCancel();
       }}
     >
-      <div className="expense-form-container">
+      <div className="expense-form-container" onClick={(e) => e.stopPropagation()}>
         <h2>Marcar como Pagado</h2>
         <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '-0.5rem 0 1rem' }}>
           {activeExpense.name} — {monthLabel}
         </p>
 
-        {error && <div className="error-message">{error}</div>}
+        {error && (
+          <div
+            className="error-message"
+            style={{
+              padding: '0.75rem 1rem',
+              marginBottom: '1rem',
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              borderRadius: 'var(--radius-md, 8px)',
+              color: '#ef4444',
+              fontSize: '0.875rem',
+            }}
+          >
+            {error}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit}>
+          {activeExpense.is_shared && (
+            <div style={{
+              background: 'rgba(59, 130, 246, 0.1)',
+              color: '#3B82F6',
+              padding: '0.75rem 0.9rem',
+              borderRadius: 'var(--radius-md)',
+              fontSize: '0.82rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.6rem',
+              border: '1px solid rgba(59, 130, 246, 0.2)',
+              marginBottom: '1rem'
+            }}>
+              <Users size={16} style={{ flexShrink: 0 }} />
+              <span>
+                Este pago se sincronizará automáticamente con todos los miembros del grupo{activeExpense.shared_partner_name ? ` (${activeExpense.shared_partner_name})` : ''}.
+              </span>
+            </div>
+          )}
 
           <div className="form-group row">
             <div className="form-group half">
               <label>Monto Pagado</label>
               <input
-                type="number"
-                step="0.01"
-                min="0.01"
+                type="text"
+                inputMode="decimal"
                 value={paidAmount}
-                onChange={(e) => setPaidAmount(e.target.value)}
+                onChange={(e) => setPaidAmount(e.target.value.replace(/[^0-9.,]/g, ''))}
                 required
                 placeholder="0.00"
               />
@@ -132,27 +193,39 @@ const FixedExpensePayForm: React.FC<FixedExpensePayFormProps> = ({
             </div>
           </div>
 
-          <div className="form-group">
-            <label style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>Tasa de Cambio</span>
-              <span className="form-hint-inline">(Opcional)</span>
-            </label>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={manualRate}
-              onChange={(e) => {
-                const val = e.target.value.replace(/[^0-9.,]/g, '');
-                setManualRate(val);
+          {!isSameCurrency && currentAmount > 0 && convertedEquivalent !== null && convertedEquivalent > 0 && (
+            <div
+              className="conversion-preview-pill"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '0.6rem 0.85rem',
+                marginBottom: '0.85rem',
+                borderRadius: 'var(--radius-sm)',
+                background: 'rgba(16, 185, 129, 0.08)',
+                border: '1px solid rgba(16, 185, 129, 0.25)',
+                fontSize: '0.82rem',
+                color: 'var(--text-primary)'
               }}
-              placeholder={isUsdtRateMissing ? "No hay precio en esta fecha — tasa manual opcional" : (currentRate && currentRate > 0 ? `Por defecto: Bs. ${Number(currentRate).toFixed(2)}` : "Ej. 36.50")}
-            />
-            {isUsdtRateMissing && !manualRate && (
-              <p style={{ fontSize: '0.8rem', color: 'var(--warning-color, #D97706)', marginTop: '0.35rem' }}>
-                No hay precio de USDT en esta fecha. Puedes ingresar una tasa manual (opcional).
-              </p>
-            )}
-          </div>
+            >
+              <span style={{ color: 'var(--text-secondary)' }}>
+                Equivalente en moneda del gasto fijo ({activeExpense.currency === 'USD_CASH' ? '$ Efectivo' : activeExpense.currency}):
+              </span>
+              <strong style={{ color: 'var(--income-color)', fontSize: '0.9rem' }}>
+                {activeExpense.currency === 'BS' ? 'Bs.' : ((activeExpense.currency as string) === 'EUR' || (activeExpense.currency as string) === 'EUR_BCV') ? '€' : '$'}{' '}
+                {convertedEquivalent.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </strong>
+            </div>
+          )}
+
+          <ExchangeRateField
+            currency={currency}
+            rates={rates}
+            manualRate={manualRate}
+            onManualRateChange={setManualRate}
+            hasDate={true}
+          />
 
           <div className="form-group">
             <label>Fecha de Pago</label>
@@ -166,52 +239,63 @@ const FixedExpensePayForm: React.FC<FixedExpensePayFormProps> = ({
 
           {/* Toggle: register as real expense */}
           <div
-            onClick={() => setCreateExpense(!createExpense)}
+            className={`register-expense-card ${createExpense ? 'active' : ''}`}
             style={{
-              display: 'flex', alignItems: 'center', gap: '0.75rem',
-              padding: '0.875rem 1rem', borderRadius: 'var(--radius-sm)',
-              background: createExpense ? 'rgba(16, 185, 129, 0.08)' : 'var(--surface-muted)',
-              border: createExpense ? '1.5px solid rgba(16, 185, 129, 0.25)' : '1.5px solid transparent',
-              cursor: 'pointer', transition: 'all 0.2s ease', marginBottom: '0.75rem',
-              userSelect: 'none',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.75rem',
+              padding: '0.75rem 0.875rem',
+              borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--border-color)',
+              background: 'var(--surface-muted)',
+              marginBottom: '1rem'
             }}
           >
-            <div style={{
-              width: '22px', height: '22px', borderRadius: '6px', flexShrink: 0,
-              background: createExpense ? 'var(--income-color)' : 'var(--surface-muted)',
-              border: createExpense ? 'none' : '2px solid var(--accent-light)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              transition: 'all 0.15s ease',
-            }}>
-              {createExpense && (
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                  <path d="M2 6L5 9L10 3" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              )}
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                Registrar como gasto en el Dashboard
+            <div
+              onClick={() => setCreateExpense(!createExpense)}
+              style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: 'pointer', width: '100%', userSelect: 'none' }}
+            >
+              <div style={{
+                width: '20px', height: '20px', borderRadius: '5px', flexShrink: 0,
+                background: createExpense ? 'var(--income-color)' : 'var(--surface-muted)',
+                border: createExpense ? 'none' : '2px solid var(--accent-light)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'all 0.15s ease',
+                marginTop: '2px',
+              }}>
+                {createExpense && (
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                    <path d="M2 6L5 9L10 3" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                )}
               </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>
-                Crea un gasto real para que se incluya en tus totales mensuales
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  Registrar como gasto en el Dashboard
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>
+                  Suma este pago a tus gastos del mes en la categoría que elijas.
+                </div>
               </div>
+              <Receipt size={18} style={{ color: createExpense ? 'var(--income-color)' : 'var(--text-tertiary)', flexShrink: 0, marginTop: '2px' }} />
             </div>
-            <Receipt size={18} style={{ color: createExpense ? 'var(--income-color)' : 'var(--text-tertiary)', flexShrink: 0 }} />
-          </div>
 
-          {/* Conditional Category Selector for the real expense */}
-          {createExpense && (
-            <div className="form-group" style={{ marginBottom: '1rem' }}>
-              <CategorySelect
-                value={category}
-                onChange={setCategory}
-                label="Categoría del gasto"
-                allowEmpty={false}
-                disabled={isSubmitting}
-              />
-            </div>
-          )}
+            {createExpense && (
+              <div
+                className="form-collapse-reveal"
+                onClick={(e) => e.stopPropagation()}
+                style={{ paddingTop: '0.65rem', width: '100%', borderTop: '1px solid var(--border-color)' }}
+              >
+                <CategorySelect
+                  value={category}
+                  onChange={setCategory}
+                  label="Categoría del gasto"
+                  allowEmpty={false}
+                  disabled={isSubmitting}
+                />
+              </div>
+            )}
+          </div>
 
           <div className="form-group">
             <label style={{ display: 'flex', justifyContent: 'space-between' }}>

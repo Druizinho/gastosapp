@@ -1,9 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import type { SavingDeposit, SavingDepositCreate, SavingDepositUpdate, SavingTransactionType, CurrencyType, Category, ExchangeRates } from '../types';
 import { CURRENCY_OPTIONS } from '../types';
 import { getCategories, getRates } from '../api';
 import { formatRateForInput } from '../utils/currencyFormat';
 import CategorySelect from './CategorySelect';
+import { ExchangeRateField, resolveRateForCurrency } from './ExchangeRateField';
+import { ToastContext } from './ui/Toast';
+import { Users, Receipt } from 'lucide-react';
 
 interface SavingDepositFormProps {
   initialData?: SavingDeposit;
@@ -14,8 +17,10 @@ interface SavingDepositFormProps {
   goalCurrentSaved: number;
   goalColor?: string;
   goalType?: 'saving' | 'project';
-  goalCategory?: string | null;
-  onSubmit: (data: SavingDepositCreate | SavingDepositUpdate) => void;
+  goalCategory?: string;
+  isShared?: boolean;
+  sharedPartnerName?: string | null;
+  onSubmit: (data: SavingDepositCreate | SavingDepositUpdate) => void | Promise<void>;
   onCancel: () => void;
   loading: boolean;
 }
@@ -65,6 +70,8 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
   goalColor = '#10B981',
   goalType = 'saving',
   goalCategory,
+  isShared = false,
+  sharedPartnerName = null,
   onSubmit,
   onCancel,
   loading,
@@ -74,6 +81,12 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
   const hasTarget = goalTargetAmount != null && Number(goalTargetAmount) > 0;
   const targetNum = hasTarget ? Number(goalTargetAmount) : 0;
   const remaining = hasTarget ? Math.max(targetNum - goalCurrentSaved, 0) : null;
+
+  const toast = useContext(ToastContext);
+  const [amount, setAmount] = useState<string>(() =>
+    initialData?.amount != null ? String(initialData.amount) : ''
+  );
+  const [manualRate, setManualRate] = useState<string>(() => getInitialDepositRate(initialData));
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [rates, setRates] = useState<ExchangeRates | null>(null);
@@ -106,6 +119,8 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
 
   useEffect(() => {
     if (initialData) {
+      setAmount(initialData.amount != null ? String(initialData.amount) : '');
+      setManualRate(getInitialDepositRate(initialData));
       setFormData({
         amount: initialData.amount,
         currency: initialData.currency,
@@ -117,6 +132,8 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
         transaction_type: (initialData.transaction_type || initialTransactionType || 'deposit') as SavingTransactionType,
       });
     } else {
+      setAmount('');
+      setManualRate('');
       setFormData(prev => ({
         ...prev,
         register_as_expense: isProject,
@@ -129,6 +146,7 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
     const checked = (e.target as HTMLInputElement).checked;
+    setError(null);
 
     setFormData(prev => ({
       ...prev,
@@ -138,15 +156,23 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
 
   const isWithdrawal = !isProject && formData.transaction_type === 'withdrawal';
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
+    const parsed = parseFloat(amount.replace(',', '.'));
+    if (isNaN(parsed) || parsed <= 0) {
+      const msg = 'El monto debe ser un número válido mayor a 0';
+      setError(msg);
+      toast?.showToast(msg, 'error');
+      return;
+    }
+
     const submitData: any = { ...formData };
-    submitData.amount = Number(submitData.amount);
-    if (submitData.manual_rate) {
-      const parsed = parseFloat(String(submitData.manual_rate).replace(',', '.'));
-      submitData.manual_rate = !isNaN(parsed) && parsed > 0 ? parsed : undefined;
+    submitData.amount = parsed;
+    if (manualRate.trim()) {
+      const parsedRate = parseFloat(manualRate.replace(',', '.'));
+      submitData.manual_rate = !isNaN(parsedRate) && parsedRate > 0 ? parsedRate : undefined;
     } else {
       delete submitData.manual_rate;
     }
@@ -160,7 +186,9 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
         : goalCurrentSaved + (initialData?.transaction_type === 'withdrawal' ? Number(initialData.amount) : -Number(initialData?.amount || 0));
 
       if (isSameCurrency && Number(submitData.amount) > effectiveAvailable + 0.009) {
-        setError('El monto del retiro supera el saldo disponible en el ahorro');
+        const msg = 'El monto del retiro supera el saldo disponible en el ahorro';
+        setError(msg);
+        toast?.showToast(msg, 'error');
         return;
       }
     } else {
@@ -170,14 +198,39 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
       }
     }
 
-    onSubmit(submitData);
+    try {
+      await onSubmit(submitData);
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || 'Error al guardar el movimiento';
+      const msg = typeof detail === 'string' ? detail : 'Error al guardar el movimiento';
+      setError(msg);
+      toast?.showToast(msg, 'error');
+    }
   };
 
-  const currentAmount = Number(formData.amount) || 0;
+  const suggestedRate = resolveRateForCurrency(formData.currency, rates);
+
+  const parsedAmount = parseFloat(amount.replace(',', '.'));
+  const currentAmount = !isNaN(parsedAmount) ? parsedAmount : 0;
   const isSameCurrency = formData.currency === goalCurrency;
   const willComplete = !isWithdrawal && !isProject && !isEditing && isSameCurrency && remaining !== null && currentAmount >= remaining && remaining > 0;
-  const isUsdtRateMissing = formData.currency === 'USDT' && rates !== null && (rates.usdt_bs === null || rates.usdt_bs === undefined || rates.usdt_bs <= 0);
-  const suggestedRate = formData.currency === 'EUR_BCV' ? rates?.eur_bs : formData.currency === 'USDT' ? rates?.usdt_bs : rates?.usd_bs;
+
+  const manualRateNum = manualRate ? parseFloat(manualRate.replace(',', '.')) : 0;
+  const effectiveRate = manualRateNum > 0 ? manualRateNum : (suggestedRate ? Number(suggestedRate) : 0);
+
+  const amountInBs = formData.currency === 'BS'
+    ? currentAmount
+    : (effectiveRate > 0 ? currentAmount * effectiveRate : 0);
+
+  let convertedEquivalent: number | null = null;
+  if (goalCurrency === 'BS') {
+    convertedEquivalent = amountInBs > 0 ? amountInBs : null;
+  } else {
+    const targetGoalRate = resolveRateForCurrency(goalCurrency, rates);
+    if (targetGoalRate && Number(targetGoalRate) > 0 && amountInBs > 0) {
+      convertedEquivalent = amountInBs / Number(targetGoalRate);
+    }
+  }
 
   return (
     <div
@@ -208,9 +261,43 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
           </p>
         )}
 
-        {error && <div className="error-message">{error}</div>}
-
         <form onSubmit={handleSubmit}>
+          {error && (
+            <div
+              style={{
+                marginBottom: '1rem',
+                padding: '0.75rem',
+                background: 'rgba(239, 68, 68, 0.1)',
+                color: '#ef4444',
+                borderRadius: '8px',
+                fontSize: '0.85rem',
+                border: '1px solid rgba(239, 68, 68, 0.2)',
+              }}
+            >
+              {error}
+            </div>
+          )}
+
+          {isShared && (
+            <div style={{
+              background: 'rgba(59, 130, 246, 0.1)',
+              color: '#3B82F6',
+              padding: '0.75rem 0.9rem',
+              borderRadius: 'var(--radius-md)',
+              fontSize: '0.82rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.6rem',
+              border: '1px solid rgba(59, 130, 246, 0.2)',
+              marginBottom: '1rem'
+            }}>
+              <Users size={16} style={{ flexShrink: 0 }} />
+              <span>
+                Este movimiento se sincronizará automáticamente con todos los miembros del grupo{sharedPartnerName ? ` (${sharedPartnerName})` : ''}.
+              </span>
+            </div>
+          )}
+
           {/* Target Progress Banner */}
           {hasTarget && remaining !== null ? (
             <div style={{
@@ -281,19 +368,21 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
           )}
 
           {/* Monto y Moneda */}
-          <div className="form-group row">
+          <div className="form-group row" style={{ marginBottom: (!isSameCurrency && currentAmount > 0 && convertedEquivalent != null && convertedEquivalent > 0) ? '0.5rem' : '1rem' }}>
             <div className="form-group half">
               <label>{isWithdrawal ? 'Monto a Retirar *' : (isProject ? 'Monto del Pago *' : 'Monto a Aportar *')}</label>
               <input
-                type="number"
-                step="any"
-                min="0.01"
+                type="text"
+                inputMode="decimal"
                 name="amount"
                 required
                 autoFocus
                 placeholder="0.00"
-                value={formData.amount || ''}
-                onChange={handleChange}
+                value={amount}
+                onChange={(e) => {
+                  setError(null);
+                  setAmount(e.target.value.replace(/[^0-9.,]/g, ''));
+                }}
               />
             </div>
             <div className="form-group half">
@@ -310,26 +399,41 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
             </div>
           </div>
 
-          {/* Tasa manual */}
-          <div className="form-group">
-            <label style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>Tasa de Cambio</span>
-              <span className="form-hint-inline">(Opcional)</span>
-            </label>
-            <input
-              type="text"
-              inputMode="decimal"
-              name="manual_rate"
-              placeholder={isUsdtRateMissing ? "No hay precio en esta fecha — tasa manual opcional" : (suggestedRate && suggestedRate > 0 ? `Por defecto: Bs. ${Number(suggestedRate).toFixed(2)}` : "Dejar vacío para usar tasa del día")}
-              value={formData.manual_rate || ''}
-              onChange={handleChange}
-            />
-            {isUsdtRateMissing && !formData.manual_rate && (
-              <p style={{ fontSize: '0.8rem', color: 'var(--warning-color, #D97706)', marginTop: '0.35rem' }}>
-                No hay precio de USDT en esta fecha. Puedes ingresar una tasa manual (opcional).
-              </p>
-            )}
-          </div>
+          {!isSameCurrency && currentAmount > 0 && convertedEquivalent != null && convertedEquivalent > 0 && (
+            <div style={{ marginBottom: '1rem' }}>
+              <div
+                className="conversion-preview-pill"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  padding: '0.35rem 0.75rem',
+                  borderRadius: 'var(--radius-full, 9999px)',
+                  background: 'rgba(59, 130, 246, 0.1)',
+                  color: 'var(--accent-color, #3B82F6)',
+                  fontSize: '0.82rem',
+                  fontWeight: 600,
+                  border: '1px solid rgba(59, 130, 246, 0.2)',
+                }}
+              >
+                <span>≈ Equivale a {formatCurrency(convertedEquivalent, goalCurrency)}</span>
+                {formData.currency !== 'BS' && goalCurrency !== 'BS' && amountInBs > 0 && (
+                  <span style={{ opacity: 0.8, fontWeight: 400 }}>
+                    (Bs. {amountInBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          <ExchangeRateField
+            currency={(formData.currency || goalCurrency || 'USD_BCV') as CurrencyType}
+            rates={rates}
+            manualRate={manualRate}
+            onManualRateChange={setManualRate}
+            isEditing={Boolean(initialData)}
+            hasDate={true}
+          />
 
           {/* Fecha del Aporte / Pago */}
           <div className="form-group">
@@ -359,35 +463,79 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
 
           {/* Registrar como Gasto en Dashboard */}
           {!isEditing && !isWithdrawal && (
-            <div style={{
-              background: 'var(--surface-muted)',
-              padding: '0.875rem 1rem',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--accent-light)',
-              marginBottom: '1rem',
-            }}>
-              <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  name="register_as_expense"
-                  checked={formData.register_as_expense}
-                  onChange={handleChange}
-                  style={{ width: '18px', height: '18px', marginTop: '0.15rem', accentColor: goalColor }}
-                />
-                <div style={{ flex: 1 }}>
-                  <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', display: 'block' }}>
-                    Registrar como gasto en el Dashboard
-                  </span>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4, display: 'block', marginTop: '0.2rem' }}>
-                    {isProject
-                      ? 'Descuenta este pago en tus gastos del Dashboard en la categoría seleccionada (por defecto "Proyectos") para reflejar la salida de dinero real.'
-                      : 'Descuenta este aporte en tus gastos del Dashboard en la categoría seleccionada (por defecto "Ahorro").'}
-                  </span>
+            <div
+              className={`register-expense-card ${formData.register_as_expense ? 'active' : ''}`}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.75rem',
+                padding: '0.75rem 0.875rem',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border-color)',
+                background: 'var(--surface-muted)',
+                marginBottom: '1rem',
+              }}
+            >
+              <div
+                onClick={() => setFormData(prev => ({ ...prev, register_as_expense: !prev.register_as_expense }))}
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '0.75rem',
+                  cursor: 'pointer',
+                  width: '100%',
+                  userSelect: 'none',
+                }}
+              >
+                <div
+                  style={{
+                    width: '20px',
+                    height: '20px',
+                    borderRadius: '5px',
+                    flexShrink: 0,
+                    background: formData.register_as_expense ? goalColor : 'var(--surface-color)',
+                    border: formData.register_as_expense ? 'none' : '2px solid var(--border-color)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'all 0.15s ease',
+                    marginTop: '2px',
+                  }}
+                >
+                  {formData.register_as_expense && (
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M2.5 6L5 8.5L9.5 3.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  )}
                 </div>
-              </label>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                    Registrar como gasto en el Dashboard
+                  </div>
+                  <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', lineHeight: 1.35, marginTop: '0.15rem' }}>
+                    Suma este pago a tus gastos del mes en la categoría que elijas.
+                  </div>
+                </div>
+                <Receipt
+                  size={18}
+                  style={{
+                    color: formData.register_as_expense ? goalColor : 'var(--text-tertiary)',
+                    flexShrink: 0,
+                    marginTop: '2px',
+                  }}
+                />
+              </div>
 
               {Boolean(formData.register_as_expense) && (
-                <div style={{ paddingTop: '0.75rem' }}>
+                <div
+                  className="form-collapse-reveal"
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    paddingTop: '0.65rem',
+                    width: '100%',
+                    borderTop: '1px solid var(--border-color)',
+                  }}
+                >
                   <CategorySelect
                     label="Categoría del gasto"
                     value={formData.category || (isProject ? 'Proyectos' : 'Ahorro')}
@@ -412,7 +560,7 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
             </button>
             <button
               type="submit"
-              disabled={loading || !formData.amount}
+              disabled={loading || !amount.trim()}
               className="btn-submit"
               style={{
                 background: isWithdrawal ? '#F59E0B' : goalColor,

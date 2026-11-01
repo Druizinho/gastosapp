@@ -900,6 +900,14 @@ body {
 .form-group.half {
   flex: 1;
   margin-bottom: 0;
+  transition: flex-basis 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.form-group.half:has(.category-select-container--creating) {
+  flex: 1 1 100% !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 100% !important;
 }
 
 .form-group label {
@@ -2896,6 +2904,132 @@ body {
   }
   to {
     opacity: 1;
+  }
+}
+
+/* =============================================
+   EXCHANGE RATE & FORM TOGGLE CONTROLS
+   ============================================= */
+
+.rate-collapsed-card {
+  transition: background-color 150ms ease-out, border-color 150ms ease-out;
+}
+
+.rate-collapsed-card:hover {
+  background-color: var(--surface-hover, #FAFAF9);
+}
+
+.btn-trigger-manual-rate {
+  border-radius: 9999px;
+  padding: 0.28rem 0.7rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  background: rgba(99, 102, 241, 0.1);
+  color: var(--accent-color);
+  cursor: pointer;
+  transition: transform 150ms ease-out, background-color 150ms ease, border-color 150ms ease;
+  white-space: nowrap;
+}
+
+.btn-trigger-manual-rate:hover {
+  background: rgba(99, 102, 241, 0.18);
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.btn-trigger-manual-rate:active {
+  transform: scale(0.96);
+}
+
+.btn-trigger-manual-rate:disabled {
+  transform: none;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.btn-clear-rate {
+  border-radius: 9999px;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.74rem;
+  font-weight: 600;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  cursor: pointer;
+  transition: transform 150ms ease-out, background-color 150ms ease;
+  white-space: nowrap;
+}
+
+.btn-clear-rate:hover {
+  background: rgba(239, 68, 68, 0.18);
+}
+
+.btn-clear-rate:active {
+  transform: scale(0.96);
+}
+
+.btn-clear-rate:disabled {
+  transform: none;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.register-expense-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem 0.875rem;
+  border-radius: var(--radius-sm, 12px);
+  border: 1px solid var(--border-color);
+  background: var(--surface-muted, rgba(0, 0, 0, 0.03));
+  cursor: pointer;
+  transition: border-color 150ms ease, background-color 150ms ease;
+  margin-bottom: 1rem;
+}
+
+.register-expense-card.active {
+  border-color: rgba(16, 185, 129, 0.45);
+  background: rgba(16, 185, 129, 0.06);
+}
+
+.register-expense-card.active-expense {
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.05);
+}
+
+@keyframes formSlideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.form-collapse-reveal {
+  animation: formSlideDown 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.conversion-preview-pill {
+  animation: formSlideDown 160ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-trigger-manual-rate,
+  .btn-clear-rate {
+    transition: none;
+  }
+  .btn-trigger-manual-rate:active,
+  .btn-clear-rate:active {
+    transform: none;
+  }
+  .form-collapse-reveal,
+  .conversion-preview-pill {
+    animation: none !important;
+    transform: none !important;
+    transition: none !important;
   }
 }
 

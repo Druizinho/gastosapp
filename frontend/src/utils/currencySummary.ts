@@ -133,13 +133,14 @@ export function resolveCurrencyTotal(
     }
     case 'EUR': {
       if (totalEur > 0) return totalEur;
+      if (totalUsd > 0) return totalUsd;
       if (rates?.eur_bs && rates.eur_bs > 0 && totalBs > 0) return totalBs / rates.eur_bs;
       return totalEur;
     }
     case 'USDT': {
       if (totalUsdt > 0) return totalUsdt;
-      if (rates?.usdt_bs && rates.usdt_bs > 0 && totalBs > 0) return totalBs / rates.usdt_bs;
       if (totalUsd > 0) return totalUsd;
+      if (rates?.usdt_bs && rates.usdt_bs > 0 && totalBs > 0) return totalBs / rates.usdt_bs;
       return totalUsdt;
     }
   }
@@ -170,13 +171,14 @@ export function resolveIncomeTotal(
     }
     case 'EUR': {
       if (totalEur > 0) return totalEur;
+      if (totalUsd > 0) return totalUsd;
       if (rates?.eur_bs && rates.eur_bs > 0 && totalBs > 0) return totalBs / rates.eur_bs;
       return totalEur;
     }
     case 'USDT': {
       if (totalUsdt > 0) return totalUsdt;
-      if (rates?.usdt_bs && rates.usdt_bs > 0 && totalBs > 0) return totalBs / rates.usdt_bs;
       if (totalUsd > 0) return totalUsd;
+      if (rates?.usdt_bs && rates.usdt_bs > 0 && totalBs > 0) return totalBs / rates.usdt_bs;
       return totalUsdt;
     }
   }

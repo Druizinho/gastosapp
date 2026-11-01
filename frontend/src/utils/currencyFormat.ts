@@ -42,15 +42,20 @@ export function isSameCurrency(itemCurrency: string, mainCurrency: MainCurrencyP
   return false;
 }
 
+export interface CurrencyItemLike {
+  amount: number | string;
+  currency: string;
+  amount_usd?: number | string | null;
+  amount_bs?: number | string | null;
+  amount_eur?: number | string | null;
+  amount_usdt?: number | string | null;
+  rate_usd_bs?: number | string | null;
+  rate_eur_bs?: number | string | null;
+  rate_usdt_bs?: number | string | null;
+}
+
 export function convertItemAmountToMainCurrency(
-  item: {
-    amount: number | string;
-    currency: string;
-    amount_usd?: number | string | null;
-    amount_bs?: number | string | null;
-    amount_eur?: number | string | null;
-    amount_usdt?: number | string | null;
-  },
+  item: CurrencyItemLike,
   mainCurrency: MainCurrencyPreference,
   rates?: ExchangeRates | null
 ): number {
@@ -60,6 +65,23 @@ export function convertItemAmountToMainCurrency(
   const rEur = toNumeric(rates?.eur_bs);
   const rUsdt = toNumeric(rates?.usdt_bs);
   const maxRefRate = Math.max(rUsd, rEur, rUsdt);
+
+  const itemUsdRate = toNumeric(item?.rate_usd_bs);
+  const itemEurRate = toNumeric(item?.rate_eur_bs);
+  const itemUsdtRate = toNumeric(item?.rate_usdt_bs);
+  const hasSnapshot = Boolean(
+    itemUsdRate > 0 ||
+    itemEurRate > 0 ||
+    itemUsdtRate > 0 ||
+    (item?.amount_bs != null && Number(item.amount_bs) > 0) ||
+    (item?.amount_usd != null && Number(item.amount_usd) > 0) ||
+    (item?.amount_eur != null && Number(item.amount_eur) > 0) ||
+    (item?.amount_usdt != null && Number(item.amount_usdt) > 0)
+  );
+
+  const effUsd = hasSnapshot ? itemUsdRate : rUsd;
+  const effEur = hasSnapshot ? itemEurRate : rEur;
+  const effUsdt = hasSnapshot ? itemUsdtRate : rUsdt;
 
   // If item is already in matching currency
   if (isSameCurrency(cur, mainCurrency)) {
@@ -73,39 +95,45 @@ export function convertItemAmountToMainCurrency(
       if (amtUsd > 0) {
         return amtUsd;
       }
-      const amtBs = toNumeric(item.amount_bs) || (amount * (maxRefRate > 0 ? maxRefRate : rUsd));
-      if (rUsd > 0) {
-        return amtBs / rUsd;
+      const amtBs = toNumeric(item.amount_bs);
+      if (amtBs > 0 && effUsd > 0) {
+        return amtBs / effUsd;
+      }
+      if (!hasSnapshot) {
+        const liveAmtBs = amtBs || (amount * (maxRefRate > 0 ? maxRefRate : rUsd));
+        if (rUsd > 0) {
+          return liveAmtBs / rUsd;
+        }
       }
       return amount;
     }
-    if (item.amount_usd != null && !isNaN(Number(item.amount_usd))) {
+    if (item.amount_usd != null && !isNaN(Number(item.amount_usd)) && Number(item.amount_usd) > 0) {
       return Number(item.amount_usd);
     }
     if (cur === 'USD' || cur === 'USD_BCV') {
       return amount;
     }
     if (cur === 'BS' || cur === 'VES') {
-      if (rUsd > 0) {
-        return amount / rUsd;
+      if (effUsd > 0) {
+        return amount / effUsd;
       }
       return 0;
     }
     if (cur === 'EUR' || cur === 'EUR_BCV') {
-      if (item.amount_bs != null && rUsd > 0) {
-        return Number(item.amount_bs) / rUsd;
+      if (item.amount_bs != null && Number(item.amount_bs) > 0 && effUsd > 0) {
+        return Number(item.amount_bs) / effUsd;
       }
-      if (rEur > 0 && rUsd > 0) {
-        return (amount * rEur) / rUsd;
+      if (effEur > 0 && effUsd > 0) {
+        return (amount * effEur) / effUsd;
       }
       return amount; // approximate 1:1 if missing
     }
     if (cur === 'USDT') {
-      if (item.amount_bs != null && rUsd > 0) {
-        return Number(item.amount_bs) / rUsd;
+      if (item.amount_bs != null && Number(item.amount_bs) > 0 && effUsd > 0) {
+        return Number(item.amount_bs) / effUsd;
       }
-      if (rUsdt > 0 && rUsd > 0) {
-        return (amount * rUsdt) / rUsd;
+      if (effUsdt > 0 && effUsd > 0) {
+        return (amount * effUsdt) / effUsd;
       }
       return amount; // 1 USDT ≈ 1 USD
     }
@@ -114,40 +142,40 @@ export function convertItemAmountToMainCurrency(
 
   // 2. Target: BS
   if (mainCurrency === 'BS') {
-    if (item.amount_bs != null && !isNaN(Number(item.amount_bs))) {
+    if (item.amount_bs != null && !isNaN(Number(item.amount_bs)) && Number(item.amount_bs) > 0) {
       return Number(item.amount_bs);
     }
     if (cur === 'BS' || cur === 'VES') {
       return amount;
     }
     if (cur === 'USD_CASH') {
-      const highestRate = maxRefRate > 0 ? maxRefRate : rUsd;
+      const highestRate = Math.max(effUsd, effEur, effUsdt);
       if (highestRate > 0) {
         return amount * highestRate;
       }
       return 0;
     }
     if (cur === 'USD' || cur === 'USD_BCV') {
-      if (rUsd > 0) {
-        return amount * rUsd;
+      if (effUsd > 0) {
+        return amount * effUsd;
       }
       return 0;
     }
     if (cur === 'EUR' || cur === 'EUR_BCV') {
-      if (rEur > 0) {
-        return amount * rEur;
+      if (effEur > 0) {
+        return amount * effEur;
       }
-      if (rUsd > 0) {
-        return amount * rUsd;
+      if (effUsd > 0) {
+        return amount * effUsd;
       }
       return 0;
     }
     if (cur === 'USDT') {
-      if (rUsdt > 0) {
-        return amount * rUsdt;
+      if (effUsdt > 0) {
+        return amount * effUsdt;
       }
-      if (rUsd > 0) {
-        return amount * rUsd;
+      if (effUsd > 0) {
+        return amount * effUsd;
       }
       return 0;
     }
@@ -156,10 +184,17 @@ export function convertItemAmountToMainCurrency(
 
   // 3. Target: EUR
   if (mainCurrency === 'EUR') {
-    if (item.amount_eur != null && !isNaN(Number(item.amount_eur))) {
+    if (item.amount_eur != null && !isNaN(Number(item.amount_eur)) && Number(item.amount_eur) > 0) {
       return Number(item.amount_eur);
     }
     if (cur === 'EUR' || cur === 'EUR_BCV') {
+      return amount;
+    }
+    if (hasSnapshot) {
+      const bsAmt = toNumeric(item.amount_bs);
+      if (bsAmt > 0 && itemEurRate > 0) return bsAmt / itemEurRate;
+      if (item.amount_usd != null && Number(item.amount_usd) > 0) return Number(item.amount_usd);
+      if (bsAmt > 0 && itemUsdRate > 0) return bsAmt / itemUsdRate;
       return amount;
     }
     // Calculate BS amount first
@@ -178,10 +213,17 @@ export function convertItemAmountToMainCurrency(
 
   // 4. Target: USDT
   if (mainCurrency === 'USDT') {
-    if (item.amount_usdt != null && !isNaN(Number(item.amount_usdt))) {
+    if (item.amount_usdt != null && !isNaN(Number(item.amount_usdt)) && Number(item.amount_usdt) > 0) {
       return Number(item.amount_usdt);
     }
     if (cur === 'USDT') {
+      return amount;
+    }
+    if (hasSnapshot) {
+      const bsAmt = toNumeric(item.amount_bs);
+      if (bsAmt > 0 && itemUsdtRate > 0) return bsAmt / itemUsdtRate;
+      if (item.amount_usd != null && Number(item.amount_usd) > 0) return Number(item.amount_usd);
+      if (bsAmt > 0 && itemUsdRate > 0) return bsAmt / itemUsdRate;
       return amount;
     }
     // Calculate BS amount first
@@ -201,14 +243,7 @@ export function convertItemAmountToMainCurrency(
 }
 
 export function formatListCardAmounts(
-  item: {
-    amount: number | string;
-    currency: string;
-    amount_bs?: number | string | null;
-    amount_usd?: number | string | null;
-    amount_eur?: number | string | null;
-    amount_usdt?: number | string | null;
-  },
+  item: CurrencyItemLike,
   mainCurrency: MainCurrencyPreference,
   rates?: ExchangeRates | null,
   targetCurrencyOverride?: { amountInTarget: number | string; targetCurrency: string }
@@ -259,37 +294,47 @@ export function getHistoricalRateDisplay(
   const amt = toNumeric(item?.amount);
   const amtBs = item?.amount_bs != null && !isNaN(Number(item.amount_bs)) ? Number(item.amount_bs) : null;
 
+  const hasExplicitRates = Boolean(
+    (item?.rate_usd_bs != null && Number(item.rate_usd_bs) > 0) ||
+    (item?.rate_eur_bs != null && Number(item.rate_eur_bs) > 0) ||
+    (item?.rate_usdt_bs != null && Number(item.rate_usdt_bs) > 0)
+  );
+  const hasAnyHistorical = hasExplicitRates || Boolean(amtBs != null && amtBs > 0);
+
   // Derive historical USD rate
   let usdRate: number | null = item?.rate_usd_bs != null && !isNaN(Number(item.rate_usd_bs)) ? Number(item.rate_usd_bs) : null;
   if (usdRate == null && (cur === 'USD' || cur === 'USD_BCV') && amt > 0 && amtBs != null) {
     usdRate = amtBs / amt;
   }
   const isUsdHistorical = usdRate != null && usdRate > 0;
-  if (!usdRate && fallbackRates?.usd_bs) {
+  if (!usdRate && !hasAnyHistorical && fallbackRates?.usd_bs) {
     usdRate = Number(fallbackRates.usd_bs);
   }
 
   // Derive historical EUR rate
   let eurRate: number | null = item?.rate_eur_bs != null && !isNaN(Number(item.rate_eur_bs)) ? Number(item.rate_eur_bs) : null;
-  if (eurRate == null && (cur === 'EUR' || cur === 'EUR_BCV') && amt > 0 && amtBs != null) {
+  if (eurRate == null && !hasExplicitRates && (cur === 'EUR' || cur === 'EUR_BCV') && amt > 0 && amtBs != null) {
     eurRate = amtBs / amt;
   }
   const isEurHistorical = eurRate != null && eurRate > 0;
-  if (!eurRate && fallbackRates?.eur_bs) {
+  if (!eurRate && !hasAnyHistorical && fallbackRates?.eur_bs) {
     eurRate = Number(fallbackRates.eur_bs);
   }
 
   // Derive historical USDT rate
   let usdtRate: number | null = item?.rate_usdt_bs != null && !isNaN(Number(item.rate_usdt_bs)) ? Number(item.rate_usdt_bs) : null;
-  if (usdtRate == null && cur === 'USDT' && amt > 0 && amtBs != null) {
+  if (usdtRate == null && !hasExplicitRates && cur === 'USDT' && amt > 0 && amtBs != null) {
     usdtRate = amtBs / amt;
   }
   const isUsdtHistorical = usdtRate != null && usdtRate > 0;
-  if (!usdtRate && fallbackRates?.usdt_bs) {
+  if (!usdtRate && !hasAnyHistorical && fallbackRates?.usdt_bs) {
     usdtRate = Number(fallbackRates.usdt_bs);
   }
 
   if (cur === 'EUR' || cur === 'EUR_BCV') {
+    if (eurRate == null && isUsdHistorical && usdRate && usdRate > 0) {
+      return { label: 'Tasa BCV ref. registrada', valueText: `Bs. ${usdRate.toFixed(2)} / $`, isHistorical: true };
+    }
     const rateVal = eurRate || 0;
     const isHistorical = isEurHistorical;
     const label = isHistorical ? 'Tasa Euro BCV registrada' : 'Tasa Euro BCV';
@@ -299,6 +344,9 @@ export function getHistoricalRateDisplay(
   }
 
   if (cur === 'USDT') {
+    if (usdtRate == null && isUsdHistorical && usdRate && usdRate > 0) {
+      return { label: 'Tasa BCV ref. registrada', valueText: `Bs. ${usdRate.toFixed(2)} / $`, isHistorical: true };
+    }
     const rateVal = usdtRate || 0;
     const isHistorical = isUsdtHistorical;
     const label = isHistorical ? 'Tasa USDT registrada' : 'Tasa USDT';
@@ -322,7 +370,7 @@ export function getHistoricalRateDisplay(
       if (validHist.length > 0) {
         effRate = Math.max(...validHist);
         isHistorical = true;
-      } else {
+      } else if (!hasAnyHistorical) {
         const fbUsd = toNumeric(fallbackRates?.usd_bs);
         const fbEur = toNumeric(fallbackRates?.eur_bs);
         const fbUsdt = toNumeric(fallbackRates?.usdt_bs);
@@ -334,9 +382,9 @@ export function getHistoricalRateDisplay(
       }
     }
 
-    const refUsd = (item?.rate_usd_bs != null && Number(item.rate_usd_bs) > 0)
-      ? Number(item.rate_usd_bs)
-      : (fallbackRates?.usd_bs ? Number(fallbackRates.usd_bs) : null);
+    const refUsd = isUsdHistorical
+      ? usdRate
+      : (!hasAnyHistorical && fallbackRates?.usd_bs ? Number(fallbackRates.usd_bs) : null);
 
     const rateVal = effRate || 0;
     const label = isHistorical ? 'Tasa Efectivo registrada' : 'Tasa Efectivo';

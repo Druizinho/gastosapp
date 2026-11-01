@@ -568,6 +568,7 @@ export interface Connection {
   partner_id: string;
   partner_name: string;
   is_requester: boolean;
+  partner_avatar_url?: string | null;
 }
 
 // Panas Types
@@ -626,6 +627,7 @@ export interface PanaSummary {
   partner_id: string;
   partner_name: string;
   partner_email: string | null;
+  partner_avatar_url?: string | null;
   status: string;
   created_at: string;
   shared_fixed_expenses_count: number;
@@ -668,6 +670,7 @@ export interface PanaDetail {
   partner_id: string;
   partner_name: string;
   partner_email: string | null;
+  partner_avatar_url?: string | null;
   shared_fixed_expenses: SharedFixedExpenseBrief[];
   shared_debts: SharedDebtBrief[];
   shared_saving_goals: SharedSavingGoalBrief[];

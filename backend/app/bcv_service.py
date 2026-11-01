@@ -627,11 +627,14 @@ async def resolve_rates_for_update(
         r_usd = getattr(existing_record, "rate_usd_bs", None)
         r_eur = getattr(existing_record, "rate_eur_bs", None)
         r_usdt = getattr(existing_record, "rate_usdt_bs", None)
-        if r_usd is not None and Decimal(str(r_usd)) > 0:
+        has_usd = r_usd is not None and Decimal(str(r_usd)) > 0
+        has_eur = r_eur is not None and Decimal(str(r_eur)) > 0
+        has_usdt = r_usdt is not None and Decimal(str(r_usdt)) > 0
+        if has_usd or has_eur or has_usdt:
             return {
-                "usd_bs": Decimal(str(r_usd)),
-                "eur_bs": Decimal(str(r_eur)) if (r_eur is not None and Decimal(str(r_eur)) > 0) else None,
-                "usdt_bs": Decimal(str(r_usdt)) if (r_usdt is not None and Decimal(str(r_usdt)) > 0) else None,
+                "usd_bs": Decimal(str(r_usd)) if has_usd else None,
+                "eur_bs": Decimal(str(r_eur)) if has_eur else None,
+                "usdt_bs": Decimal(str(r_usdt)) if has_usdt else None,
                 "rate_date": existing_date or target_date,
                 "is_historical": True,
             }
@@ -650,14 +653,28 @@ def resolve_manual_rate_for_update(
         old_curr = getattr(existing_record, "currency", None)
         old_curr_str = old_curr.value if hasattr(old_curr, "value") else str(old_curr or "")
         new_curr_str = new_currency.value if hasattr(new_currency, "value") else str(new_currency or "")
-        if new_curr_str == "USD_CASH" and old_curr_str == "USD_CASH":
-            base_amount = (
-                getattr(existing_record, "amount", None)
-                or getattr(existing_record, "paid_amount", None)
-                or getattr(existing_record, "target_amount", None)
-                or getattr(existing_record, "real_amount", None)
+        if new_curr_str == old_curr_str:
+            should_calculate = (
+                new_curr_str == "USD_CASH"
+                or (new_curr_str in ("USD_BCV", "BS") and getattr(existing_record, "rate_usd_bs", None) is None)
+                or (new_curr_str == "EUR_BCV" and getattr(existing_record, "rate_eur_bs", None) is None)
+                or (new_curr_str == "USDT" and getattr(existing_record, "rate_usdt_bs", None) is None)
             )
-            rec_bs = getattr(existing_record, "amount_bs", None)
-            if base_amount and rec_bs and Decimal(str(base_amount)) > 0 and Decimal(str(rec_bs)) > 0:
-                return round(Decimal(str(rec_bs)) / Decimal(str(base_amount)), 4)
+            if should_calculate:
+                base_amount = (
+                    getattr(existing_record, "amount", None)
+                    or getattr(existing_record, "paid_amount", None)
+                    or getattr(existing_record, "target_amount", None)
+                    or getattr(existing_record, "real_amount", None)
+                )
+                rec_bs = getattr(existing_record, "amount_bs", None)
+                base_dec = Decimal(str(base_amount)) if base_amount is not None else Decimal("0")
+                if new_curr_str == "BS":
+                    rec_usd = getattr(existing_record, "amount_usd", None)
+                    if rec_usd is not None and Decimal(str(rec_usd)) > 0 and base_dec > 0:
+                        return round(base_dec / Decimal(str(rec_usd)), 4)
+                elif new_curr_str in ("USD_CASH", "USD_BCV", "EUR_BCV", "USDT"):
+                    rec_bs_dec = Decimal(str(rec_bs)) if rec_bs is not None else Decimal("0")
+                    if base_dec > 0 and rec_bs_dec > 0:
+                        return round(rec_bs_dec / base_dec, 4)
     return None

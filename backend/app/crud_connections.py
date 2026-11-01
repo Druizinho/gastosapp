@@ -3,8 +3,8 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy import or_, and_, delete, text, func
 from uuid import UUID
-from typing import List, Optional
-from datetime import datetime, timezone
+from typing import List, Optional, Any
+from datetime import datetime, timezone, date
 from decimal import Decimal
 import time
 from collections import defaultdict
@@ -15,6 +15,26 @@ from .push_service import send_push_notification, send_notification_to_user, res
 _connection_request_history = defaultdict(list)
 _RATE_LIMIT_WINDOW_SECONDS = 60
 _MAX_REQUESTS_PER_WINDOW = 5
+
+def _safe_date(val: Any) -> Optional[date]:
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        return val.date()
+    if isinstance(val, date):
+        return val
+    if isinstance(val, str):
+        try:
+            return date.fromisoformat(val[:10])
+        except Exception:
+            try:
+                return datetime.fromisoformat(val).date()
+            except Exception:
+                return None
+    return None
+
+def _sort_date_key(val: Any) -> date:
+    return _safe_date(val) or date.min
 
 def _check_connection_rate_limit(user_id: UUID) -> bool:
     now = time.time()
@@ -55,6 +75,7 @@ def _populate_connection_response(conn: models.Connection, user_id: UUID, profil
     partner_id = conn.receiver_id if is_requester else conn.requester_id
     partner = profiles.get(partner_id)
     partner_name = partner.display_name if partner and partner.display_name else "Usuario"
+    partner_avatar_url = partner.avatar_url if partner else None
     
     return schemas.ConnectionResponse(
         id=conn.id,
@@ -65,6 +86,7 @@ def _populate_connection_response(conn: models.Connection, user_id: UUID, profil
         updated_at=conn.updated_at,
         partner_id=partner_id,
         partner_name=partner_name,
+        partner_avatar_url=partner_avatar_url,
         is_requester=is_requester
     )
 
@@ -480,6 +502,7 @@ async def get_panas_overview(db: AsyncSession, user_id: UUID) -> schemas.PanasGl
                 id=conn.id,
                 partner_id=partner_id,
                 partner_name=partner_name,
+                partner_avatar_url=prof.avatar_url if prof else None,
                 partner_email=partner_email,
                 status=conn.status,
                 created_at=conn.created_at,
@@ -525,12 +548,17 @@ async def get_pana_details(db: AsyncSession, user_id: UUID, partner_id: UUID) ->
     prof = prof_res.scalars().first()
     partner_name = prof.display_name if prof and prof.display_name else "Pana"
 
-    email_res = await db.execute(
-        text("SELECT email FROM auth.users WHERE id = :pid"),
-        {"pid": partner_id}
-    )
-    email_row = email_res.first()
-    partner_email = email_row.email if email_row else None
+    partner_email = None
+    try:
+        email_res = await db.execute(
+            text("SELECT email FROM auth.users WHERE id = :pid"),
+            {"pid": partner_id}
+        )
+        email_row = email_res.first()
+        if email_row:
+            partner_email = getattr(email_row, 'email', None) or (email_row[0] if len(email_row) > 0 else None)
+    except Exception:
+        partner_email = None
 
     # Query all shares between user_id and partner_id
     shares_res = await db.execute(
@@ -619,20 +647,23 @@ async def get_pana_details(db: AsyncSession, user_id: UUID, partner_id: UUID) ->
             if not fe:
                 continue
 
-            chk = next((c for c in (fe.checks or []) if c.month_year == current_month_str), None)
+            chk = next((c for c in (fe.checks or []) if getattr(c, 'month_year', None) == current_month_str), None)
+
+            fe_amount = Decimal(str(fe.amount)) if getattr(fe, 'amount', None) is not None else Decimal(0)
+            paid_d = _safe_date(getattr(chk, 'paid_date', None)) if chk else None
 
             fe_briefs.append(
                 schemas.SharedFixedExpenseBrief(
                     id=fe.id,
-                    name=fe.name,
-                    amount=Decimal(str(fe.amount)),
-                    currency=fe.currency or "BS",
-                    category=fe.category,
-                    payment_day=fe.payment_day,
-                    is_active=fe.is_active,
+                    name=getattr(fe, 'name', '') or '',
+                    amount=fe_amount,
+                    currency=getattr(fe, 'currency', None) or "BS",
+                    category=getattr(fe, 'category', None),
+                    payment_day=getattr(fe, 'payment_day', None),
+                    is_active=bool(getattr(fe, 'is_active', True)),
                     is_paid_this_month=bool(chk is not None),
-                    paid_by_name=chk.paid_by_name if chk else None,
-                    paid_date=chk.paid_date if chk else None,
+                    paid_by_name=getattr(chk, 'paid_by_name', None) if chk else None,
+                    paid_date=paid_d,
                     members_count=m_count,
                     member_names=m_names
                 )
@@ -643,28 +674,40 @@ async def get_pana_details(db: AsyncSession, user_id: UUID, partner_id: UUID) ->
             if not debt:
                 continue
 
-            paid = sharing.sum_children_in_currency(debt.payments, debt.currency or "BS", "amount")
-            remaining = max(Decimal(str(debt.total_amount)) - paid, Decimal("0"))
-            paid_pct = float(min(round((paid / Decimal(str(debt.total_amount))) * 100, 1), 100.0)) if debt.total_amount > 0 else 100.0
+            debt_total = Decimal(str(getattr(debt, 'total_amount', 0) or 0))
+            debt_curr = getattr(debt, 'currency', None) or "BS"
+            payments = getattr(debt, 'payments', []) or []
+            paid = sharing.sum_children_in_currency(payments, debt_curr, "amount")
+            remaining = max(debt_total - paid, Decimal("0"))
+            if debt_total > 0:
+                paid_pct = float(min(round((paid / debt_total) * 100, 1), 100.0))
+            else:
+                paid_pct = 100.0
 
             last_payment = None
-            if debt.payments:
-                sorted_payments = sorted(debt.payments, key=lambda x: x.payment_date or datetime.min.date(), reverse=True)
+            if payments:
+                sorted_payments = sorted(
+                    payments,
+                    key=lambda x: _sort_date_key(getattr(x, 'payment_date', None)),
+                    reverse=True
+                )
                 last_payment = sorted_payments[0]
+
+            last_payment_date = _safe_date(getattr(last_payment, 'payment_date', None)) if last_payment else None
 
             debt_briefs.append(
                 schemas.SharedDebtBrief(
                     id=debt.id,
-                    concept=debt.concept,
-                    counterpart=debt.counterpart,
-                    total_amount=Decimal(str(debt.total_amount)),
+                    concept=getattr(debt, 'concept', '') or '',
+                    counterpart=getattr(debt, 'counterpart', '') or '',
+                    total_amount=debt_total,
                     remaining_amount=remaining,
-                    currency=debt.currency or "BS",
-                    type=debt.type,
-                    is_settled=debt.is_settled,
+                    currency=debt_curr,
+                    type=getattr(debt, 'type', 'owed') or 'owed',
+                    is_settled=bool(getattr(debt, 'is_settled', False)),
                     paid_percentage=paid_pct,
-                    last_payment_by=last_payment.paid_by_name if last_payment else None,
-                    last_payment_date=last_payment.payment_date if last_payment else None,
+                    last_payment_by=getattr(last_payment, 'paid_by_name', None) if last_payment else None,
+                    last_payment_date=last_payment_date,
                     members_count=m_count,
                     member_names=m_names
                 )
@@ -675,86 +718,135 @@ async def get_pana_details(db: AsyncSession, user_id: UUID, partner_id: UUID) ->
             if not g:
                 continue
 
-            curr_amount = sharing.sum_children_in_currency(g.deposits, g.currency or "BS", "amount")
-            if g.target_amount and g.target_amount > 0:
-                prog_pct = float(min(round((curr_amount / Decimal(str(g.target_amount))) * 100, 1), 100.0))
+            g_curr = getattr(g, 'currency', None) or "BS"
+            deposits = getattr(g, 'deposits', []) or []
+            curr_amount = sharing.sum_children_in_currency(deposits, g_curr, "amount")
+            target_amount = Decimal(str(g.target_amount)) if getattr(g, 'target_amount', None) is not None else None
+            if target_amount and target_amount > 0:
+                prog_pct = float(min(round((curr_amount / target_amount) * 100, 1), 100.0))
             else:
                 prog_pct = 0.0
 
             last_dep = None
-            if g.deposits:
-                sorted_deps = sorted(g.deposits, key=lambda x: x.deposit_date or datetime.min.date(), reverse=True)
+            if deposits:
+                sorted_deps = sorted(
+                    deposits,
+                    key=lambda x: _sort_date_key(getattr(x, 'deposit_date', None)),
+                    reverse=True
+                )
                 last_dep = sorted_deps[0]
+
+            last_deposit_date = _safe_date(getattr(last_dep, 'deposit_date', None)) if last_dep else None
+            last_dep_amount = None
+            if last_dep and getattr(last_dep, 'amount', None) is not None:
+                last_dep_amount = Decimal(str(last_dep.amount))
 
             goal_briefs.append(
                 schemas.SharedSavingGoalBrief(
                     id=g.id,
-                    name=g.name,
-                    target_amount=Decimal(str(g.target_amount)) if g.target_amount is not None else None,
+                    name=getattr(g, 'name', '') or '',
+                    target_amount=target_amount,
                     type=getattr(g, 'type', 'saving') or 'saving',
                     current_amount=curr_amount,
-                    currency=g.currency,
-                    category=g.category,
-                    color=g.color,
-                    icon=g.icon,
-                    is_completed=g.is_completed,
+                    currency=g_curr,
+                    category=getattr(g, 'category', None),
+                    color=getattr(g, 'color', '#10B981') or '#10B981',
+                    icon=getattr(g, 'icon', 'piggy-bank') or 'piggy-bank',
+                    is_completed=bool(getattr(g, 'is_completed', False)),
                     progress_percentage=prog_pct,
-                    last_deposit_by=last_dep.paid_by_name if last_dep else None,
-                    last_deposit_amount=Decimal(str(last_dep.amount)) if last_dep else None,
-                    last_deposit_date=last_dep.deposit_date if last_dep else None,
+                    last_deposit_by=getattr(last_dep, 'paid_by_name', None) if last_dep else None,
+                    last_deposit_amount=last_dep_amount,
+                    last_deposit_date=last_deposit_date,
                     members_count=m_count,
                     member_names=m_names
                 )
             )
 
         elif share_obj.entity_type == "sub_budget":
-            anchor_budget = await db.get(models.MonthlyBudget, my_entity_id)
-            if not anchor_budget and s_members:
-                for sm in s_members:
-                    anchor_budget = await db.get(models.MonthlyBudget, sm.entity_id)
-                    if anchor_budget:
-                        break
-            if not anchor_budget:
-                continue
+            try:
+                anchor_budget = await db.get(models.MonthlyBudget, my_entity_id)
+                if not anchor_budget and s_members:
+                    for sm in s_members:
+                        anchor_budget = await db.get(models.MonthlyBudget, sm.entity_id)
+                        if anchor_budget:
+                            break
+                if not anchor_budget:
+                    continue
 
-            owner_view = await crud_budgets.get_monthly_budget_view(
-                db, share_obj.owner_id, current_month_str, allow_auto_clone=True, include_shared_with_me=False
-            )
-            target_sb = None
-            for sb in owner_view.budgets:
-                if not sb.is_primary and (sb.id == anchor_budget.id or sb.name.strip().lower() == anchor_budget.name.strip().lower()):
-                    target_sb = sb
-                    break
+                owner_view = None
+                try:
+                    owner_view = await crud_budgets.get_monthly_budget_view(
+                        db, share_obj.owner_id, current_month_str, allow_auto_clone=True, include_shared_with_me=False
+                    )
+                except Exception:
+                    owner_view = None
 
-            if target_sb:
-                curr_val = target_sb.currency.value if hasattr(target_sb.currency, "value") else str(target_sb.currency)
-                tl_val = target_sb.global_traffic_light.value if hasattr(target_sb.global_traffic_light, "value") else str(target_sb.global_traffic_light)
+                target_sb = None
+                if owner_view and hasattr(owner_view, "budgets") and owner_view.budgets:
+                    for sb in owner_view.budgets:
+                        if not getattr(sb, "is_primary", False) and (
+                            sb.id == anchor_budget.id or (
+                                getattr(sb, "name", None) and getattr(anchor_budget, "name", None) and
+                                sb.name.strip().lower() == anchor_budget.name.strip().lower()
+                            )
+                        ):
+                            target_sb = sb
+                            break
+
                 is_mine = (share_obj.owner_id == user_id)
                 owner_p = member_profiles.get(share_obj.owner_id)
                 owner_disp = "Tú" if is_mine else (owner_p.display_name if owner_p and owner_p.display_name else "Pana")
 
-                sub_budget_briefs.append(
-                    schemas.SharedSubBudgetBrief(
-                        id=target_sb.id,
-                        name=target_sb.name,
-                        month_year=current_month_str,
-                        currency=curr_val,
-                        effective_global_limit=float(target_sb.effective_global_limit or 0.0),
-                        total_spent_budget_currency=float(target_sb.total_spent_budget_currency or 0.0),
-                        global_spent_percentage=float(target_sb.global_spent_percentage or 0.0),
-                        global_traffic_light=tl_val,
-                        categories_count=len(target_sb.category_limits),
-                        is_mine=is_mine,
-                        owner_name=owner_disp,
-                        members_count=m_count,
-                        member_names=m_names
+                if target_sb:
+                    curr_val = target_sb.currency.value if hasattr(target_sb.currency, "value") else str(target_sb.currency or "USD_BCV")
+                    tl_val = target_sb.global_traffic_light.value if hasattr(target_sb.global_traffic_light, "value") else str(target_sb.global_traffic_light or "green")
+                    cats_count = len(getattr(target_sb, "category_limits", []) or [])
+
+                    sub_budget_briefs.append(
+                        schemas.SharedSubBudgetBrief(
+                            id=target_sb.id,
+                            name=target_sb.name,
+                            month_year=current_month_str,
+                            currency=curr_val,
+                            effective_global_limit=float(getattr(target_sb, "effective_global_limit", 0.0) or 0.0),
+                            total_spent_budget_currency=float(getattr(target_sb, "total_spent_budget_currency", 0.0) or 0.0),
+                            global_spent_percentage=float(getattr(target_sb, "global_spent_percentage", 0.0) or 0.0),
+                            global_traffic_light=tl_val,
+                            categories_count=cats_count,
+                            is_mine=is_mine,
+                            owner_name=owner_disp,
+                            members_count=m_count,
+                            member_names=m_names
+                        )
                     )
-                )
+                else:
+                    curr_val = anchor_budget.currency.value if hasattr(anchor_budget.currency, "value") else str(anchor_budget.currency or "USD_BCV")
+                    cats_count = len(getattr(anchor_budget, "category_limits", []) or [])
+                    sub_budget_briefs.append(
+                        schemas.SharedSubBudgetBrief(
+                            id=anchor_budget.id,
+                            name=anchor_budget.name,
+                            month_year=anchor_budget.month_year or current_month_str,
+                            currency=curr_val,
+                            effective_global_limit=float(getattr(anchor_budget, "global_limit", 0.0) or 0.0),
+                            total_spent_budget_currency=0.0,
+                            global_spent_percentage=0.0,
+                            global_traffic_light="green",
+                            categories_count=cats_count,
+                            is_mine=is_mine,
+                            owner_name=owner_disp,
+                            members_count=m_count,
+                            member_names=m_names
+                        )
+                    )
+            except Exception:
+                continue
 
     return schemas.PanaDetail(
         connection_id=conn.id,
         partner_id=partner_id,
         partner_name=partner_name,
+        partner_avatar_url=prof.avatar_url if prof else None,
         partner_email=partner_email,
         shared_fixed_expenses=fe_briefs,
         shared_debts=debt_briefs,

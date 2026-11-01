@@ -195,6 +195,13 @@ def _expense_amount_in_currency(exp: models.Expense, target_currency: str, rates
     if target_currency == 'EUR_BCV':
         if exp.amount_eur is not None:
             return Decimal(str(exp.amount_eur))
+        if getattr(exp, 'amount_bs', None) is not None and getattr(exp, 'rate_eur_bs', None) is not None and Decimal(str(exp.rate_eur_bs)) > 0:
+            return Decimal(str(exp.amount_bs)) / Decimal(str(exp.rate_eur_bs))
+        if getattr(exp, 'rate_usd_bs', None) is not None and Decimal(str(exp.rate_usd_bs)) > 0:
+            if exp.amount_usd is not None:
+                return Decimal(str(exp.amount_usd))
+            if getattr(exp, 'amount_bs', None) is not None:
+                return Decimal(str(exp.amount_bs)) / Decimal(str(exp.rate_usd_bs))
         return _convert_value_between_currencies(Decimal(str(exp.amount)), exp.currency, 'EUR_BCV', rates)
 
     # 4. For BS
@@ -207,7 +214,18 @@ def _expense_amount_in_currency(exp: models.Expense, target_currency: str, rates
     if target_currency in ('USDT', 'USD_CASH'):
         if exp.amount_usdt is not None:
             return Decimal(str(exp.amount_usdt))
-        if exp.amount_bs is not None:
+        exp_rates = [
+            getattr(exp, 'rate_usdt_bs', None),
+            getattr(exp, 'rate_usd_bs', None),
+            getattr(exp, 'rate_eur_bs', None),
+        ]
+        valid_exp_rates = [Decimal(str(r)) for r in exp_rates if r is not None and Decimal(str(r)) > 0]
+        if valid_exp_rates:
+            if target_currency == 'USDT' and getattr(exp, 'rate_usdt_bs', None) is None and exp.amount_usd is not None:
+                return Decimal(str(exp.amount_usd))
+            if getattr(exp, 'amount_bs', None) is not None:
+                return Decimal(str(exp.amount_bs)) / max(valid_exp_rates)
+        if getattr(exp, 'amount_bs', None) is not None:
             candidates = [rates.get('usdt_bs'), rates.get('usd_bs'), rates.get('eur_bs')]
             valid = [Decimal(str(r)) for r in candidates if r is not None and Decimal(str(r)) > 0]
             if valid:
@@ -621,8 +639,8 @@ async def _get_monthly_category_spending(
             func.coalesce(models.Expense.category, "Sin Categoría").label("category"),
             func.coalesce(func.sum(models.Expense.amount_usd), 0).label("spent_usd"),
             func.coalesce(func.sum(models.Expense.amount_bs), 0).label("spent_bs"),
-            func.coalesce(func.sum(models.Expense.amount_eur), 0).label("spent_eur"),
-            func.coalesce(func.sum(models.Expense.amount_usdt), 0).label("spent_usdt")
+            func.coalesce(func.sum(func.coalesce(models.Expense.amount_eur, models.Expense.amount_usd)), 0).label("spent_eur"),
+            func.coalesce(func.sum(func.coalesce(models.Expense.amount_usdt, models.Expense.amount_usd)), 0).label("spent_usdt")
         ).where(
             models.Expense.user_id == user_id,
             models.Expense.date >= start_date,

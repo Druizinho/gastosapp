@@ -212,6 +212,9 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
           amount_bs: item.amount_bs,
           amount_eur: item.amount_eur,
           amount_usdt: item.amount_usdt,
+          rate_usd_bs: item.rate_usd_bs,
+          rate_eur_bs: item.rate_eur_bs,
+          rate_usdt_bs: item.rate_usdt_bs,
         },
         displayCurrency,
         rates
@@ -243,6 +246,9 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
               amount_bs: check.amount_bs,
               amount_eur: check.amount_eur,
               amount_usdt: check.amount_usdt,
+              rate_usd_bs: check.rate_usd_bs,
+              rate_eur_bs: check.rate_eur_bs,
+              rate_usdt_bs: check.rate_usdt_bs,
             },
             displayCurrency,
             rates
@@ -625,6 +631,9 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
           amount_bs: check.amount_bs,
           amount_eur: check.amount_eur,
           amount_usdt: check.amount_usdt,
+          rate_usd_bs: check.rate_usd_bs,
+          rate_eur_bs: check.rate_eur_bs,
+          rate_usdt_bs: check.rate_usdt_bs,
         }
       : {
           amount: income.expected_amount,

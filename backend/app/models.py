@@ -209,6 +209,7 @@ class DebtPayment(Base):
     category = Column(String(100), nullable=True)
     create_expense = Column(Boolean, nullable=False, server_default='false', default=False)
     expense_id = Column(UUID(as_uuid=True), ForeignKey("expenses.id", ondelete="SET NULL"), nullable=True)
+    income_id = Column(UUID(as_uuid=True), ForeignKey("incomes.id", ondelete="SET NULL"), nullable=True)
     paid_by_name = Column(String, nullable=True)
     paid_by_user_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="SET NULL"), nullable=True, index=True)
     sync_id = Column(UUID(as_uuid=True), nullable=True, index=True)
