@@ -1,0 +1,1125 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  X, 
+  Home, 
+  CreditCard, 
+  PiggyBank,
+  AlertCircle, 
+  Trash2, 
+  PlusCircle, 
+  ExternalLink,
+  Check,
+  Undo2,
+  Layers,
+  Plus,
+  Pin
+} from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { 
+  getPanaDetails, 
+  checkFixedExpense, 
+  uncheckFixedExpense, 
+  deleteConnection,
+  getMonthlyBudget,
+  updateMonthlyBudgetById,
+  getShareByEntity,
+  removeShareMember
+} from '../../api';
+import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../supabaseClient';
+import { getCurrencyLabel, type PanaDetail, type CurrencyType, type SharedSubBudgetBrief } from '../../types';
+import { formatCurrencyAmount } from '../../utils/currencyFormat';
+import { SegmentedTabs, type TabItem } from '../ui/SegmentedTabs';
+import { EmptyState } from '../ui/EmptyState';
+import { ListCard } from '../ui/ListCard';
+import { ShareSubBudgetModal } from './ShareSubBudgetModal';
+import { Skeleton, SkeletonList } from '../ui/Skeleton';
+
+export type PanaTab = 'expenses' | 'debts' | 'savings' | 'budgets';
+
+const TAB_COLORS: Record<PanaTab, string> = {
+  expenses: '#F59E0B',
+  debts: '#8B5CF6',
+  savings: '#10B981',
+  budgets: '#6366F1',
+};
+
+interface PanaDetailModalProps {
+  isOpen: boolean;
+  partnerId: string | null;
+  onClose: () => void;
+  onConnectionDeleted: () => void;
+  onUpdated?: () => void;
+}
+
+export const PanaDetailModal: React.FC<PanaDetailModalProps> = ({
+  isOpen,
+  partnerId,
+  onClose,
+  onConnectionDeleted,
+  onUpdated
+}) => {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const [detail, setDetail] = useState<PanaDetail | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<PanaTab>('expenses');
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+
+  const now = new Date();
+  const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  const fetchDetails = async (silent = false) => {
+    if (!partnerId || partnerId === 'undefined' || partnerId === 'null') return;
+    try {
+      if (!silent && !detail) {
+        setLoading(true);
+      }
+      setError(null);
+      const data = await getPanaDetails(partnerId);
+      setDetail(data);
+    } catch (err: any) {
+      console.error('Error fetching pana details:', err);
+      const backendDetail = err.response?.data?.detail;
+      const errorMsg = Array.isArray(backendDetail)
+        ? backendDetail.map((d: any) => d.msg || JSON.stringify(d)).join(', ')
+        : (typeof backendDetail === 'string'
+            ? backendDetail
+            : (err.message || 'Error al cargar detalles del Pana'));
+      setError(errorMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen && partnerId && partnerId !== 'undefined' && partnerId !== 'null') {
+      fetchDetails();
+    } else {
+      setDetail(null);
+      setError(null);
+    }
+  }, [isOpen, partnerId]);
+
+  if (!isOpen) return null;
+
+  const handleUncheckFixedExpense = async (expenseId: string) => {
+    try {
+      setActionLoading(expenseId);
+      setError(null);
+      await uncheckFixedExpense(expenseId, currentMonthStr);
+      await fetchDetails(true);
+      onUpdated?.();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Error al actualizar el estado del gasto');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleCheckSubmit = async (expenseId: string, amount: number, currency: string) => {
+    try {
+      setActionLoading(expenseId);
+      setError(null);
+      await checkFixedExpense(expenseId, {
+        month_year: currentMonthStr,
+        paid_amount: amount,
+        currency: currency as CurrencyType,
+        create_expense: false
+      });
+      await fetchDetails(true);
+      onUpdated?.();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Error al actualizar el estado del gasto');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleToggleCheck = async (expenseId: string, isPaid: boolean, amount: number, currency: string) => {
+    if (isPaid) {
+      await handleUncheckFixedExpense(expenseId);
+    } else {
+      await handleCheckSubmit(expenseId, amount, currency);
+    }
+  };
+
+  const handleLeaveOrUnshare = async (b: SharedSubBudgetBrief) => {
+    if (!detail || !partnerId) return;
+    if (!confirm(`¿Dejar de compartir "${b.name}" con ${detail.partner_name}?`)) return;
+
+    try {
+      setActionLoading(b.id);
+      setError(null);
+      let unshared = false;
+      try {
+        const shareInfo = await getShareByEntity(b.id);
+        const sId = shareInfo.share_id || (shareInfo as any).id;
+        if (sId) {
+          await removeShareMember(sId, partnerId);
+          unshared = true;
+        }
+      } catch {
+        // Fallback to updateMonthlyBudgetById
+      }
+
+      if (!unshared) {
+        const mb = await getMonthlyBudget(b.month_year);
+        const matched = mb.budgets?.find((sb) => sb.id === b.id);
+        const remainingIds = (matched?.shared_members || [])
+          .filter((m) => !m.is_owner && !m.is_me && m.user_id !== matched?.owner_id)
+          .map((m) => m.user_id)
+          .filter((id) => id !== partnerId);
+        await updateMonthlyBudgetById(b.id, { shared_with_ids: remainingIds });
+      }
+
+      await fetchDetails(true);
+      onUpdated?.();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Error al dejar de compartir el subpresupuesto');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleLeaveSubBudget = async (b: SharedSubBudgetBrief) => {
+    if (!window.confirm(`¿Desvincularte del subpresupuesto "${b.name}"? Ya no tendrás acceso a este grupo de gastos.`)) return;
+
+    try {
+      setActionLoading(b.id);
+      setError(null);
+      const shareInfo = await getShareByEntity(b.id);
+      const shareId = shareInfo.share_id || (shareInfo as any).id;
+      const currentUserId = user?.id || shareInfo.members?.find((m: any) => m.is_me)?.user_id || (await supabase.auth.getUser()).data.user?.id;
+      if (!shareId || !currentUserId) {
+        throw new Error('No se pudo identificar la membresía compartida.');
+      }
+      await removeShareMember(shareId, currentUserId);
+      await fetchDetails(true);
+      onUpdated?.();
+    } catch (err: any) {
+      setError(err.message || 'Error al desvincularte del subpresupuesto');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDeleteConnection = async () => {
+    if (!detail) return;
+    if (!confirm(`¿Estás seguro de desconectar a ${detail.partner_name}? Se mantendrán tus registros pero dejarán de sincronizarse.`)) return;
+    try {
+      setLoading(true);
+      await deleteConnection(detail.connection_id);
+      onConnectionDeleted();
+      onUpdated?.();
+      onClose();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Error al eliminar la conexión');
+      setLoading(false);
+    }
+  };
+
+  const tabs: TabItem<PanaTab>[] = [
+    {
+      id: 'expenses',
+      label: 'Fijos',
+      shortLabel: 'Fijos',
+      count: detail?.shared_fixed_expenses?.length || 0,
+      icon: <Home size={15} />,
+      badgeColor: '#F59E0B',
+    },
+    {
+      id: 'debts',
+      label: 'Deudas',
+      shortLabel: 'Deudas',
+      count: detail?.shared_debts?.length || 0,
+      icon: <CreditCard size={15} />,
+      badgeColor: '#8B5CF6',
+    },
+    {
+      id: 'savings',
+      label: 'Ahorros',
+      shortLabel: 'Ahorros',
+      count: detail?.shared_saving_goals?.length || 0,
+      icon: <PiggyBank size={15} />,
+      badgeColor: '#10B981',
+    },
+    {
+      id: 'budgets',
+      label: 'Presupuestos',
+      shortLabel: 'Presup.',
+      count: detail?.shared_sub_budgets?.length || 0,
+      icon: <Layers size={15} />,
+      badgeColor: '#6366F1',
+    },
+  ];
+
+  return (
+    <>
+      <div 
+        className="modal-backdrop" 
+        onClick={onClose}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: 'rgba(15, 23, 42, 0.45)',
+          backdropFilter: 'blur(4px)',
+          zIndex: 1000,
+        }}
+      >
+        <div 
+          className="expense-form-container soft-card" 
+          onClick={(e) => e.stopPropagation()}
+          style={{ 
+            maxWidth: '540px', 
+            width: '95%',
+            maxHeight: '90vh', 
+            display: 'flex', 
+            flexDirection: 'column', 
+            padding: '1.25rem',
+            borderRadius: '20px',
+            border: '1px solid var(--border-color, rgba(255, 255, 255, 0.1))',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+          }}
+        >
+          {/* Header */}
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'space-between', 
+            marginBottom: '1rem', 
+            borderBottom: '1px solid var(--accent-light, rgba(0, 0, 0, 0.06))', 
+            paddingBottom: '0.85rem' 
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <div style={{
+                width: '46px',
+                height: '46px',
+                borderRadius: '50%',
+                background: detail?.partner_avatar_url ? 'transparent' : 'linear-gradient(135deg, #6366F1, #8B5CF6)',
+                color: '#FFFFFF',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontWeight: 700,
+                fontSize: '1.2rem',
+                boxShadow: '0 4px 12px rgba(99, 102, 241, 0.25)',
+                flexShrink: 0,
+                overflow: 'hidden',
+              }}>
+                {detail?.partner_avatar_url ? (
+                  <img
+                    src={detail.partner_avatar_url}
+                    alt={detail?.partner_name || 'Avatar'}
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      display: 'block',
+                    }}
+                  />
+                ) : (
+                  detail?.partner_name ? detail.partner_name.charAt(0).toUpperCase() : 'P'
+                )}
+              </div>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
+                  <h2 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
+                    {detail?.partner_name || <Skeleton width={140} height={22} borderRadius={6} />}
+                  </h2>
+                  {detail && (
+                    <span style={{
+                      fontSize: '0.68rem',
+                      padding: '0.15rem 0.5rem',
+                      borderRadius: '9999px',
+                      background: 'rgba(16, 185, 129, 0.12)',
+                      color: '#10B981',
+                      fontWeight: 600,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.3rem'
+                    }}>
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10B981' }} />
+                      Conectado
+                    </span>
+                  )}
+                </div>
+                {detail?.partner_email && (
+                  <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: '0.15rem 0 0' }}>
+                    {detail.partner_email}
+                  </p>
+                )}
+              </div>
+            </div>
+            <button 
+              type="button" 
+              onClick={onClose} 
+              aria-label="Cerrar modal"
+              style={{ 
+                width: '36px',
+                height: '36px',
+                minWidth: '36px',
+                minHeight: '36px',
+                borderRadius: '50%',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--text-secondary)',
+                transition: 'background-color 150ms ease-out, color 150ms ease-out, transform 150ms ease-out',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'var(--surface-muted)';
+                e.currentTarget.style.color = 'var(--text-primary)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+                e.currentTarget.style.color = 'var(--text-secondary)';
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+              onMouseDown={(e) => {
+                e.currentTarget.style.transform = 'scale(0.96)';
+              }}
+              onMouseUp={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          {error && (
+            <div style={{ 
+              padding: '0.75rem 1rem', 
+              background: 'rgba(239, 68, 68, 0.1)', 
+              color: '#EF4444', 
+              borderRadius: 'var(--radius-md, 12px)', 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '0.5rem', 
+              marginBottom: '1rem', 
+              fontSize: '0.85rem' 
+            }}>
+              <AlertCircle size={16} style={{ flexShrink: 0 }} />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {/* Segmented Tabs Switcher */}
+          <div style={{ marginBottom: '1rem' }}>
+            <SegmentedTabs<PanaTab>
+              tabs={tabs}
+              activeTab={activeTab}
+              onChange={(tabId) => setActiveTab(tabId)}
+              activeColor={TAB_COLORS[activeTab]}
+              layout="grid-2x2"
+            />
+          </div>
+
+          {/* Scrollable Content */}
+          <div style={{ flex: 1, overflowY: 'auto', paddingRight: '0.25rem', marginBottom: '1rem' }}>
+            {loading ? (
+              <div style={{ padding: '12px' }}>
+                <SkeletonList count={3} />
+              </div>
+            ) : activeTab === 'expenses' ? (
+              /* TAB: GASTOS FIJOS */
+              <div>
+                {(!detail?.shared_fixed_expenses || detail.shared_fixed_expenses.length === 0) ? (
+                  <EmptyState
+                    icon={<Home size={28} />}
+                    title="Sin gastos fijos compartidos"
+                    description="Al crear un gasto fijo puedes elegir compartirlo con tu pana para pagar juntos alquiler, internet o servicios."
+                    actionLabel="Ver Gastos Fijos"
+                    actionIcon={<PlusCircle size={16} />}
+                    actionColor="#F59E0B"
+                    onAction={() => {
+                      onClose();
+                      navigate('/herramientas/gastos-fijos');
+                    }}
+                    compact
+                  />
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    {detail?.shared_fixed_expenses.map((expense) => {
+                      const isPaid = expense.is_paid_this_month;
+                      const statusColor = isPaid ? '#10B981' : '#F59E0B';
+                      const iconBg = isPaid ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)';
+                      const iconColor = statusColor;
+
+                      return (
+                        <ListCard
+                          key={expense.id}
+                          statusColor={statusColor}
+                          icon={<Pin size={18} />}
+                          iconBg={iconBg}
+                          iconColor={iconColor}
+                          title={expense.name}
+                          subtitle={expense.payment_day ? `Día de pago: ${expense.payment_day} de cada mes` : (expense.category || undefined)}
+                          badges={
+                            <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                              {expense.currency && (
+                                <span
+                                  style={{
+                                    fontSize: '0.68rem',
+                                    padding: '0.12rem 0.45rem',
+                                    borderRadius: 'var(--radius-full, 9999px)',
+                                    background: 'var(--surface-muted, rgba(0, 0, 0, 0.05))',
+                                    color: 'var(--text-secondary)',
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {getCurrencyLabel(expense.currency)}
+                                </span>
+                              )}
+                              {expense.category && (
+                                <span
+                                  style={{
+                                    fontSize: '0.7rem',
+                                    padding: '0.15rem 0.5rem',
+                                    borderRadius: 'var(--radius-sm, 6px)',
+                                    background: 'rgba(245, 158, 11, 0.12)',
+                                    color: '#F59E0B',
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {expense.category}
+                                </span>
+                              )}
+                              {(expense.members_count || 2) > 2 && (
+                                <span
+                                  title={expense.member_names?.join(', ')}
+                                  style={{
+                                    fontSize: '0.68rem',
+                                    padding: '0.12rem 0.45rem',
+                                    borderRadius: 'var(--radius-full, 9999px)',
+                                    background: 'rgba(59, 130, 246, 0.12)',
+                                    color: '#3B82F6',
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {expense.members_count} miembros
+                                </span>
+                              )}
+                              <span
+                                style={{
+                                  fontSize: '0.68rem',
+                                  padding: '0.12rem 0.45rem',
+                                  borderRadius: 'var(--radius-full, 9999px)',
+                                  background: isPaid ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)',
+                                  color: isPaid ? '#10B981' : '#F59E0B',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {isPaid ? (expense.paid_by_name ? `Pagado por ${expense.paid_by_name}` : 'Pagado este mes') : 'Pendiente este mes'}
+                              </span>
+                            </div>
+                          }
+                          primaryAmount={formatCurrencyAmount(expense.amount, expense.currency)}
+                          quickAction={
+                            <button
+                              type="button"
+                              disabled={actionLoading === expense.id}
+                              onClick={() => handleToggleCheck(expense.id, expense.is_paid_this_month, expense.amount, expense.currency)}
+                              className={`app-btn app-btn-sm ${isPaid ? 'app-btn-ghost' : 'app-btn-primary'}`}
+                              style={{
+                                fontSize: '0.72rem',
+                                padding: '0.3rem 0.6rem',
+                                gap: '0.3rem',
+                                color: isPaid ? 'var(--text-secondary)' : '#FFFFFF',
+                                background: isPaid ? 'var(--surface-muted, rgba(0, 0, 0, 0.05))' : '#F59E0B',
+                                border: isPaid ? '1px solid var(--border-color)' : 'none',
+                              }}
+                            >
+                              {actionLoading === expense.id ? (
+                                '...'
+                              ) : isPaid ? (
+                                <>
+                                  <Undo2 size={13} />
+                                  <span>Desmarcar</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Check size={13} />
+                                  <span>Marcar Pagado</span>
+                                </>
+                              )}
+                            </button>
+                          }
+                          onClick={() => {
+                            onClose();
+                            navigate(`/herramientas/gastos-fijos?highlightId=${expense.id}`);
+                          }}
+                          children={
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.25rem' }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onClose();
+                                  navigate(`/herramientas/gastos-fijos?highlightId=${expense.id}`);
+                                }}
+                                className="app-btn app-btn-sm app-btn-ghost"
+                                style={{
+                                  fontSize: '0.75rem',
+                                  color: 'var(--text-secondary)',
+                                  border: '1px solid var(--border-color)',
+                                }}
+                              >
+                                <ExternalLink size={13} />
+                                <span>Gestionar en Gastos Fijos</span>
+                              </button>
+                            </div>
+                          }
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            ) : activeTab === 'debts' ? (
+              /* TAB: DEUDAS COMPARTIDAS */
+              <div>
+                {(!detail?.shared_debts || detail.shared_debts.length === 0) ? (
+                  <EmptyState
+                    icon={<CreditCard size={28} />}
+                    title="Sin deudas compartidas"
+                    description="Si adquieren un compromiso o préstamo juntos, compártanlo para que los abonos descuenten de la deuda de ambos."
+                    actionLabel="Ir a Deudas"
+                    actionIcon={<PlusCircle size={16} />}
+                    actionColor="#8B5CF6"
+                    onAction={() => {
+                      onClose();
+                      navigate('/herramientas/deudas-nuestras');
+                    }}
+                    compact
+                  />
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                    {detail?.shared_debts.map((debt) => {
+                      const isSettled = debt.is_settled;
+                      const statusColor = isSettled ? '#10B981' : '#8B5CF6';
+                      const iconBg = isSettled ? 'rgba(16, 185, 129, 0.12)' : 'rgba(139, 92, 246, 0.12)';
+                      const iconColor = statusColor;
+
+                      return (
+                        <ListCard
+                          key={debt.id}
+                          statusColor={statusColor}
+                          icon={<CreditCard size={18} />}
+                          iconBg={iconBg}
+                          iconColor={iconColor}
+                          title={debt.concept}
+                          subtitle={`${debt.type === 'receivable' ? 'Deudor:' : 'Acreedor:'} ${debt.counterpart}`}
+                          badges={
+                            <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                              {debt.currency && (
+                                <span
+                                  style={{
+                                    fontSize: '0.68rem',
+                                    padding: '0.12rem 0.45rem',
+                                    borderRadius: 'var(--radius-full, 9999px)',
+                                    background: 'var(--surface-muted, rgba(0, 0, 0, 0.05))',
+                                    color: 'var(--text-secondary)',
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {getCurrencyLabel(debt.currency)}
+                                </span>
+                              )}
+                              <span
+                                style={{
+                                  fontSize: '0.68rem',
+                                  padding: '0.12rem 0.45rem',
+                                  borderRadius: 'var(--radius-full, 9999px)',
+                                  background: isSettled ? 'rgba(16, 185, 129, 0.12)' : 'rgba(139, 92, 246, 0.12)',
+                                  color: statusColor,
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {isSettled ? 'Saldada' : `${debt.paid_percentage}% pagado`}
+                              </span>
+                              {(debt.members_count || 2) > 2 && (
+                                <span
+                                  title={debt.member_names?.join(', ')}
+                                  style={{
+                                    fontSize: '0.68rem',
+                                    padding: '0.12rem 0.45rem',
+                                    borderRadius: 'var(--radius-full, 9999px)',
+                                    background: 'rgba(59, 130, 246, 0.12)',
+                                    color: '#3B82F6',
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {debt.members_count} miembros
+                                </span>
+                              )}
+                              {debt.last_payment_by && (
+                                <span
+                                  style={{
+                                    fontSize: '0.68rem',
+                                    padding: '0.12rem 0.45rem',
+                                    borderRadius: 'var(--radius-full, 9999px)',
+                                    background: 'var(--surface-muted, rgba(0, 0, 0, 0.05))',
+                                    color: 'var(--text-tertiary)',
+                                  }}
+                                >
+                                  Último abono por: {debt.last_payment_by}{debt.last_payment_date ? ` (${debt.last_payment_date})` : ''}
+                                </span>
+                              )}
+                            </div>
+                          }
+                          primaryAmount={`Resta: ${formatCurrencyAmount(debt.remaining_amount, debt.currency)}`}
+                          secondaryAmount={`Total: ${formatCurrencyAmount(debt.total_amount, debt.currency)}`}
+                          progress={{
+                            value: debt.paid_percentage,
+                            max: 100,
+                            color: statusColor,
+                          }}
+                          onClick={() => {
+                            onClose();
+                            navigate(`/herramientas/deudas?highlightId=${debt.id}`);
+                          }}
+                          children={
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.25rem' }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onClose();
+                                  navigate(`/herramientas/deudas?highlightId=${debt.id}`);
+                                }}
+                                className="app-btn app-btn-sm app-btn-ghost"
+                                style={{
+                                  fontSize: '0.75rem',
+                                  color: 'var(--text-secondary)',
+                                  border: '1px solid var(--border-color)',
+                                }}
+                              >
+                                <ExternalLink size={13} />
+                                <span>Gestionar en Deudas</span>
+                              </button>
+                            </div>
+                          }
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            ) : activeTab === 'savings' ? (
+              /* TAB: AHORROS COMPARTIDOS */
+              <div>
+                {(!detail?.shared_saving_goals || detail.shared_saving_goals.length === 0) ? (
+                  <EmptyState
+                    icon={<PiggyBank size={28} />}
+                    title="Sin metas de ahorro compartidas"
+                    description="Pueden crear fondos conjuntos para proyectos de remodelación, viajes, compras o reservas."
+                    actionLabel="Ver Ahorros"
+                    actionIcon={<PlusCircle size={16} />}
+                    actionColor="#10B981"
+                    onAction={() => {
+                      onClose();
+                      navigate('/herramientas/ahorros');
+                    }}
+                    compact
+                  />
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                    {detail.shared_saving_goals.map((goal) => {
+                      const color = goal.color || '#10B981';
+                      const statusColor = goal.is_completed ? '#10B981' : color;
+                      const isProject = goal.type === 'project';
+                      const hasTarget = goal.target_amount !== null && goal.target_amount !== undefined;
+
+                      return (
+                        <ListCard
+                          key={goal.id}
+                          statusColor={statusColor}
+                          icon={<PiggyBank size={18} />}
+                          iconBg={`${color}18`}
+                          iconColor={color}
+                          title={goal.name}
+                          subtitle={
+                            hasTarget
+                              ? `${isProject ? 'Presupuesto' : 'Meta'}: ${formatCurrencyAmount(goal.target_amount, goal.currency)}`
+                              : 'Sin meta definida'
+                          }
+                          badges={
+                            <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                              {goal.currency && (
+                                <span
+                                  style={{
+                                    fontSize: '0.68rem',
+                                    padding: '0.12rem 0.45rem',
+                                    borderRadius: 'var(--radius-full, 9999px)',
+                                    background: 'var(--surface-muted, rgba(0, 0, 0, 0.05))',
+                                    color: 'var(--text-secondary)',
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {getCurrencyLabel(goal.currency)}
+                                </span>
+                              )}
+                              {isProject && (
+                                <span
+                                  style={{
+                                    fontSize: '0.68rem',
+                                    padding: '0.12rem 0.45rem',
+                                    borderRadius: 'var(--radius-full, 9999px)',
+                                    background: 'rgba(59, 130, 246, 0.12)',
+                                    color: '#3B82F6',
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  🛠️ Proyecto
+                                </span>
+                              )}
+                              {goal.category && (
+                                <span
+                                  style={{
+                                    fontSize: '0.7rem',
+                                    padding: '0.15rem 0.5rem',
+                                    borderRadius: 'var(--radius-sm, 6px)',
+                                    background: `${color}18`,
+                                    color: color,
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {goal.category}
+                                </span>
+                              )}
+                              <span
+                                style={{
+                                  fontSize: '0.68rem',
+                                  padding: '0.12rem 0.45rem',
+                                  borderRadius: 'var(--radius-full, 9999px)',
+                                  background: goal.is_completed ? 'rgba(16, 185, 129, 0.12)' : `${color}18`,
+                                  color: statusColor,
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {goal.is_completed
+                                  ? (isProject ? 'Concluido 🎉' : 'Completado 🎉')
+                                  : hasTarget
+                                    ? `${Math.round(goal.progress_percentage)}% ${isProject ? 'ejecutado' : 'ahorrado'}`
+                                    : 'Cuenta abierta'}
+                              </span>
+                              {(goal.members_count || 2) > 2 && (
+                                <span
+                                  title={goal.member_names?.join(', ')}
+                                  style={{
+                                    fontSize: '0.68rem',
+                                    padding: '0.12rem 0.45rem',
+                                    borderRadius: 'var(--radius-full, 9999px)',
+                                    background: 'rgba(59, 130, 246, 0.12)',
+                                    color: '#3B82F6',
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {goal.members_count} miembros
+                                </span>
+                              )}
+                              {goal.last_deposit_by && (
+                                <span
+                                  style={{
+                                    fontSize: '0.68rem',
+                                    padding: '0.12rem 0.45rem',
+                                    borderRadius: 'var(--radius-full, 9999px)',
+                                    background: 'var(--surface-muted, rgba(0, 0, 0, 0.05))',
+                                    color: 'var(--text-tertiary)',
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  Último aporte por: {goal.last_deposit_by}{goal.last_deposit_date ? ` (${goal.last_deposit_date})` : ''}
+                                </span>
+                              )}
+                            </div>
+                          }
+                          primaryAmount={formatCurrencyAmount(goal.current_amount, goal.currency)}
+                          secondaryAmount={
+                            goal.target_amount && goal.target_amount > goal.current_amount
+                              ? `Falta: ${formatCurrencyAmount(goal.target_amount - goal.current_amount, goal.currency)}`
+                              : undefined
+                          }
+                          progress={
+                            goal.target_amount
+                              ? {
+                                  value: Math.min(goal.progress_percentage, 100),
+                                  max: 100,
+                                  color: color,
+                                }
+                              : undefined
+                          }
+                          onClick={() => {
+                            onClose();
+                            navigate(`/herramientas/ahorros?highlightId=${goal.id}`);
+                          }}
+                          children={
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.25rem' }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onClose();
+                                  navigate(`/herramientas/ahorros?highlightId=${goal.id}`);
+                                }}
+                                className="app-btn app-btn-sm app-btn-ghost"
+                                style={{
+                                  fontSize: '0.75rem',
+                                  color: 'var(--text-secondary)',
+                                  border: '1px solid var(--border-color)',
+                                }}
+                              >
+                                <ExternalLink size={13} />
+                                <span>Gestionar en Ahorros</span>
+                              </button>
+                            </div>
+                          }
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* TAB: PRESUPUESTOS COMPARTIDOS */
+              <div>
+                {/* Header row with title, count, and "+ Compartir subpresupuesto" button */}
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '0.75rem',
+                  padding: '0 0.25rem'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                      Subpresupuestos del mes
+                    </span>
+                    <span style={{
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      padding: '0.1rem 0.45rem',
+                      borderRadius: '9999px',
+                      background: 'rgba(99, 102, 241, 0.1)',
+                      color: '#6366F1'
+                    }}>
+                      {detail?.shared_sub_budgets?.length || 0}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsShareModalOpen(true)}
+                    className="app-btn app-btn-sm app-btn-primary"
+                  >
+                    <Plus size={14} />
+                    Compartir subpresupuesto
+                  </button>
+                </div>
+
+                {(!detail?.shared_sub_budgets || detail.shared_sub_budgets.length === 0) ? (
+                  <EmptyState
+                    icon={<Layers size={28} />}
+                    title="Sin subpresupuestos compartidos"
+                    description="Comparte grupos de gasto en modo solo lectura con tu pana para coordinar presupuestos de comida, salidas, etc."
+                    actionLabel="+ Compartir subpresupuesto"
+                    actionIcon={<Plus size={15} />}
+                    actionColor="#6366F1"
+                    onAction={() => setIsShareModalOpen(true)}
+                    compact
+                  />
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                    {detail.shared_sub_budgets.map((b) => {
+                      const trafficColor =
+                        b.global_traffic_light === 'red'
+                          ? '#EF4444'
+                          : b.global_traffic_light === 'yellow'
+                          ? '#F59E0B'
+                          : '#10B981';
+
+                      return (
+                        <ListCard
+                          key={b.id}
+                          icon={<Layers size={20} />}
+                          statusColor={trafficColor}
+                          title={b.name}
+                          subtitle={`${b.categories_count} categorías • ${b.month_year}`}
+                          badges={
+                            <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                              <span
+                                style={{
+                                  fontSize: '0.68rem',
+                                  padding: '0.12rem 0.45rem',
+                                  borderRadius: 'var(--radius-full, 9999px)',
+                                  background: b.is_mine ? 'rgba(16, 185, 129, 0.12)' : 'rgba(59, 130, 246, 0.12)',
+                                  color: b.is_mine ? '#10B981' : '#3B82F6',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {b.is_mine ? 'Compartido por ti' : `De ${b.owner_name || detail.partner_name} · Solo lectura`}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: '0.68rem',
+                                  padding: '0.12rem 0.45rem',
+                                  borderRadius: 'var(--radius-full, 9999px)',
+                                  background: `${trafficColor}18`,
+                                  color: trafficColor,
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {Math.round(b.global_spent_percentage)}% consumido
+                              </span>
+                              {b.currency && (
+                                <span
+                                  style={{
+                                    fontSize: '0.68rem',
+                                    padding: '0.12rem 0.45rem',
+                                    borderRadius: 'var(--radius-full, 9999px)',
+                                    background: 'var(--surface-muted, rgba(0, 0, 0, 0.05))',
+                                    color: 'var(--text-secondary)',
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {getCurrencyLabel(b.currency)}
+                                </span>
+                              )}
+                              {b.members_count > 2 && (
+                                <span
+                                  title={b.member_names?.join(', ')}
+                                  style={{
+                                    fontSize: '0.68rem',
+                                    padding: '0.12rem 0.45rem',
+                                    borderRadius: 'var(--radius-full, 9999px)',
+                                    background: 'var(--surface-muted, rgba(0, 0, 0, 0.05))',
+                                    color: 'var(--text-secondary)',
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {b.members_count} panas
+                                </span>
+                              )}
+                            </div>
+                          }
+                          progress={{
+                            value: b.total_spent_budget_currency,
+                            max: b.effective_global_limit > 0 ? b.effective_global_limit : 1,
+                            color: trafficColor,
+                          }}
+                          primaryAmount={`${formatCurrencyAmount(b.total_spent_budget_currency, b.currency)} / ${formatCurrencyAmount(b.effective_global_limit, b.currency)}`}
+                          quickAction={
+                            b.is_mine ? (
+                              <button
+                                type="button"
+                                disabled={actionLoading === b.id}
+                                onClick={() => handleLeaveOrUnshare(b)}
+                                title="Dejar de compartir este subpresupuesto con tu pana"
+                                className="app-btn app-btn-sm app-btn-danger"
+                                style={{ fontSize: '0.72rem' }}
+                              >
+                                {actionLoading === b.id ? '...' : 'Dejar de compartir'}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={actionLoading === b.id}
+                                onClick={() => handleLeaveSubBudget(b)}
+                                title="Desvincularte de este subpresupuesto"
+                                className="app-btn app-btn-sm app-btn-danger"
+                                style={{ fontSize: '0.72rem' }}
+                              >
+                                {actionLoading === b.id ? '...' : 'Desvincularte'}
+                              </button>
+                            )
+                          }
+                          onClick={() => {
+                            onClose();
+                            navigate(`/herramientas/presupuestos?subId=${b.id}`);
+                          }}
+                          children={
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.25rem' }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onClose();
+                                  navigate(`/herramientas/presupuestos?subId=${b.id}`);
+                                }}
+                                className="app-btn app-btn-sm app-btn-ghost"
+                                style={{
+                                  fontSize: '0.75rem',
+                                  color: 'var(--text-secondary)',
+                                  border: '1px solid var(--border-color)',
+                                }}
+                              >
+                                <ExternalLink size={13} />
+                                <span>Gestionar en Presupuestos</span>
+                              </button>
+                            </div>
+                          }
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Footer / Danger Zone */}
+          <div style={{ 
+            borderTop: '1px solid var(--accent-light, rgba(0, 0, 0, 0.06))', 
+            paddingTop: '0.85rem', 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center' 
+          }}>
+            <button
+              type="button"
+              onClick={handleDeleteConnection}
+              disabled={loading}
+              className="app-btn app-btn-danger"
+              style={{
+                height: '40px',
+                minHeight: '40px',
+                borderRadius: '10px',
+              }}
+            >
+              <Trash2 size={15} />
+              Desconectar Pana
+            </button>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="app-btn app-btn-secondary"
+              style={{
+                height: '40px',
+                minHeight: '40px',
+                borderRadius: '10px',
+              }}
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Sub-budget Sharing Modal */}
+      {detail && (
+        <ShareSubBudgetModal
+          isOpen={isShareModalOpen}
+          partnerId={detail.partner_id}
+          partnerName={detail.partner_name}
+          onClose={() => setIsShareModalOpen(false)}
+          onShared={fetchDetails}
+        />
+      )}
+    </>
+  );
+};
+
+export default PanaDetailModal;

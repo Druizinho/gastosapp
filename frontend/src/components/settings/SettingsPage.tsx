@@ -1,0 +1,418 @@
+import React, { useState } from 'react';
+import CategoryManager from './CategoryManager';
+import ProfileManager from './ProfileManager';
+import { NotificationSettings } from './NotificationSettings';
+
+import { LogOut, User, Folder, ChevronRight, ChevronDown, ArrowLeft, Globe, Palette, Bell, Check } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { useCurrencyPreference } from '../../context/CurrencyPreferenceContext';
+import type { MainCurrencyPreference } from '../../types';
+
+type SettingsView = 'menu' | 'profile' | 'categories' | 'notifications';
+
+const MAIN_CURRENCY_OPTIONS: { id: MainCurrencyPreference; label: string; symbol: string; desc: string }[] = [
+  { id: 'USD', label: 'USD ($ BCV)', symbol: '$', desc: 'Dólares oficiales a tasa BCV' },
+  { id: 'BS', label: 'BS (Bolívares)', symbol: 'Bs.', desc: 'Bolívares de cuenta oficial' },
+  { id: 'EUR', label: 'EUR (€ BCV)', symbol: '€', desc: 'Euros oficiales a tasa BCV' },
+  { id: 'USDT', label: 'USDT', symbol: '₮', desc: 'Criptomoneda Tether USDT' },
+];
+
+export const SettingsPage: React.FC = () => {
+  const [currentView, setCurrentView] = useState<SettingsView>('menu');
+  const { user, displayName, avatarUrl, signOut } = useAuth();
+  const { mainCurrency, setMainCurrency } = useCurrencyPreference();
+  const [currencyExpanded, setCurrencyExpanded] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+  };
+
+  const getInitials = (name: string) => {
+    if (!name) return 'U';
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    return name.slice(0, 2).toUpperCase();
+  };
+
+  const renderMenu = () => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+      {/* Tarjeta de Perfil VIP */}
+      <div className="soft-card" style={{ 
+        display: 'flex', alignItems: 'center', gap: '1.25rem', padding: '1.5rem',
+        background: 'linear-gradient(135deg, #0F172A 0%, #312E81 100%)',
+        color: 'white',
+        border: 'none',
+        position: 'relative',
+        overflow: 'hidden',
+        boxShadow: '0 10px 25px -5px rgba(49, 46, 129, 0.3)'
+      }}>
+        {/* Decorative background circle */}
+        <div style={{
+          position: 'absolute',
+          top: '-30px',
+          right: '-30px',
+          width: '120px',
+          height: '120px',
+          borderRadius: '50%',
+          background: 'rgba(255,255,255,0.08)',
+        }} />
+        <div style={{ 
+          width: '72px', height: '72px', borderRadius: '50%', 
+          background: 'rgba(255,255,255,0.2)', border: '2px solid rgba(255,255,255,0.5)', 
+          boxShadow: '0 4px 12px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', 
+          justifyContent: 'center', color: 'white', 
+          fontWeight: 700, fontSize: '1.5rem', overflow: 'hidden', flexShrink: 0,
+          backdropFilter: 'blur(4px)'
+        }}>
+          {avatarUrl ? (
+             <img src={avatarUrl} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          ) : (
+             getInitials(displayName)
+          )}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', zIndex: 1 }}>
+          <span style={{ fontWeight: 700, fontSize: '1.25rem', marginBottom: '0.1rem' }}>
+            {displayName || 'Usuario'}
+          </span>
+          <span style={{ opacity: 0.85, fontSize: '0.9rem', fontWeight: 500 }}>
+            {user?.email || 'usuario@ejemplo.com'}
+          </span>
+          <span style={{ 
+            marginTop: '0.6rem', display: 'inline-block', background: 'rgba(255,255,255,0.2)', 
+            padding: '0.2rem 0.6rem', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 600, width: 'fit-content',
+            border: '1px solid rgba(255,255,255,0.3)'
+          }}>
+            Plan Gratuito
+          </span>
+        </div>
+      </div>
+
+      {/* Bloque: Cuenta */}
+      <div>
+        <h3 style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.75rem', paddingLeft: '0.5rem' }}>
+          Cuenta
+        </h3>
+        <div className="soft-card" style={{ padding: 0, overflow: 'hidden' }}>
+          <button 
+            onClick={() => setCurrentView('profile')}
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '1.25rem 1.25rem', background: 'transparent', border: 'none', 
+              borderBottom: '1px solid var(--surface-muted)', cursor: 'pointer',
+              textAlign: 'left', transition: 'background 0.2s'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-hover)'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', color: 'var(--text-primary)', fontWeight: 600 }}>
+              <div style={{ 
+                width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(59, 130, 246, 0.05) 100%)', 
+                color: '#3B82F6', borderRadius: '12px'
+              }}>
+                <User size={18} />
+              </div>
+              Perfil
+            </div>
+            <ChevronRight size={20} color="var(--text-tertiary)" />
+          </button>
+
+          <button 
+            onClick={() => setCurrentView('categories')}
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '1.25rem 1.25rem', background: 'transparent', border: 'none', 
+              cursor: 'pointer', textAlign: 'left', transition: 'background 0.2s'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-hover)'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', color: 'var(--text-primary)', fontWeight: 600 }}>
+              <div style={{ 
+                width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(139, 92, 246, 0.05) 100%)', 
+                color: '#8B5CF6', borderRadius: '12px'
+              }}>
+                <Folder size={18} />
+              </div>
+              Mis Categorías
+            </div>
+            <ChevronRight size={20} color="var(--text-tertiary)" />
+          </button>
+        </div>
+      </div>
+
+      {/* Bloque: Preferencias */}
+      <div>
+        <h3 style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.75rem', paddingLeft: '0.5rem' }}>
+          Preferencias
+        </h3>
+        <div className="soft-card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div>
+            <button 
+              type="button"
+              onClick={() => setCurrencyExpanded(!currencyExpanded)}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '1.25rem 1.25rem', background: 'transparent', border: 'none', 
+                borderBottom: currencyExpanded ? 'none' : '1px solid var(--surface-muted)', cursor: 'pointer',
+                textAlign: 'left', transition: 'background 0.2s'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-hover)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', color: 'var(--text-primary)', fontWeight: 600 }}>
+                <div style={{ 
+                  width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(16, 185, 129, 0.05) 100%)', 
+                  color: '#10B981', borderRadius: '12px'
+                }}>
+                  <Globe size={18} />
+                </div>
+                <div>
+                  <div style={{ lineHeight: 1.2 }}>Moneda Principal</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', fontWeight: 400, marginTop: '2px' }}>
+                    Conversión por defecto de toda la app
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ 
+                  fontSize: '0.85rem', 
+                  color: 'var(--brand-primary, #6366F1)', 
+                  fontWeight: 600,
+                  background: 'rgba(99, 102, 241, 0.1)',
+                  padding: '0.2rem 0.55rem',
+                  borderRadius: '8px'
+                }}>
+                  {mainCurrency}
+                </span>
+                {currencyExpanded ? <ChevronDown size={20} color="var(--text-tertiary)" /> : <ChevronRight size={20} color="var(--text-tertiary)" />}
+              </div>
+            </button>
+
+            {currencyExpanded && (
+              <div style={{
+                padding: '0.75rem 1.25rem 1.25rem 1.25rem',
+                borderBottom: '1px solid var(--surface-muted)',
+                background: 'var(--surface-subtle, rgba(0, 0, 0, 0.02))',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+                gap: '0.6rem',
+                animation: 'fadeIn 0.15s ease'
+              }}>
+                {MAIN_CURRENCY_OPTIONS.map((opt) => {
+                  const isSelected = mainCurrency === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        setMainCurrency(opt.id);
+                        showToast(`Moneda principal: ${opt.label}`);
+                      }}
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'flex-start',
+                        padding: '0.75rem 0.85rem',
+                        borderRadius: '12px',
+                        border: isSelected ? '1.5px solid var(--brand-primary, #6366F1)' : '1px solid var(--border-color, rgba(255,255,255,0.08))',
+                        background: isSelected ? 'rgba(99, 102, 241, 0.12)' : 'var(--surface-card, rgba(255,255,255,0.03))',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'transform 150ms ease-out, background 150ms ease-out, border-color 150ms ease-out, box-shadow 150ms ease-out',
+                        boxShadow: isSelected ? '0 4px 12px rgba(99, 102, 241, 0.15)' : 'none',
+                      }}
+                      onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+                      onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: '0.25rem' }}>
+                        <span style={{ 
+                          fontSize: '0.9rem', 
+                          fontWeight: 700, 
+                          color: isSelected ? 'var(--brand-primary, #6366F1)' : 'var(--text-primary)' 
+                        }}>
+                          {opt.label}
+                        </span>
+                        {isSelected && <Check size={14} color="var(--brand-primary, #6366F1)" />}
+                      </div>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', lineHeight: 1.25 }}>
+                        {opt.desc}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <button 
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '1.25rem 1.25rem', background: 'transparent', border: 'none', 
+              cursor: 'pointer', textAlign: 'left', transition: 'background 0.2s'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-hover)'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', color: 'var(--text-primary)', fontWeight: 600 }}>
+              <div style={{ 
+                width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(245, 158, 11, 0.05) 100%)', 
+                color: '#F59E0B', borderRadius: '12px'
+              }}>
+                <Palette size={18} />
+              </div>
+              Apariencia
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', fontWeight: 500 }}>Automático</span>
+              <ChevronRight size={20} color="var(--text-tertiary)" />
+            </div>
+          </button>
+
+          <button 
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '1.25rem 1.25rem', background: 'transparent', border: 'none', 
+              cursor: 'pointer', textAlign: 'left', transition: 'background 0.2s'
+            }}
+            onClick={() => setCurrentView('notifications')}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-hover)'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', color: 'var(--text-primary)', fontWeight: 600 }}>
+              <div style={{ 
+                width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'linear-gradient(135deg, rgba(236, 72, 153, 0.15) 0%, rgba(236, 72, 153, 0.05) 100%)', 
+                color: '#EC4899', borderRadius: '12px'
+              }}>
+                <Bell size={18} />
+              </div>
+              Notificaciones Push
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', fontWeight: 500 }}>Configurar</span>
+              <ChevronRight size={20} color="var(--text-tertiary)" />
+            </div>
+          </button>
+        </div>
+      </div>
+
+      {/* Botón de Salir */}
+      <div className="soft-card" style={{ padding: 0, overflow: 'hidden', marginTop: '0.5rem' }}>
+        <button 
+          onClick={handleSignOut}
+          style={{
+            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem',
+            padding: '1.25rem 1.25rem', background: 'transparent', border: 'none', 
+            cursor: 'pointer', textAlign: 'center', transition: 'background 0.2s'
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(220, 38, 38, 0.05)'}
+          onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+        >
+          <LogOut size={18} color="var(--expense-color)" />
+          <span style={{ color: 'var(--expense-color)', fontWeight: 600 }}>Cerrar Sesión</span>
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ padding: '1rem', paddingBottom: '6rem', maxWidth: '600px', margin: '0 auto' }}>
+      <header style={{ marginBottom: '2rem', paddingTop: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        {currentView !== 'menu' && (
+          <button 
+            onClick={() => setCurrentView('menu')}
+            style={{
+              background: 'var(--surface-color)',
+              border: 'none',
+              borderRadius: 'var(--radius-full)',
+              width: '40px',
+              height: '40px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: 'var(--shadow-sm)',
+              color: 'var(--text-primary)',
+              transition: 'all 0.2s'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.boxShadow = 'var(--shadow-md)'}
+            onMouseLeave={(e) => e.currentTarget.style.boxShadow = 'var(--shadow-sm)'}
+          >
+            <ArrowLeft size={20} />
+          </button>
+        )}
+        <h1 style={{ 
+          fontSize: '1.75rem', 
+          fontWeight: 800, 
+          color: 'var(--text-primary)', 
+          margin: 0,
+          letterSpacing: '-0.02em'
+        }}>
+          {currentView === 'menu' && 'Ajustes'}
+          {currentView === 'profile' && 'Perfil'}
+          {currentView === 'categories' && 'Categorías'}
+          {currentView === 'notifications' && 'Notificaciones'}
+        </h1>
+      </header>
+
+      <div className="settings-content" style={{ animation: 'fadeIn 0.2s ease' }}>
+        {currentView === 'menu' && renderMenu()}
+        {currentView === 'profile' && <ProfileManager />}
+        {currentView === 'categories' && <CategoryManager onCategoriesChanged={() => {}} />}
+        {currentView === 'notifications' && <NotificationSettings />}
+      </div>
+
+      {toastMessage && (
+        <div style={{
+          position: 'fixed',
+          bottom: '5.5rem',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'var(--surface-color, #FFFFFF)',
+          color: 'var(--text-primary, #111827)',
+          border: '1px solid var(--border-color, #E5E7EB)',
+          boxShadow: '0 8px 32px -8px rgba(0, 0, 0, 0.08), 0 4px 16px -4px rgba(0, 0, 0, 0.04)',
+          borderRadius: 'var(--radius-full, 9999px)',
+          padding: '0.625rem 1.25rem',
+          zIndex: 9999,
+          fontSize: '0.875rem',
+          fontWeight: 600,
+          letterSpacing: '-0.01em',
+          animation: 'toastSlideUp 0.3s ease',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem'
+        }}>
+          <div style={{
+            width: '24px',
+            height: '24px',
+            borderRadius: '50%',
+            background: 'var(--income-bg, rgba(16, 185, 129, 0.1))',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0
+          }}>
+            <Check size={14} color="var(--income-color, #10B981)" strokeWidth={2.5} />
+          </div>
+          <span>{toastMessage}</span>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default SettingsPage;

@@ -9,7 +9,7 @@ import datetime
 from typing import Optional
 from sqlalchemy import text, select, func
 
-from .routers import expenses, categories, profiles, fixed_expenses, debts, incomes, push, notifications, connections, savings, shares, budgets
+from .routers import expenses, categories, profiles, fixed_expenses, debts, incomes, push, notifications, connections, savings, shares, budgets, reports
 from .database import engine, Base, SessionLocal as AsyncSessionLocal
 from .time_utils import vet_now
 from . import bcv_service, models
@@ -272,6 +272,7 @@ app.include_router(connections.router)
 app.include_router(savings.router)
 app.include_router(shares.router)
 app.include_router(budgets.router)
+app.include_router(reports.router, prefix="/api/reports", tags=["reports"])
 
 @app.get("/")
 def read_root():

@@ -25,5 +25,7 @@ export const TOOL_COLORS = {
   income: { solid: 'var(--tool-income, #3B82F6)', bg: 'var(--tool-income-bg, rgba(59, 130, 246, 0.1))' },
   debts: { solid: 'var(--tool-debts, #8B5CF6)', bg: 'var(--tool-debts-bg, rgba(139, 92, 246, 0.1))' },
   savings: { solid: 'var(--tool-savings, #10B981)', bg: 'var(--tool-savings-bg, rgba(16, 185, 129, 0.1))' },
+  projects: { solid: 'var(--tool-projects, #0284C7)', bg: 'var(--tool-projects-bg, rgba(2, 132, 199, 0.1))' },
   panas: { solid: 'var(--tool-panas, #EC4899)', bg: 'var(--tool-panas-bg, rgba(236, 72, 153, 0.1))' },
+  reports: { solid: 'var(--tool-reports, #06B6D4)', bg: 'var(--tool-reports-bg, rgba(6, 182, 212, 0.1))' },
 } as const;

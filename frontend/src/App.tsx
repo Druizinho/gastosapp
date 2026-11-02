@@ -4,27 +4,26 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { CategoriesProvider } from './context/CategoriesContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { ToastProvider, useToast } from './components/ui/Toast';
-import { Auth, ResetPassword } from './components/Auth';
-import Dashboard from './components/Dashboard';
-import { BottomNav } from './components/BottomNav';
-import ExpenseForm from './components/ExpenseForm';
+import { Auth, ResetPassword } from './components/auth';
+import Dashboard from './components/dashboard/index';
+import { BottomNav, InstallPWA, RouteErrorBoundary } from './components/layout';
+import { ExpenseForm } from './components/dashboard/index';
 import { createExpense, createIncome } from './api';
 import type { ExpenseCreate, IncomeCreate } from './types';
-import { InstallPWA } from './components/InstallPWA';
-import { RouteErrorBoundary } from './components/ErrorBoundary';
 import { SkeletonHeroCard, SkeletonList } from './components/ui/Skeleton';
 import './index.css';
 
 // Lazy loading de vistas y herramientas pesadas para optimizar el bundle inicial
-const ToolsHub = lazy(() => import('./components/ToolsHub').then(m => ({ default: m.ToolsHub })));
-const FixedExpenses = lazy(() => import('./components/FixedExpenses'));
-const DebtList = lazy(() => import('./components/DebtList'));
-const EstimatedIncomeList = lazy(() => import('./components/EstimatedIncomeList'));
-const SavingGoals = lazy(() => import('./components/SavingGoals'));
-const Budgets = lazy(() => import('./components/Budgets'));
-const RatesPage = lazy(() => import('./components/RatesPage').then(m => ({ default: m.RatesPage })));
-const SettingsPage = lazy(() => import('./components/SettingsPage').then(m => ({ default: m.SettingsPage })));
-const PanasPage = lazy(() => import('./pages/PanasPage').then(m => ({ default: m.PanasPage })));
+const ToolsHub = lazy(() => import('./components/tools').then(m => ({ default: m.ToolsHub })));
+const FixedExpenses = lazy(() => import('./components/fixed-expenses'));
+const DebtList = lazy(() => import('./components/debts'));
+const EstimatedIncomeList = lazy(() => import('./components/incomes'));
+const SavingGoals = lazy(() => import('./components/savings'));
+const Budgets = lazy(() => import('./components/budgets/index').then(m => ({ default: m.Budgets })));
+const RatesPage = lazy(() => import('./components/rates').then(m => ({ default: m.RatesPage })));
+const SettingsPage = lazy(() => import('./components/settings').then(m => ({ default: m.SettingsPage })));
+const PanasPage = lazy(() => import('./components/panas').then(m => ({ default: m.PanasPage })));
+const ReportsHub = lazy(() => import('./components/reports/ReportsHub'));
 
 const ProtectedRoute = ({ children }: { children?: React.ReactNode }) => {
   const { session, loading } = useAuth();
@@ -155,11 +154,13 @@ const AppRoutes = () => {
             <Route path="/herramientas/ingresos-estimados" element={<Navigate to="/herramientas/ingresos" replace />} />
             <Route path="/herramientas/ahorros" element={<SavingGoals onBack={() => navigate(-1)} />} />
             <Route path="/herramientas/presupuestos" element={<Budgets onBack={() => navigate(-1)} />} />
+            <Route path="/herramientas/resumenes" element={<ReportsHub />} />
             <Route path="/herramientas/panas" element={<PanasPage />} />
             <Route path="/herramientas/conexiones" element={<Navigate to="/herramientas/panas" replace />} />
             <Route path="/conexiones" element={<Navigate to="/herramientas/panas" replace />} />
             <Route path="/panas" element={<Navigate to="/herramientas/panas" replace />} />
             <Route path="/presupuestos" element={<Navigate to="/herramientas/presupuestos" replace />} />
+            <Route path="/resumenes" element={<Navigate to="/herramientas/resumenes" replace />} />
             <Route path="/deudas" element={<Navigate to="/herramientas/deudas" replace />} />
             <Route path="/gastos-fijos" element={<Navigate to="/herramientas/gastos-fijos" replace />} />
             <Route path="/ahorros" element={<Navigate to="/herramientas/ahorros" replace />} />

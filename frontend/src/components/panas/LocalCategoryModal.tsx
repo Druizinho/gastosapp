@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Tag, X, Check, Loader2, AlertCircle } from 'lucide-react';
-import { CategorySelect } from '../CategorySelect';
+import { CategorySelect } from '../common';
 import { updateEntityLocalCategory } from '../../api';
 
 export interface LocalCategoryModalProps {

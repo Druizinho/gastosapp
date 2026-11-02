@@ -4,7 +4,8 @@ from sqlalchemy import extract, func, case, text, update, delete
 from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException
 from typing import Optional, List
-from datetime import date
+import datetime
+from datetime import date, timedelta
 from uuid import UUID
 from . import models, schemas
 from .database import engine
@@ -251,6 +252,216 @@ async def get_summary_range(db: AsyncSession, user_id: UUID, date_from: date, da
         balance_eur=income_total_eur - total_eur,
         balance_usdt=income_total_usdt - total_usdt,
         by_category=by_category
+    )
+
+def _determine_granularity(days: int) -> str:
+    if days <= 31:
+        return "day"
+    elif days <= 92:
+        return "week"
+    else:
+        return "month"
+
+def _generate_time_buckets(date_from: date, date_to: date, granularity: str) -> List[schemas.TimeSeriesBucket]:
+    buckets = []
+    if granularity == "day":
+        curr = date_from
+        while curr <= date_to:
+            buckets.append(schemas.TimeSeriesBucket(
+                bucket_label=curr.strftime("%Y-%m-%d"),
+                start_date=curr,
+                end_date=curr,
+            ))
+            curr += timedelta(days=1)
+    elif granularity == "week":
+        first_monday = date_from - timedelta(days=date_from.weekday())
+        curr = first_monday
+        while curr <= date_to:
+            bucket_end = curr + timedelta(days=6)
+            buckets.append(schemas.TimeSeriesBucket(
+                bucket_label=curr.strftime("%Y-%m-%d"),
+                start_date=curr,
+                end_date=bucket_end,
+            ))
+            curr += timedelta(days=7)
+    else:  # "month"
+        curr_y, curr_m = date_from.year, date_from.month
+        while (curr_y < date_to.year) or (curr_y == date_to.year and curr_m <= date_to.month):
+            start_d = date(curr_y, curr_m, 1)
+            if curr_m == 12:
+                end_d = date(curr_y, 12, 31)
+                next_y, next_m = curr_y + 1, 1
+            else:
+                end_d = date(curr_y, curr_m + 1, 1) - timedelta(days=1)
+                next_y, next_m = curr_y, curr_m + 1
+            buckets.append(schemas.TimeSeriesBucket(
+                bucket_label=f"{curr_y:04d}-{curr_m:02d}",
+                start_date=start_d,
+                end_date=end_d,
+            ))
+            curr_y, curr_m = next_y, next_m
+    return buckets
+
+def _get_bucket_key(d: date, granularity: str) -> str:
+    if granularity == "day":
+        return d.strftime("%Y-%m-%d")
+    elif granularity == "week":
+        iso_monday = d - timedelta(days=d.weekday())
+        return iso_monday.strftime("%Y-%m-%d")
+    else:
+        return d.strftime("%Y-%m")
+
+async def _build_period_series(db: AsyncSession, user_id: UUID, date_from: date, date_to: date, granularity: str) -> List[schemas.TimeSeriesBucket]:
+    buckets = _generate_time_buckets(date_from, date_to, granularity)
+    bucket_map = {b.bucket_label: b for b in buckets}
+
+    exp_query = (
+        select(
+            models.Expense.date,
+            func.coalesce(func.sum(models.Expense.amount_bs), 0),
+            func.coalesce(func.sum(models.Expense.amount_usd), 0),
+            func.coalesce(func.sum(func.coalesce(models.Expense.amount_eur, models.Expense.amount_usd)), 0),
+            func.coalesce(func.sum(func.coalesce(models.Expense.amount_usdt, models.Expense.amount_usd)), 0),
+        )
+        .filter(models.Expense.user_id == user_id)
+        .filter(models.Expense.date >= date_from)
+        .filter(models.Expense.date <= date_to)
+        .group_by(models.Expense.date)
+    )
+    exp_res = await db.execute(exp_query)
+    for row in exp_res.all():
+        exp_date = row[0]
+        if isinstance(exp_date, datetime.datetime):
+            exp_date = exp_date.date()
+        label = _get_bucket_key(exp_date, granularity)
+        if label in bucket_map:
+            b = bucket_map[label]
+            b.expense_bs += Decimal(str(row[1]))
+            b.expense_usd += Decimal(str(row[2]))
+            b.expense_eur += Decimal(str(row[3]))
+            b.expense_usdt += Decimal(str(row[4]))
+
+    inc_query = (
+        select(
+            models.Income.date,
+            func.coalesce(func.sum(models.Income.amount_bs), 0),
+            func.coalesce(func.sum(models.Income.amount_usd), 0),
+            func.coalesce(func.sum(func.coalesce(models.Income.amount_eur, models.Income.amount_usd)), 0),
+            func.coalesce(func.sum(func.coalesce(models.Income.amount_usdt, models.Income.amount_usd)), 0),
+        )
+        .filter(models.Income.user_id == user_id)
+        .filter(models.Income.date >= date_from)
+        .filter(models.Income.date <= date_to)
+        .group_by(models.Income.date)
+    )
+    inc_res = await db.execute(inc_query)
+    for row in inc_res.all():
+        inc_date = row[0]
+        if isinstance(inc_date, datetime.datetime):
+            inc_date = inc_date.date()
+        label = _get_bucket_key(inc_date, granularity)
+        if label in bucket_map:
+            b = bucket_map[label]
+            b.income_bs += Decimal(str(row[1]))
+            b.income_usd += Decimal(str(row[2]))
+            b.income_eur += Decimal(str(row[3]))
+            b.income_usdt += Decimal(str(row[4]))
+
+    return buckets
+
+async def get_report_comparison(
+    db: AsyncSession,
+    user_id: UUID,
+    date_from_a: date,
+    date_to_a: date,
+    date_from_b: Optional[date] = None,
+    date_to_b: Optional[date] = None,
+) -> schemas.PeriodComparisonResponse:
+    if date_from_a > date_to_a or (date_to_a - date_from_a).days + 1 > 366:
+        raise ValueError("El rango del Periodo A debe ser válido y no superar 366 días.")
+
+    has_period_b = date_from_b is not None and date_to_b is not None
+    if has_period_b:
+        if date_from_b > date_to_b or (date_to_b - date_from_b).days + 1 > 366:
+            raise ValueError("El rango del Periodo B debe ser válido y no superar 366 días.")
+
+    period_a = await get_summary_range(db, user_id, date_from_a, date_to_a)
+    granularity_a = _determine_granularity(period_a.days_in_range)
+    series_a = await _build_period_series(db, user_id, date_from_a, date_to_a, granularity_a)
+
+    period_b = None
+    series_b = None
+    granularity_b = None
+    is_asymmetric = False
+    category_comparison: List[schemas.CategoryComparisonItem] = []
+
+    if has_period_b:
+        period_b = await get_summary_range(db, user_id, date_from_b, date_to_b)
+        granularity_b = _determine_granularity(period_b.days_in_range)
+        series_b = await _build_period_series(db, user_id, date_from_b, date_to_b, granularity_b)
+        is_asymmetric = (period_a.days_in_range != period_b.days_in_range)
+
+        cat_map = {}
+        for cat in period_a.by_category:
+            cat_map[cat.category] = {
+                "period_a_bs": cat.total_bs,
+                "period_a_usd": cat.total_usd,
+                "period_a_eur": cat.total_eur,
+                "period_a_usdt": cat.total_usdt,
+                "period_b_bs": Decimal("0"),
+                "period_b_usd": Decimal("0"),
+                "period_b_eur": Decimal("0"),
+                "period_b_usdt": Decimal("0"),
+            }
+        for cat in period_b.by_category:
+            if cat.category not in cat_map:
+                cat_map[cat.category] = {
+                    "period_a_bs": Decimal("0"),
+                    "period_a_usd": Decimal("0"),
+                    "period_a_eur": Decimal("0"),
+                    "period_a_usdt": Decimal("0"),
+                    "period_b_bs": cat.total_bs,
+                    "period_b_usd": cat.total_usd,
+                    "period_b_eur": cat.total_eur,
+                    "period_b_usdt": cat.total_usdt,
+                }
+            else:
+                cat_map[cat.category]["period_b_bs"] = cat.total_bs
+                cat_map[cat.category]["period_b_usd"] = cat.total_usd
+                cat_map[cat.category]["period_b_eur"] = cat.total_eur
+                cat_map[cat.category]["period_b_usdt"] = cat.total_usdt
+
+        for cat_name, data in cat_map.items():
+            a_usd = data["period_a_usd"]
+            b_usd = data["period_b_usd"]
+            delta_pct = None
+            if a_usd > Decimal("0"):
+                delta_pct = round(float(((b_usd - a_usd) / a_usd) * Decimal("100")), 2)
+            category_comparison.append(
+                schemas.CategoryComparisonItem(
+                    category=cat_name,
+                    period_a_bs=data["period_a_bs"],
+                    period_a_usd=data["period_a_usd"],
+                    period_a_eur=data["period_a_eur"],
+                    period_a_usdt=data["period_a_usdt"],
+                    period_b_bs=data["period_b_bs"],
+                    period_b_usd=data["period_b_usd"],
+                    period_b_eur=data["period_b_eur"],
+                    period_b_usdt=data["period_b_usdt"],
+                    delta_pct_usd=delta_pct,
+                )
+            )
+        category_comparison.sort(key=lambda x: (x.period_b_usd + x.period_a_usd), reverse=True)
+
+    return schemas.PeriodComparisonResponse(
+        granularity_a=granularity_a,
+        granularity_b=granularity_b,
+        is_asymmetric=is_asymmetric,
+        period_a=period_a,
+        series_a=series_a,
+        period_b=period_b,
+        series_b=series_b,
+        category_comparison=category_comparison,
     )
 
 # Category CRUD, Defaults & Migrations

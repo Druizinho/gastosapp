@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Expense, ExpenseCreate, ExpenseUpdate, SummaryResponse, ExchangeRates, RangeSummaryResponse, FixedExpense, FixedExpenseCreate, FixedExpenseUpdate, FixedExpenseSummary, FixedExpenseCheck, FixedExpenseCheckCreate, FixedExpenseCheckUpdate, Debt, DebtCreate, DebtUpdate, DebtPaymentCreate, DebtPaymentUpdate, EstimatedIncome, EstimatedIncomeCreate, EstimatedIncomeUpdate, IncomeCheckCreate, IncomeCheck, Connection, SavingGoal, SavingGoalCreate, SavingGoalUpdate, SavingDepositCreate, SavingDepositUpdate, SavingSummaryResponse, PanasGlobalOverview, PanaDetail, ShareRole, ShareInfoOut, UpdateLocalCategoryResponse, MonthlyBudgetResponse, MonthlyBudgetUpsert, BudgetCategoryLimitInput, MonthlyBudgetCreate, MonthlyBudgetUpdate, Category, CategoryCreate, CategoryKind, Income, IncomeCreate, IncomeUpdate } from './types';
+import type { Expense, ExpenseCreate, ExpenseUpdate, SummaryResponse, ExchangeRates, RangeSummaryResponse, PeriodComparisonResponse, FixedExpense, FixedExpenseCreate, FixedExpenseUpdate, FixedExpenseSummary, FixedExpenseCheck, FixedExpenseCheckCreate, FixedExpenseCheckUpdate, Debt, DebtCreate, DebtUpdate, DebtPaymentCreate, DebtPaymentUpdate, EstimatedIncome, EstimatedIncomeCreate, EstimatedIncomeUpdate, IncomeCheckCreate, IncomeCheck, Connection, SavingGoal, SavingGoalCreate, SavingGoalUpdate, SavingDepositCreate, SavingDepositUpdate, SavingSummaryResponse, PanasGlobalOverview, PanaDetail, ShareRole, ShareInfoOut, UpdateLocalCategoryResponse, MonthlyBudgetResponse, MonthlyBudgetUpsert, BudgetCategoryLimitInput, MonthlyBudgetCreate, MonthlyBudgetUpdate, Category, CategoryCreate, CategoryKind, Income, IncomeCreate, IncomeUpdate } from './types';
 import { supabase } from './supabaseClient';
 
 const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
@@ -90,6 +90,30 @@ export const getSummaryRange = async (from: string, to: string): Promise<RangeSu
   const response = await api.get('/expenses/summary-range', { 
     params: { date_from: from, date_to: to }
   });
+  return response.data;
+};
+
+export const getReportAnalysis = async (params: {
+  date_from_a: string;
+  date_to_a: string;
+  date_from_b?: string;
+  date_to_b?: string;
+}): Promise<PeriodComparisonResponse> => {
+  const response = await api.get<PeriodComparisonResponse>('/reports/analysis', { params });
+  return response.data;
+};
+
+export const sendReportEmail = async (payload: {
+  recipient_email: string;
+  subject: string;
+  report_title: string;
+  report_subtitle?: string;
+  summary_highlights: string[];
+  filename: string;
+  mime_type: string;
+  file_base64: string;
+}): Promise<{ status: string; message: string }> => {
+  const response = await api.post<{ status: string; message: string }>('/reports/send-email', payload);
   return response.data;
 };
 

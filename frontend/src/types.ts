@@ -194,6 +194,78 @@ export interface RangeSummaryResponse {
   balance_usdt?: number;
 }
 
+export interface TimeSeriesBucket {
+  bucket_label: string;
+  start_date: string;
+  end_date: string;
+  expense_bs: number | string;
+  expense_usd: number | string;
+  expense_eur: number | string;
+  expense_usdt: number | string;
+  income_bs: number | string;
+  income_usd: number | string;
+  income_eur: number | string;
+  income_usdt: number | string;
+}
+
+export interface CategoryComparisonItem {
+  category: string;
+  period_a_bs: number | string;
+  period_a_usd: number | string;
+  period_a_eur: number | string;
+  period_a_usdt: number | string;
+  period_b_bs: number | string;
+  period_b_usd: number | string;
+  period_b_eur: number | string;
+  period_b_usdt: number | string;
+  delta_pct_usd?: number | null;
+}
+
+export interface PeriodComparisonResponse {
+  granularity_a: 'day' | 'week' | 'month';
+  granularity_b?: 'day' | 'week' | 'month' | null;
+  is_asymmetric: boolean;
+  period_a: RangeSummaryResponse;
+  series_a: TimeSeriesBucket[];
+  period_b?: RangeSummaryResponse | null;
+  series_b?: TimeSeriesBucket[] | null;
+  category_comparison: CategoryComparisonItem[];
+}
+
+export type ExportSourceType =
+  | 'summary'
+  | 'comparison'
+  | 'debts'
+  | 'savings'
+  | 'projects'
+  | 'budgets'
+  | 'fixed_expenses'
+  | 'estimated_incomes'
+  | 'fixed_and_income';
+
+export type ExportFormatType = 'pdf' | 'xlsx' | 'csv';
+
+export interface ExportConfig {
+  source: ExportSourceType;
+  format: ExportFormatType;
+  currency: MainCurrencyPreference;
+  dateFromA: string;
+  dateToA: string;
+  dateFromB?: string;
+  dateToB?: string;
+  monthYear: string;
+  selectedDebtId: string;
+  debtFilterType?: 'all' | 'owed' | 'receivable';
+  selectedSavingId: string;
+  selectedProjectId?: string;
+  selectedBudgetId: string;
+  includeHeaderCard: boolean;
+  includeCharts: boolean;
+  includeCategories: boolean;
+  includeTransactions: boolean;
+  includeOriginalCurrency: boolean;
+}
+
 // Fixed Expenses
 
 export interface FixedExpenseCheck {
@@ -735,6 +807,7 @@ export interface SavingGoal {
   name: string;
   type?: 'saving' | 'project';
   target_amount: number | null;
+  current_amount?: number | null;
   currency: CurrencyType;
   target_date: string | null;
   category: string | null;

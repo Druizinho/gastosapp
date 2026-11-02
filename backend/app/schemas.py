@@ -203,6 +203,53 @@ class RangeSummaryResponse(BaseModel):
     balance_usdt: Decimal = Decimal("0")
     by_category: List[CategorySummary]
 
+# Report & Analysis Schemas
+
+class TimeSeriesBucket(BaseModel):
+    bucket_label: str  # 'YYYY-MM-DD' (day/week) o 'YYYY-MM' (month)
+    start_date: datetime.date
+    end_date: datetime.date
+    expense_bs: Decimal = Decimal("0")
+    expense_usd: Decimal = Decimal("0")
+    expense_eur: Decimal = Decimal("0")
+    expense_usdt: Decimal = Decimal("0")
+    income_bs: Decimal = Decimal("0")
+    income_usd: Decimal = Decimal("0")
+    income_eur: Decimal = Decimal("0")
+    income_usdt: Decimal = Decimal("0")
+
+class CategoryComparisonItem(BaseModel):
+    category: str
+    period_a_bs: Decimal = Decimal("0")
+    period_a_usd: Decimal = Decimal("0")
+    period_a_eur: Decimal = Decimal("0")
+    period_a_usdt: Decimal = Decimal("0")
+    period_b_bs: Decimal = Decimal("0")
+    period_b_usd: Decimal = Decimal("0")
+    period_b_eur: Decimal = Decimal("0")
+    period_b_usdt: Decimal = Decimal("0")
+    delta_pct_usd: Optional[float] = None  # ((B - A) / A) * 100 si A > 0 else None
+
+class PeriodComparisonResponse(BaseModel):
+    granularity_a: str  # 'day' | 'week' | 'month'
+    granularity_b: Optional[str] = None
+    is_asymmetric: bool = False
+    period_a: RangeSummaryResponse
+    series_a: List[TimeSeriesBucket]
+    period_b: Optional[RangeSummaryResponse] = None
+    series_b: Optional[List[TimeSeriesBucket]] = None
+    category_comparison: List[CategoryComparisonItem] = []
+
+class SendReportEmailRequest(BaseModel):
+    recipient_email: str
+    subject: str
+    report_title: str
+    report_subtitle: Optional[str] = None
+    summary_highlights: List[str] = []
+    filename: str
+    mime_type: str
+    file_base64: str
+
 # Fixed Expenses Schemas
 
 class FixedExpenseBase(BaseModel):
