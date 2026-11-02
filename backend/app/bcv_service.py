@@ -256,6 +256,7 @@ def convert_amount(amount: Decimal, currency: str, rates: dict, manual_rate: Dec
             amount_usd = (amount_bs / d_usd) if d_usd > 0 else d_amount
             amount_eur = (amount_bs / d_eur) if d_eur > 0 else None
             amount_usdt = (amount_bs / d_usdt) if d_usdt > 0 else None
+            usd_bs = cash_rate
         else:
             amount_bs = Decimal("0")
             amount_usd = d_amount

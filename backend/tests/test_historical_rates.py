@@ -31,6 +31,7 @@ if str(backend_dir) not in sys.path:
 
 from fastapi import HTTPException
 from app import bcv_service, models
+from app.bcv_service import convert_amount
 from app.time_utils import vet_today
 from app.schemas import ExpenseCreate, ExpenseUpdate, IncomeCreate, IncomeUpdate, IncomeCheckCreate, CurrencyType
 
@@ -724,6 +725,30 @@ class TestHistoricalRates(unittest.IsolatedAsyncioTestCase):
 
         res_cash = _expense_amount_in_currency(exp_cash, "USD_CASH", live_rates)
         self.assertEqual(res_cash, Decimal("20"))
+
+    def test_convert_amount_usd_cash_with_manual_rate(self):
+        rates = {
+            "usd_bs": Decimal("40.0"),
+            "eur_bs": Decimal("43.0"),
+            "usdt_bs": Decimal("45.0"),
+        }
+        res = convert_amount(
+            amount=Decimal("10.0"),
+            currency="USD_CASH",
+            rates=rates,
+            manual_rate=Decimal("50.0")
+        )
+        self.assertEqual(res["amount_bs"], Decimal("500.0000"))
+        self.assertEqual(res["rate_usd_bs"], Decimal("50.0"))
+
+        res_default = convert_amount(
+            amount=Decimal("10.0"),
+            currency="USD_CASH",
+            rates=rates,
+            manual_rate=None
+        )
+        self.assertEqual(res_default["amount_bs"], Decimal("450.0000"))
+        self.assertEqual(res_default["rate_usd_bs"], Decimal("45.0"))
 
 
 if __name__ == "__main__":

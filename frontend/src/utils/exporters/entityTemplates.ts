@@ -74,6 +74,31 @@ function formatDeltaPct(pct: number | null | undefined): string {
   return pct > 0 ? `+${pct.toFixed(1)}%` : `${pct.toFixed(1)}%`;
 }
 
+export function resolveItemRate(
+  item: {
+    currency?: string | CurrencyType | null;
+    rate_usd_bs?: number | null;
+    rate_eur_bs?: number | null;
+    rate_usdt_bs?: number | null;
+  },
+  fallbackRates?: ExchangeRates | null
+): number | null {
+  const currency = item.currency;
+  if (currency === 'USDT') {
+    return item.rate_usdt_bs || fallbackRates?.usdt_bs || null;
+  }
+  if (currency === 'EUR_BCV') {
+    return item.rate_eur_bs || fallbackRates?.eur_bs || null;
+  }
+  if (currency === 'USD_BCV' || currency === 'USD_CASH') {
+    return item.rate_usd_bs || fallbackRates?.usd_bs || null;
+  }
+  if (currency === 'BS') {
+    return null;
+  }
+  return item.rate_usdt_bs || item.rate_eur_bs || item.rate_usd_bs || null;
+}
+
 // -------------------------------------------------------------
 // 1. SUMMARY DOCUMENT
 // -------------------------------------------------------------
@@ -160,7 +185,7 @@ export function buildSummaryDocument(
 
     (expenses || []).forEach((exp) => {
       const converted = convertItemAmountToMainCurrency(exp, cur, rates);
-      const rateVal = exp.rate_usd_bs || exp.rate_eur_bs || exp.rate_usdt_bs || null;
+      const rateVal = resolveItemRate(exp, rates);
       txs.push({
         date: exp.date || exp.created_at?.slice(0, 10) || '',
         type: 'Gasto',
@@ -176,7 +201,7 @@ export function buildSummaryDocument(
 
     (incomes || []).forEach((inc) => {
       const converted = convertItemAmountToMainCurrency(inc, cur, rates);
-      const rateVal = inc.rate_usd_bs || inc.rate_eur_bs || inc.rate_usdt_bs || null;
+      const rateVal = resolveItemRate(inc, rates);
       txs.push({
         date: inc.date || inc.created_at?.slice(0, 10) || '',
         type: 'Ingreso',
@@ -367,7 +392,7 @@ export function buildComparisonDocument(
       }
       const formattedOrig = formatCurrencyAmount(exp.amount, exp.currency);
       const origCurLabel = getCurrencyLabel(exp.currency) || exp.currency;
-      const rateVal = exp.rate_usd_bs || exp.rate_eur_bs || exp.rate_usdt_bs;
+      const rateVal = resolveItemRate(exp, rates);
       const rateStr = rateVal ? Number(rateVal).toFixed(2) : '-';
       return [exp.date || '', exp.description || '-', exp.category || '-', formattedConverted, formattedOrig, origCurLabel, rateStr];
     });
@@ -395,7 +420,7 @@ export function buildComparisonDocument(
       }
       const formattedOrig = formatCurrencyAmount(exp.amount, exp.currency);
       const origCurLabel = getCurrencyLabel(exp.currency) || exp.currency;
-      const rateVal = exp.rate_usd_bs || exp.rate_eur_bs || exp.rate_usdt_bs;
+      const rateVal = resolveItemRate(exp, rates);
       const rateStr = rateVal ? Number(rateVal).toFixed(2) : '-';
       return [exp.date || '', exp.description || '-', exp.category || '-', formattedConverted, formattedOrig, origCurLabel, rateStr];
     });
@@ -523,7 +548,7 @@ export function buildDebtsDocument(
 
         const formattedOrig = formatCurrencyAmount(p.amount, p.currency);
         const origCur = getCurrencyLabel(p.currency) || p.currency;
-        const rateVal = p.rate_usd_bs || p.rate_eur_bs || p.rate_usdt_bs;
+        const rateVal = resolveItemRate(p, rates);
         const rateStr = rateVal ? Number(rateVal).toFixed(2) : '-';
 
         return [p.payment_date || '', typeStr, p.note || '-', formattedAmt, formattedOrig, origCur, rateStr];
@@ -842,7 +867,7 @@ export function buildSavingsDocument(
 
         const formattedOrig = formatCurrencyAmount(d.amount, d.currency);
         const origCur = getCurrencyLabel(d.currency) || d.currency;
-        const rateVal = d.rate_usd_bs || d.rate_eur_bs || d.rate_usdt_bs;
+        const rateVal = resolveItemRate(d, rates);
         const rateStr = rateVal ? Number(rateVal).toFixed(2) : '-';
 
         return [d.deposit_date || '', typeStr, d.note || '-', d.category || '-', formattedAmt, formattedOrig, origCur, rateStr];
@@ -1074,7 +1099,7 @@ export function buildProjectsDocument(
 
         const formattedOrig = formatCurrencyAmount(d.amount, d.currency);
         const origCur = getCurrencyLabel(d.currency) || d.currency;
-        const rateVal = d.rate_usd_bs || d.rate_eur_bs || d.rate_usdt_bs;
+        const rateVal = resolveItemRate(d, rates);
         const rateStr = rateVal ? Number(rateVal).toFixed(2) : '-';
 
         return [d.deposit_date || '', d.category || '-', d.note || '-', formattedAmt, formattedOrig, origCur, rateStr];
@@ -1358,7 +1383,7 @@ export function buildBudgetDocument(
         }
         const formattedOrig = formatCurrencyAmount(exp.amount, exp.currency);
         const origCur = getCurrencyLabel(exp.currency) || exp.currency;
-        const rateVal = exp.rate_usd_bs || exp.rate_eur_bs || exp.rate_usdt_bs;
+        const rateVal = resolveItemRate(exp, rates);
         const rateStr = rateVal ? Number(rateVal).toFixed(2) : '-';
         return [exp.date || '', exp.description || '-', exp.category || '-', formattedConverted, formattedOrig, origCur, rateStr];
       });
@@ -1549,7 +1574,7 @@ export function buildBudgetDocument(
         }
         const formattedOrig = formatCurrencyAmount(exp.amount, exp.currency);
         const origCur = getCurrencyLabel(exp.currency) || exp.currency;
-        const rateVal = exp.rate_usd_bs || exp.rate_eur_bs || exp.rate_usdt_bs;
+        const rateVal = resolveItemRate(exp, rates);
         const rateStr = rateVal ? Number(rateVal).toFixed(2) : '-';
         return [exp.date || '', exp.description || '-', exp.category || '-', formattedConverted, formattedOrig, origCur, rateStr];
       });
@@ -1676,7 +1701,7 @@ export function buildBudgetDocument(
         }
         const formattedOrig = formatCurrencyAmount(exp.amount, exp.currency);
         const origCur = getCurrencyLabel(exp.currency) || exp.currency;
-        const rateVal = exp.rate_usd_bs || exp.rate_eur_bs || exp.rate_usdt_bs;
+        const rateVal = resolveItemRate(exp, rates);
         const rateStr = rateVal ? Number(rateVal).toFixed(2) : '-';
         return [exp.date || '', exp.description || '-', exp.category || '-', formattedConverted, formattedOrig, origCur, rateStr];
       });
