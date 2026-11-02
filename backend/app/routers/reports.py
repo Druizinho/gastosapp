@@ -77,11 +77,13 @@ def _send_via_smtp(
     mime_type: str,
     file_base64: str,
 ):
+    cleaned_user = user.strip()
+    cleaned_password = password.strip().replace(" ", "") if "gmail" in host.lower() else password.strip()
     file_bytes = base64.b64decode(file_base64)
     msg = EmailMessage()
     msg["Subject"] = subject
-    msg["From"] = user
-    msg["To"] = recipient
+    msg["From"] = f"GastosApp <{cleaned_user}>"
+    msg["To"] = recipient.strip()
     msg.set_content("Por favor revisa el archivo adjunto para ver tu reporte de GastosApp.")
     msg.add_alternative(html_body, subtype="html")
 
@@ -96,11 +98,11 @@ def _send_via_smtp(
     if port == 587:
         with smtplib.SMTP(host, port) as server:
             server.starttls()
-            server.login(user, password)
+            server.login(cleaned_user, cleaned_password)
             server.send_message(msg)
     else:
         with smtplib.SMTP_SSL(host, port) as server:
-            server.login(user, password)
+            server.login(cleaned_user, cleaned_password)
             server.send_message(msg)
 
 
@@ -213,13 +215,13 @@ async def send_report_email(
 
     html_body = _build_html_email(req)
 
-    smtp_user = os.environ.get("SMTP_USER")
-    smtp_password = os.environ.get("SMTP_PASSWORD")
-    resend_api_key = os.environ.get("RESEND_API_KEY")
+    smtp_user = os.getenv("SMTP_USER")
+    smtp_password = os.getenv("SMTP_PASSWORD")
+    resend_api_key = os.getenv("RESEND_API_KEY")
 
     if smtp_user and smtp_password:
-        smtp_host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
-        smtp_port = int(os.environ.get("SMTP_PORT", 465))
+        smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+        smtp_port = int(os.getenv("SMTP_PORT", "465"))
         try:
             await _run_in_thread(
                 _send_via_smtp,

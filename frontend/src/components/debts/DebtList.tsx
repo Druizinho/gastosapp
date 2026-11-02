@@ -1227,7 +1227,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
   return (
     <div style={{ padding: '1rem', paddingBottom: '6rem', maxWidth: '600px', margin: '0 auto' }}>
       <PageHeader
-        title="Deudas y Préstamos"
+        title="Deudas"
         onBack={onBack}
         actionLabel="Nueva Deuda"
         actionIcon={<Plus size={18} />}
@@ -1274,6 +1274,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
         ]}
         activeTab={activeTab}
         onChange={(tab) => handleTabChange(tab as 'all' | 'owed' | 'receivable')}
+        activeColor="var(--tool-debts, #8B5CF6)"
         style={{ marginBottom: '0.75rem' }}
       />
 
@@ -1286,6 +1287,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
           ]}
           activeTab={filterSettled ? 'settled' : 'active'}
           onChange={(tab) => setFilterSettled(tab === 'settled')}
+          activeColor="var(--tool-debts, #8B5CF6)"
           style={{ width: 'auto', minWidth: '220px' }}
         />
       </div>

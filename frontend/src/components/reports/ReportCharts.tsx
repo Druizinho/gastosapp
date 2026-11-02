@@ -1,4 +1,4 @@
-import React, { forwardRef, useState, useMemo } from 'react';
+import React, { forwardRef, useState, useMemo, useEffect } from 'react';
 import type { MainCurrencyPreference, TimeSeriesBucket, CategoryComparisonItem } from '../../types';
 import { formatCurrencyAmount, toNumeric } from '../../utils/currencyFormat';
 
@@ -21,10 +21,125 @@ export const CHART_PALETTE = [
   '#64748B', // Slate
 ];
 
-const COLOR_INCOME = '#10B981';
-const COLOR_EXPENSE = '#F43F5E';
-const COLOR_PERIOD_A = '#64748B';
-const COLOR_PERIOD_B = '#6366F1';
+const COLOR_INCOME = 'var(--income-color, #10B981)';
+const COLOR_EXPENSE = 'var(--expense-color, #EF4444)';
+const COLOR_PERIOD_A = 'var(--text-secondary, #64748B)';
+const COLOR_PERIOD_B = 'var(--tool-budgets, #6366F1)';
+
+const SVG_FONT_FAMILY = "system-ui, -apple-system, 'Inter', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
+
+const CARD_CONTAINER_STYLE: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '1.25rem',
+  background: 'var(--surface-color, #FFFFFF)',
+  borderRadius: '16px',
+  border: '1px solid var(--border-color, #E5E7EB)',
+  boxShadow: 'var(--shadow-xs, 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05))',
+  padding: '1.25rem',
+};
+
+const REPORT_CHARTS_INLINE_STYLE = `
+.report-chart-interactive {
+  transition: transform 150ms ease-out, background-color 150ms ease-out, border-color 150ms ease-out, color 150ms ease-out;
+}
+.report-chart-interactive:active {
+  transform: scale(0.96) !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .report-chart-interactive {
+    transition: none !important;
+    transform: none !important;
+  }
+}
+`;
+
+// ============================================================================
+// HOOKS: MOTION PREFERENCE & MOUNTED STATE
+// ============================================================================
+
+/**
+ * Detects user preference for reduced motion via media query.
+ */
+function usePrefersReducedMotion(): boolean {
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return false;
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const handler = (event: MediaQueryListEvent) => {
+      setPrefersReducedMotion(event.matches);
+    };
+
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener('change', handler);
+      return () => mediaQuery.removeEventListener('change', handler);
+    } else if ('addListener' in mediaQuery) {
+      (mediaQuery as unknown as { addListener: (cb: typeof handler) => void }).addListener(handler);
+      return () => {
+        (mediaQuery as unknown as { removeListener: (cb: typeof handler) => void }).removeListener(handler);
+      };
+    }
+  }, []);
+
+  return prefersReducedMotion;
+}
+
+/**
+ * Handles chart mount animation triggering via requestAnimationFrame after first paint.
+ * If user prefers reduced motion, mounted is true immediately and transitions are disabled.
+ */
+function useChartMountAnimation(): { mounted: boolean; prefersReducedMotion: boolean } {
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const [mounted, setMounted] = useState(() => prefersReducedMotion);
+
+  useEffect(() => {
+    if (prefersReducedMotion) return;
+    const rafId = requestAnimationFrame(() => {
+      setMounted(true);
+    });
+    return () => cancelAnimationFrame(rafId);
+  }, [prefersReducedMotion]);
+
+  return { mounted: prefersReducedMotion ? true : mounted, prefersReducedMotion };
+}
+
+/**
+ * Utility for drawing animated SVG trend lines and areas.
+ * Uses pathLength="1" stroke-dashoffset transition trick for path elements.
+ */
+export const getTrendLineAnimationProps = (
+  mounted: boolean,
+  prefersReducedMotion: boolean,
+  durationMs = 800,
+  delayMs = 0
+) => ({
+  pathLength: 1,
+  strokeDasharray: 1,
+  strokeDashoffset: mounted || prefersReducedMotion ? 0 : 1,
+  style: {
+    transition: prefersReducedMotion
+      ? 'none'
+      : `stroke-dashoffset ${durationMs}ms ease-out ${delayMs}ms`,
+  },
+});
+
+export const getTrendAreaAnimationProps = (
+  mounted: boolean,
+  prefersReducedMotion: boolean,
+  durationMs = 600,
+  delayMs = 200
+) => ({
+  opacity: mounted || prefersReducedMotion ? 1 : 0,
+  style: {
+    transition: prefersReducedMotion
+      ? 'none'
+      : `opacity ${durationMs}ms ease-out ${delayMs}ms`,
+  },
+});
 
 function formatCompactNumber(val: number): string {
   if (Math.abs(val) >= 1_000_000) {
@@ -177,6 +292,7 @@ export const CategoryDonutChart = forwardRef<SVGSVGElement, CategoryDonutChartPr
     },
     ref
   ) => {
+    const { mounted, prefersReducedMotion } = useChartMountAnimation();
     const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
     const [internalSelectedCategory, setInternalSelectedCategory] = useState<string | null>(null);
 
@@ -245,22 +361,28 @@ export const CategoryDonutChart = forwardRef<SVGSVGElement, CategoryDonutChartPr
     const strokeWidth = 26;
     const circumference = 2 * Math.PI * radius;
 
-    // Build segments
-    let cumulativePercent = 0;
-    const segments = enrichedCategories.map((item, idx) => {
-      const pct = Math.max(0, item.percentage) / 100;
-      const strokeLength = pct * circumference;
-      const gap = enrichedCategories.length > 1 ? Math.min(2.5, strokeLength * 0.15) : 0;
-      const dashArray = `${Math.max(0, strokeLength - gap)} ${circumference}`;
-      const strokeDashoffset = -(cumulativePercent * circumference);
-      cumulativePercent += pct;
-      return {
-        ...item,
-        idx,
-        dashArray,
-        strokeDashoffset,
-      };
-    });
+    // Purely compute segments
+    const segments = useMemo(() => {
+      let accum = 0;
+      const count = enrichedCategories.length;
+      const result = [];
+      for (let idx = 0; idx < count; idx++) {
+        const item = enrichedCategories[idx];
+        const pct = Math.max(0, item.percentage) / 100;
+        const strokeLength = pct * circumference;
+        const gap = count > 1 ? Math.min(2.5, strokeLength * 0.15) : 0;
+        const dashArray = `${Math.max(0, strokeLength - gap)} ${circumference}`;
+        const strokeDashoffset = -(accum * circumference);
+        accum += pct;
+        result.push({
+          ...item,
+          idx,
+          dashArray,
+          strokeDashoffset,
+        });
+      }
+      return result;
+    }, [enrichedCategories, circumference]);
 
     const isTotalZero = total <= 0 || enrichedCategories.length === 0;
 
@@ -273,17 +395,12 @@ export const CategoryDonutChart = forwardRef<SVGSVGElement, CategoryDonutChartPr
       <div
         className={className}
         style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '1.25rem',
-          background: 'var(--surface-color, #FFFFFF)',
-          borderRadius: '16px',
-          border: '1px solid var(--border-color, #E5E7EB)',
-          boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05)',
-          padding: '1.25rem',
+          ...CARD_CONTAINER_STYLE,
           ...style,
         }}
       >
+        <style>{REPORT_CHARTS_INLINE_STYLE}</style>
+
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
           <div>
@@ -336,7 +453,7 @@ export const CategoryDonutChart = forwardRef<SVGSVGElement, CategoryDonutChartPr
                   cy={center}
                   r={radius}
                   fill="none"
-                  stroke="#E2E8F0"
+                  stroke="var(--surface-muted, #E2E8F0)"
                   strokeWidth={strokeWidth}
                 />
 
@@ -349,6 +466,9 @@ export const CategoryDonutChart = forwardRef<SVGSVGElement, CategoryDonutChartPr
                       const isOtherSelected = activeCategory !== null && !isSelected;
                       const isOtherHovered = hoveredIdx !== null && !isHovered && activeCategory === null;
 
+                      // Staggered draw-in transition on mount (~600ms ease-out)
+                      const effectiveDashArray = mounted || prefersReducedMotion ? seg.dashArray : `0 ${circumference}`;
+
                       return (
                         <circle
                           key={seg.idx}
@@ -358,12 +478,14 @@ export const CategoryDonutChart = forwardRef<SVGSVGElement, CategoryDonutChartPr
                           fill="none"
                           stroke={seg.color}
                           strokeWidth={isSelected ? strokeWidth + 6 : isHovered ? strokeWidth + 3 : strokeWidth}
-                          strokeDasharray={seg.dashArray}
+                          strokeDasharray={effectiveDashArray}
                           strokeDashoffset={seg.strokeDashoffset}
                           strokeLinecap="round"
                           opacity={isOtherSelected ? 0.35 : isOtherHovered ? 0.45 : 1}
                           style={{
-                            transition: 'stroke-width 150ms ease-out, opacity 150ms ease-out',
+                            transition: prefersReducedMotion
+                              ? 'none'
+                              : `stroke-dasharray 600ms ease-out ${seg.idx * 45}ms, stroke-width 150ms ease-out, opacity 150ms ease-out`,
                             cursor: 'pointer',
                           }}
                           onMouseEnter={() => setHoveredIdx(seg.idx)}
@@ -375,8 +497,16 @@ export const CategoryDonutChart = forwardRef<SVGSVGElement, CategoryDonutChartPr
                   </g>
                 )}
 
-                {/* Center KPI Text */}
-                <g style={{ pointerEvents: 'none' }}>
+                {/* Center KPI Text with smooth mount animation */}
+                <g
+                  style={{
+                    pointerEvents: 'none',
+                    opacity: mounted || prefersReducedMotion ? 1 : 0,
+                    transform: mounted || prefersReducedMotion ? 'scale(1)' : 'scale(0.92)',
+                    transformOrigin: `${center}px ${center}px`,
+                    transition: prefersReducedMotion ? 'none' : 'opacity 350ms ease-out 150ms, transform 350ms ease-out 150ms',
+                  }}
+                >
                   <text
                     x={center}
                     y={center - 8}
@@ -384,7 +514,7 @@ export const CategoryDonutChart = forwardRef<SVGSVGElement, CategoryDonutChartPr
                     dominantBaseline="middle"
                     fill="var(--text-primary, #111827)"
                     style={{
-                      fontFamily: "system-ui, -apple-system, 'Inter', sans-serif",
+                      fontFamily: SVG_FONT_FAMILY,
                       fontSize: '17px',
                       fontWeight: 700,
                       fontVariantNumeric: 'tabular-nums',
@@ -401,7 +531,7 @@ export const CategoryDonutChart = forwardRef<SVGSVGElement, CategoryDonutChartPr
                     dominantBaseline="middle"
                     fill="var(--text-secondary, #6B7280)"
                     style={{
-                      fontFamily: "system-ui, -apple-system, 'Inter', sans-serif",
+                      fontFamily: SVG_FONT_FAMILY,
                       fontSize: '10px',
                       fontWeight: 600,
                       letterSpacing: '0.04em',
@@ -418,7 +548,7 @@ export const CategoryDonutChart = forwardRef<SVGSVGElement, CategoryDonutChartPr
                       dominantBaseline="middle"
                       fill={centerDisplayItem.color}
                       style={{
-                        fontFamily: "system-ui, -apple-system, 'Inter', sans-serif",
+                        fontFamily: SVG_FONT_FAMILY,
                         fontSize: '11px',
                         fontWeight: 700,
                         fontVariantNumeric: 'tabular-nums',
@@ -463,7 +593,9 @@ export const CategoryDonutChart = forwardRef<SVGSVGElement, CategoryDonutChartPr
                 return (
                   <div
                     key={item.category + idx}
+                    className="report-chart-interactive"
                     onMouseEnter={() => setHoveredIdx(idx)}
+                    onMouseLeave={() => setHoveredIdx(null)}
                     onClick={() => handleToggleCategory(item.category)}
                     style={{
                       display: 'flex',
@@ -472,23 +604,16 @@ export const CategoryDonutChart = forwardRef<SVGSVGElement, CategoryDonutChartPr
                       padding: '0.5rem 0.65rem',
                       borderRadius: '8px',
                       background: isSelected
-                        ? 'rgba(99, 102, 241, 0.08)'
+                        ? 'var(--tool-budgets-bg, rgba(99, 102, 241, 0.08))'
                         : isHovered
                         ? 'var(--surface-hover, #FAFAF9)'
                         : 'transparent',
                       border: isSelected
-                        ? '1px solid rgba(99, 102, 241, 0.35)'
+                        ? '1px solid var(--tool-budgets, rgba(99, 102, 241, 0.35))'
                         : isHovered
                         ? '1px solid var(--border-color, #E5E7EB)'
                         : '1px solid transparent',
-                      transition: 'transform 150ms ease-out, background-color 150ms ease-out, border-color 150ms ease-out',
                       cursor: 'pointer',
-                    }}
-                    onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
-                    onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-                    onMouseLeave={(e) => {
-                      setHoveredIdx(null);
-                      e.currentTarget.style.transform = 'scale(1)';
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
@@ -506,7 +631,7 @@ export const CategoryDonutChart = forwardRef<SVGSVGElement, CategoryDonutChartPr
                           style={{
                             fontSize: '0.85rem',
                             fontWeight: isSelected ? 700 : 600,
-                            color: isSelected ? 'var(--text-primary, #0F172A)' : 'var(--text-primary, #111827)',
+                            color: 'var(--text-primary, #111827)',
                             whiteSpace: 'nowrap',
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
@@ -524,8 +649,8 @@ export const CategoryDonutChart = forwardRef<SVGSVGElement, CategoryDonutChartPr
                             fontVariantNumeric: 'tabular-nums',
                             padding: '1px 6px',
                             borderRadius: '8px',
-                            background: isSelected ? 'rgba(99, 102, 241, 0.12)' : 'var(--surface-muted, #F3F4F6)',
-                            color: isSelected ? '#4F46E5' : 'var(--text-secondary, #6B7280)',
+                            background: isSelected ? 'var(--tool-budgets-bg, rgba(99, 102, 241, 0.12))' : 'var(--surface-muted, #F3F4F6)',
+                            color: isSelected ? 'var(--tool-budgets, #6366F1)' : 'var(--text-secondary, #6B7280)',
                           }}
                         >
                           {item.percentage}%
@@ -555,11 +680,11 @@ export const CategoryDonutChart = forwardRef<SVGSVGElement, CategoryDonutChartPr
                     >
                       <div
                         style={{
-                          width: `${Math.min(100, Math.max(0, item.percentage))}%`,
+                          width: mounted || prefersReducedMotion ? `${Math.min(100, Math.max(0, item.percentage))}%` : '0%',
                           height: '100%',
                           borderRadius: '2px',
                           backgroundColor: item.color,
-                          transition: 'width 250ms ease-out',
+                          transition: prefersReducedMotion ? 'none' : `width 450ms ease-out ${idx * 30}ms`,
                         }}
                       />
                     </div>
@@ -609,7 +734,7 @@ export const CategoryDonutChart = forwardRef<SVGSVGElement, CategoryDonutChartPr
                     margin: 0,
                     fontSize: '0.9rem',
                     fontWeight: 700,
-                    color: 'var(--text-primary, #0F172A)',
+                    color: 'var(--text-primary, #111827)',
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
@@ -627,8 +752,8 @@ export const CategoryDonutChart = forwardRef<SVGSVGElement, CategoryDonutChartPr
                     fontVariantNumeric: 'tabular-nums',
                     padding: '0.2rem 0.55rem',
                     borderRadius: '8px',
-                    background: 'rgba(99, 102, 241, 0.08)',
-                    color: '#4F46E5',
+                    background: 'var(--tool-budgets-bg, rgba(99, 102, 241, 0.08))',
+                    color: 'var(--tool-budgets, #6366F1)',
                   }}
                 >
                   {selectedItem.percentage}% del total
@@ -638,13 +763,14 @@ export const CategoryDonutChart = forwardRef<SVGSVGElement, CategoryDonutChartPr
                     fontSize: '0.85rem',
                     fontWeight: 700,
                     fontVariantNumeric: 'tabular-nums',
-                    color: 'var(--text-primary, #0F172A)',
+                    color: 'var(--text-primary, #111827)',
                   }}
                 >
                   {formatCurrencyAmount(selectedItem.amount, currency)}
                 </span>
                 <button
                   type="button"
+                  className="report-chart-interactive"
                   onClick={() => handleToggleCategory(selectedItem.category)}
                   style={{
                     display: 'inline-flex',
@@ -656,13 +782,9 @@ export const CategoryDonutChart = forwardRef<SVGSVGElement, CategoryDonutChartPr
                     padding: '0.25rem 0.6rem',
                     fontSize: '0.75rem',
                     fontWeight: 600,
-                    color: 'var(--text-secondary, #64748B)',
+                    color: 'var(--text-secondary, #6B7280)',
                     cursor: 'pointer',
-                    transition: 'transform 150ms ease-out, background-color 150ms ease-out, color 150ms ease-out',
                   }}
-                  onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
-                  onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
                 >
                   Cerrar desglose ✕
                 </button>
@@ -693,7 +815,7 @@ export const CategoryDonutChart = forwardRef<SVGSVGElement, CategoryDonutChartPr
                       padding: '0.45rem 0.65rem',
                       borderRadius: '8px',
                       background: 'var(--surface-color, #FFFFFF)',
-                      border: '1px solid var(--border-color, #F1F5F9)',
+                      border: '1px solid var(--border-color, #E5E7EB)',
                       fontSize: '0.8rem',
                     }}
                   >
@@ -701,7 +823,7 @@ export const CategoryDonutChart = forwardRef<SVGSVGElement, CategoryDonutChartPr
                       <span
                         style={{
                           fontSize: '0.75rem',
-                          color: 'var(--text-tertiary, #94A3B8)',
+                          color: 'var(--text-tertiary, #9CA3AF)',
                           whiteSpace: 'nowrap',
                           fontVariantNumeric: 'tabular-nums',
                         }}
@@ -710,7 +832,7 @@ export const CategoryDonutChart = forwardRef<SVGSVGElement, CategoryDonutChartPr
                       </span>
                       <span
                         style={{
-                          color: 'var(--text-primary, #1E293B)',
+                          color: 'var(--text-primary, #111827)',
                           fontWeight: 500,
                           whiteSpace: 'nowrap',
                           overflow: 'hidden',
@@ -723,7 +845,7 @@ export const CategoryDonutChart = forwardRef<SVGSVGElement, CategoryDonutChartPr
                     <span
                       style={{
                         fontWeight: 700,
-                        color: 'var(--text-primary, #0F172A)',
+                        color: 'var(--text-primary, #111827)',
                         fontVariantNumeric: 'tabular-nums',
                         flexShrink: 0,
                       }}
@@ -738,11 +860,11 @@ export const CategoryDonutChart = forwardRef<SVGSVGElement, CategoryDonutChartPr
                 style={{
                   padding: '0.75rem',
                   textAlign: 'center',
-                  color: 'var(--text-secondary, #64748B)',
+                  color: 'var(--text-secondary, #6B7280)',
                   fontSize: '0.8rem',
                   background: 'var(--surface-color, #FFFFFF)',
                   borderRadius: '8px',
-                  border: '1px dashed var(--border-color, #CBD5E1)',
+                  border: '1px dashed var(--border-color, #E5E7EB)',
                 }}
               >
                 Gasto consolidado de <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCurrencyAmount(selectedItem.amount, currency)}</strong> ({selectedItem.percentage}% del total). No hay transacciones individuales adicionales cargadas en este desglose.
@@ -771,6 +893,7 @@ export interface CashflowTrendChartProps {
 
 export const CashflowTrendChart = forwardRef<SVGSVGElement, CashflowTrendChartProps>(
   ({ series, currency, title = 'Flujo de Caja: Ingresos vs. Gastos', className, style }, ref) => {
+    const { mounted, prefersReducedMotion } = useChartMountAnimation();
     const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
 
     // Aggregate totals and parsed values
@@ -778,21 +901,22 @@ export const CashflowTrendChart = forwardRef<SVGSVGElement, CashflowTrendChartPr
       let totInc = 0;
       let totExp = 0;
       let peak = 0;
+      const parsed: Array<TimeSeriesBucket & { income: number; expense: number; net: number; formattedDate: string }> = [];
 
-      const parsed = series.map((b) => {
+      for (const b of series) {
         const { income, expense } = getBucketValues(b, currency);
         totInc += income;
         totExp += expense;
         if (income > peak) peak = income;
         if (expense > peak) peak = expense;
-        return {
+        parsed.push({
           ...b,
           income,
           expense,
           net: income - expense,
           formattedDate: formatBucketDate(b.bucket_label),
-        };
-      });
+        });
+      }
 
       return {
         parsedSeries: parsed,
@@ -813,7 +937,7 @@ export const CashflowTrendChart = forwardRef<SVGSVGElement, CashflowTrendChartPr
           badge: 'Balance neto positivo',
           detail: `+${formatCurrencyAmount(netTotal, currency)}`,
           color: COLOR_INCOME,
-          bg: 'rgba(16, 185, 129, 0.09)',
+          bg: 'var(--income-bg, rgba(16, 185, 129, 0.09))',
           border: 'rgba(16, 185, 129, 0.25)',
         };
       }
@@ -825,8 +949,8 @@ export const CashflowTrendChart = forwardRef<SVGSVGElement, CashflowTrendChartPr
             badge: 'Mayor salida',
             detail: `${maxExpBucket.formattedDate}: ${formatCurrencyAmount(maxExpBucket.expense, currency)}`,
             color: COLOR_EXPENSE,
-            bg: 'rgba(244, 63, 94, 0.09)',
-            border: 'rgba(244, 63, 94, 0.25)',
+            bg: 'var(--expense-bg, rgba(239, 68, 68, 0.09))',
+            border: 'rgba(239, 68, 68, 0.25)',
           };
         }
         return {
@@ -834,8 +958,8 @@ export const CashflowTrendChart = forwardRef<SVGSVGElement, CashflowTrendChartPr
           badge: 'Déficit neto',
           detail: formatCurrencyAmount(netTotal, currency),
           color: COLOR_EXPENSE,
-          bg: 'rgba(244, 63, 94, 0.09)',
-          border: 'rgba(244, 63, 94, 0.25)',
+          bg: 'var(--expense-bg, rgba(239, 68, 68, 0.09))',
+          border: 'rgba(239, 68, 68, 0.25)',
         };
       }
       return {
@@ -874,17 +998,12 @@ export const CashflowTrendChart = forwardRef<SVGSVGElement, CashflowTrendChartPr
       <div
         className={className}
         style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '1rem',
-          background: 'var(--surface-color, #FFFFFF)',
-          borderRadius: '16px',
-          border: '1px solid var(--border-color, #E5E7EB)',
-          boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05)',
-          padding: '1.25rem',
+          ...CARD_CONTAINER_STYLE,
           ...style,
         }}
       >
+        <style>{REPORT_CHARTS_INLINE_STYLE}</style>
+
         {/* Header with Title and KPI Badges */}
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
           <div>
@@ -944,7 +1063,7 @@ export const CashflowTrendChart = forwardRef<SVGSVGElement, CashflowTrendChartPr
                 fontVariantNumeric: 'tabular-nums',
                 padding: '0.2rem 0.55rem',
                 borderRadius: '8px',
-                background: netTotal >= 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(244, 63, 94, 0.1)',
+                background: netTotal >= 0 ? 'var(--income-bg, rgba(16, 185, 129, 0.1))' : 'var(--expense-bg, rgba(239, 68, 68, 0.1))',
                 color: netTotal >= 0 ? COLOR_INCOME : COLOR_EXPENSE,
               }}
             >
@@ -973,7 +1092,7 @@ export const CashflowTrendChart = forwardRef<SVGSVGElement, CashflowTrendChartPr
                     y1={y}
                     x2={svgWidth - padRight}
                     y2={y}
-                    stroke="#E2E8F0"
+                    stroke="var(--border-color, #E2E8F0)"
                     strokeDasharray={tick.ratio === 0 ? undefined : '3 3'}
                     strokeWidth={tick.ratio === 0 ? '1.5' : '1'}
                   />
@@ -983,7 +1102,7 @@ export const CashflowTrendChart = forwardRef<SVGSVGElement, CashflowTrendChartPr
                     textAnchor="end"
                     fill="var(--text-tertiary, #9CA3AF)"
                     style={{
-                      fontFamily: "system-ui, -apple-system, 'Inter', sans-serif",
+                      fontFamily: SVG_FONT_FAMILY,
                       fontSize: '10px',
                       fontWeight: 500,
                       fontVariantNumeric: 'tabular-nums',
@@ -1004,7 +1123,7 @@ export const CashflowTrendChart = forwardRef<SVGSVGElement, CashflowTrendChartPr
                 dominantBaseline="middle"
                 fill="var(--text-tertiary, #9CA3AF)"
                 style={{
-                  fontFamily: "system-ui, -apple-system, 'Inter', sans-serif",
+                  fontFamily: SVG_FONT_FAMILY,
                   fontSize: '13px',
                   fontWeight: 500,
                 }}
@@ -1044,12 +1163,12 @@ export const CashflowTrendChart = forwardRef<SVGSVGElement, CashflowTrendChartPr
                         y={padTop}
                         width={slotWidth}
                         height={innerHeight}
-                        fill="rgba(99, 102, 241, 0.06)"
+                        fill="var(--tool-budgets-bg, rgba(99, 102, 241, 0.06))"
                         rx="4"
                       />
                     )}
 
-                    {/* Income Bar */}
+                    {/* Income Bar with scaleY bottom-up transition on mount */}
                     <rect
                       x={incX}
                       y={incY}
@@ -1059,10 +1178,17 @@ export const CashflowTrendChart = forwardRef<SVGSVGElement, CashflowTrendChartPr
                       rx="3"
                       ry="3"
                       opacity={hoveredIdx !== null && !isHovered ? 0.45 : 1}
-                      style={{ transition: 'opacity 150ms ease-out' }}
+                      style={{
+                        transformBox: 'fill-box',
+                        transformOrigin: 'bottom',
+                        transform: mounted || prefersReducedMotion ? 'scaleY(1)' : 'scaleY(0)',
+                        transition: prefersReducedMotion
+                          ? 'opacity 150ms ease-out'
+                          : `transform 400ms ease-out ${idx * 30}ms, opacity 150ms ease-out`,
+                      }}
                     />
 
-                    {/* Expense Bar */}
+                    {/* Expense Bar with scaleY bottom-up transition on mount */}
                     <rect
                       x={expX}
                       y={expY}
@@ -1072,7 +1198,14 @@ export const CashflowTrendChart = forwardRef<SVGSVGElement, CashflowTrendChartPr
                       rx="3"
                       ry="3"
                       opacity={hoveredIdx !== null && !isHovered ? 0.45 : 1}
-                      style={{ transition: 'opacity 150ms ease-out' }}
+                      style={{
+                        transformBox: 'fill-box',
+                        transformOrigin: 'bottom',
+                        transform: mounted || prefersReducedMotion ? 'scaleY(1)' : 'scaleY(0)',
+                        transition: prefersReducedMotion
+                          ? 'opacity 150ms ease-out'
+                          : `transform 400ms ease-out ${idx * 30 + 15}ms, opacity 150ms ease-out`,
+                      }}
                     />
 
                     {/* X-Axis Label */}
@@ -1083,11 +1216,14 @@ export const CashflowTrendChart = forwardRef<SVGSVGElement, CashflowTrendChartPr
                         textAnchor="middle"
                         fill={isHovered ? 'var(--text-primary, #111827)' : 'var(--text-secondary, #6B7280)'}
                         style={{
-                          fontFamily: "system-ui, -apple-system, 'Inter', sans-serif",
+                          fontFamily: SVG_FONT_FAMILY,
                           fontSize: isHovered ? '10.5px' : '9.5px',
                           fontWeight: isHovered ? 700 : 500,
                           fontVariantNumeric: 'tabular-nums',
-                          transition: 'fill 150ms ease-out',
+                          opacity: mounted || prefersReducedMotion ? 1 : 0,
+                          transition: prefersReducedMotion
+                            ? 'fill 150ms ease-out'
+                            : 'opacity 300ms ease-out 150ms, fill 150ms ease-out',
                         }}
                       >
                         {item.formattedDate}
@@ -1098,36 +1234,42 @@ export const CashflowTrendChart = forwardRef<SVGSVGElement, CashflowTrendChartPr
               })
             )}
 
-            {/* Hover Tooltip Rendered Directly in SVG for Clean Printability */}
+            {/* Hover Tooltip Rendered in SVG with 150ms ease-out opacity/transform transition */}
             {hoveredIdx !== null && parsedSeries[hoveredIdx] && (
               (() => {
                 const item = parsedSeries[hoveredIdx];
                 const rawCenterX = padLeft + (hoveredIdx + 0.5) * slotWidth;
                 const tooltipWidth = 140;
                 const tooltipHeight = 60;
-                // Clamp X inside bounds
                 const tipX = Math.max(padLeft, Math.min(svgWidth - padRight - tooltipWidth, rawCenterX - tooltipWidth / 2));
                 const tipY = Math.max(5, padTop - 12);
 
                 return (
-                  <g style={{ pointerEvents: 'none' }}>
+                  <g
+                    style={{
+                      pointerEvents: 'none',
+                      transition: prefersReducedMotion ? 'none' : 'opacity 150ms ease-out, transform 150ms ease-out',
+                    }}
+                  >
                     <rect
                       x={tipX}
                       y={tipY}
                       width={tooltipWidth}
                       height={tooltipHeight}
                       rx="8"
-                      fill="#1E293B"
-                      opacity="0.95"
-                      filter="drop-shadow(0 4px 6px rgba(0,0,0,0.15))"
+                      fill="var(--accent-color, #111827)"
+                      stroke="var(--border-color, rgba(255,255,255,0.15))"
+                      strokeWidth="1"
+                      opacity="0.96"
+                      filter="drop-shadow(0 4px 6px rgba(0,0,0,0.18))"
                     />
                     <text
                       x={tipX + tooltipWidth / 2}
                       y={tipY + 16}
                       textAnchor="middle"
-                      fill="#FFFFFF"
+                      fill="var(--text-inverse, #FFFFFF)"
                       style={{
-                        fontFamily: "system-ui, -apple-system, 'Inter', sans-serif",
+                        fontFamily: SVG_FONT_FAMILY,
                         fontSize: '10px',
                         fontWeight: 700,
                         fontVariantNumeric: 'tabular-nums',
@@ -1140,7 +1282,7 @@ export const CashflowTrendChart = forwardRef<SVGSVGElement, CashflowTrendChartPr
                       y={tipY + 34}
                       fill={COLOR_INCOME}
                       style={{
-                        fontFamily: "system-ui, -apple-system, 'Inter', sans-serif",
+                        fontFamily: SVG_FONT_FAMILY,
                         fontSize: '10px',
                         fontWeight: 600,
                         fontVariantNumeric: 'tabular-nums',
@@ -1154,7 +1296,7 @@ export const CashflowTrendChart = forwardRef<SVGSVGElement, CashflowTrendChartPr
                       textAnchor="end"
                       fill={COLOR_EXPENSE}
                       style={{
-                        fontFamily: "system-ui, -apple-system, 'Inter', sans-serif",
+                        fontFamily: SVG_FONT_FAMILY,
                         fontSize: '10px',
                         fontWeight: 600,
                         fontVariantNumeric: 'tabular-nums',
@@ -1166,9 +1308,9 @@ export const CashflowTrendChart = forwardRef<SVGSVGElement, CashflowTrendChartPr
                       x={tipX + tooltipWidth / 2}
                       y={tipY + 50}
                       textAnchor="middle"
-                      fill={item.net >= 0 ? '#34D399' : '#FB7185'}
+                      fill={item.net >= 0 ? COLOR_INCOME : COLOR_EXPENSE}
                       style={{
-                        fontFamily: "system-ui, -apple-system, 'Inter', sans-serif",
+                        fontFamily: SVG_FONT_FAMILY,
                         fontSize: '9.5px',
                         fontWeight: 600,
                         fontVariantNumeric: 'tabular-nums',
@@ -1223,6 +1365,8 @@ export const PeriodComparisonBarChart = forwardRef<SVGSVGElement, PeriodComparis
     },
     ref
   ) => {
+    const { mounted, prefersReducedMotion } = useChartMountAnimation();
+
     // Process comparison data
     const comparisonData = useMemo(() => {
       // 1. Global KPIs
@@ -1317,10 +1461,30 @@ export const PeriodComparisonBarChart = forwardRef<SVGSVGElement, PeriodComparis
       }
 
       const color = isFavorable ? COLOR_INCOME : COLOR_EXPENSE;
-      const bg = isFavorable ? 'rgba(16, 185, 129, 0.1)' : 'rgba(244, 63, 94, 0.1)';
+      const bg = isFavorable
+        ? 'var(--income-bg, rgba(16, 185, 129, 0.1))'
+        : 'var(--expense-bg, rgba(239, 68, 68, 0.1))';
 
       return { text, color, bg, deltaPct };
     };
+
+    // Precalculate row Y positions for clean pure rendering
+    const kpiRows = useMemo(() => {
+      return comparisonData.kpis.map((kpi, idx) => ({
+        ...kpi,
+        y: headerHeight + sectionTitleHeight + idx * rowHeight,
+        delta: getDeltaInfo(kpi.valA, kpi.valB, kpi.type),
+      }));
+    }, [comparisonData.kpis]);
+
+    const topCatsStartY = headerHeight + sectionTitleHeight + comparisonData.kpis.length * rowHeight + sectionTitleHeight;
+    const topCatRows = useMemo(() => {
+      return comparisonData.topCats.map((cat, idx) => ({
+        ...cat,
+        y: topCatsStartY + idx * rowHeight,
+        delta: getDeltaInfo(cat.valA, cat.valB, cat.type),
+      }));
+    }, [comparisonData.topCats, topCatsStartY]);
 
     // Compact Key Insight Pill
     const comparisonInsight = useMemo(() => {
@@ -1339,8 +1503,8 @@ export const PeriodComparisonBarChart = forwardRef<SVGSVGElement, PeriodComparis
           title: 'Insight Clave',
           label: `Mayor incremento: ${catIncreases[0].label}`,
           delta: catIncreases[0].text,
-          color: '#D97706',
-          bg: 'rgba(245, 158, 11, 0.1)',
+          color: 'var(--warning-color, #D97706)',
+          bg: 'var(--warning-bg, rgba(245, 158, 11, 0.1))',
           border: 'rgba(245, 158, 11, 0.25)',
         };
       }
@@ -1354,7 +1518,7 @@ export const PeriodComparisonBarChart = forwardRef<SVGSVGElement, PeriodComparis
           label: 'Gasto global reducido vs Periodo A',
           delta: expDelta.text,
           color: COLOR_INCOME,
-          bg: 'rgba(16, 185, 129, 0.1)',
+          bg: 'var(--income-bg, rgba(16, 185, 129, 0.1))',
           border: 'rgba(16, 185, 129, 0.25)',
         };
       }
@@ -1367,7 +1531,7 @@ export const PeriodComparisonBarChart = forwardRef<SVGSVGElement, PeriodComparis
           label: 'Balance neto positivo en Periodo B',
           delta: formatCurrencyAmount(comparisonData.kpis[2].valB, currency),
           color: COLOR_INCOME,
-          bg: 'rgba(16, 185, 129, 0.1)',
+          bg: 'var(--income-bg, rgba(16, 185, 129, 0.1))',
           border: 'rgba(16, 185, 129, 0.25)',
         };
       }
@@ -1384,23 +1548,16 @@ export const PeriodComparisonBarChart = forwardRef<SVGSVGElement, PeriodComparis
       };
     }, [comparisonData, currency]);
 
-    let currentY = headerHeight;
-
     return (
       <div
         className={className}
         style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '1rem',
-          background: 'var(--surface-color, #FFFFFF)',
-          borderRadius: '16px',
-          border: '1px solid var(--border-color, #E5E7EB)',
-          boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05)',
-          padding: '1.25rem',
+          ...CARD_CONTAINER_STYLE,
           ...style,
         }}
       >
+        <style>{REPORT_CHARTS_INLINE_STYLE}</style>
+
         {/* Header */}
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
           <div>
@@ -1465,14 +1622,14 @@ export const PeriodComparisonBarChart = forwardRef<SVGSVGElement, PeriodComparis
           >
             {/* Legend / Info Top Banner inside SVG */}
             <g>
-              <rect x="0" y="0" width={svgWidth} height="36" rx="8" fill="var(--surface-muted, #F8FAFC)" />
+              <rect x="0" y="0" width={svgWidth} height="36" rx="8" fill="var(--surface-muted, #F8FAFC)" stroke="var(--border-color, #E5E7EB)" strokeWidth="0.5" />
               <circle cx="20" cy="18" r="5" fill={COLOR_PERIOD_A} />
               <text
                 x="32"
                 y="22"
                 fill="var(--text-secondary, #6B7280)"
                 style={{
-                  fontFamily: "system-ui, -apple-system, 'Inter', sans-serif",
+                  fontFamily: SVG_FONT_FAMILY,
                   fontSize: '11px',
                   fontWeight: 600,
                   fontVariantNumeric: 'tabular-nums',
@@ -1487,7 +1644,7 @@ export const PeriodComparisonBarChart = forwardRef<SVGSVGElement, PeriodComparis
                 y="22"
                 fill="var(--text-primary, #111827)"
                 style={{
-                  fontFamily: "system-ui, -apple-system, 'Inter', sans-serif",
+                  fontFamily: SVG_FONT_FAMILY,
                   fontSize: '11px',
                   fontWeight: 700,
                   fontVariantNumeric: 'tabular-nums',
@@ -1502,7 +1659,7 @@ export const PeriodComparisonBarChart = forwardRef<SVGSVGElement, PeriodComparis
                 textAnchor="end"
                 fill="var(--text-tertiary, #9CA3AF)"
                 style={{
-                  fontFamily: "system-ui, -apple-system, 'Inter', sans-serif",
+                  fontFamily: SVG_FONT_FAMILY,
                   fontSize: '10px',
                   fontWeight: 500,
                   fontVariantNumeric: 'tabular-nums',
@@ -1515,10 +1672,10 @@ export const PeriodComparisonBarChart = forwardRef<SVGSVGElement, PeriodComparis
             {/* Section 1: Métricas Globales */}
             <text
               x="10"
-              y={currentY + 16}
+              y={headerHeight + 16}
               fill="var(--text-secondary, #6B7280)"
               style={{
-                fontFamily: "system-ui, -apple-system, 'Inter', sans-serif",
+                fontFamily: SVG_FONT_FAMILY,
                 fontSize: '11px',
                 fontWeight: 700,
                 letterSpacing: '0.04em',
@@ -1527,13 +1684,10 @@ export const PeriodComparisonBarChart = forwardRef<SVGSVGElement, PeriodComparis
             >
               Métricas Globales
             </text>
-            {(currentY += sectionTitleHeight)}
 
-            {comparisonData.kpis.map((row) => {
-              const y = currentY;
-              currentY += rowHeight;
-
-              const delta = getDeltaInfo(row.valA, row.valB, row.type);
+            {kpiRows.map((row, idx) => {
+              const y = row.y;
+              const delta = row.delta;
               const maxVal = comparisonData.maxVal;
 
               const barWidthA = Math.max(row.valA !== 0 ? 3 : 0, (Math.abs(row.valA) / maxVal) * barAreaWidth);
@@ -1542,7 +1696,7 @@ export const PeriodComparisonBarChart = forwardRef<SVGSVGElement, PeriodComparis
               return (
                 <g key={row.label}>
                   {/* Row Separator */}
-                  <line x1="10" y1={y + rowHeight - 2} x2={svgWidth - 10} y2={y + rowHeight - 2} stroke="#F1F5F9" />
+                  <line x1="10" y1={y + rowHeight - 2} x2={svgWidth - 10} y2={y + rowHeight - 2} stroke="var(--border-color, #E5E7EB)" />
 
                   {/* Metric Label */}
                   <text
@@ -1550,7 +1704,7 @@ export const PeriodComparisonBarChart = forwardRef<SVGSVGElement, PeriodComparis
                     y={y + 25}
                     fill="var(--text-primary, #111827)"
                     style={{
-                      fontFamily: "system-ui, -apple-system, 'Inter', sans-serif",
+                      fontFamily: SVG_FONT_FAMILY,
                       fontSize: '12.5px',
                       fontWeight: 600,
                     }}
@@ -1558,69 +1712,106 @@ export const PeriodComparisonBarChart = forwardRef<SVGSVGElement, PeriodComparis
                     {row.label}
                   </text>
 
-                  {/* Bar A (Slate) */}
-                  <rect x={barAreaX} y={y + 8} width={barWidthA} height="12" rx="3" fill={COLOR_PERIOD_A} />
+                  {/* Bar A (Slate / Secondary) with scaleX from left on mount */}
+                  <rect
+                    x={barAreaX}
+                    y={y + 8}
+                    width={barWidthA}
+                    height="12"
+                    rx="3"
+                    fill={COLOR_PERIOD_A}
+                    style={{
+                      transformBox: 'fill-box',
+                      transformOrigin: 'left',
+                      transform: mounted || prefersReducedMotion ? 'scaleX(1)' : 'scaleX(0)',
+                      transition: prefersReducedMotion ? 'none' : `transform 400ms ease-out ${idx * 35}ms`,
+                    }}
+                  />
                   <text
                     x={barWidthA > 220 ? barAreaX + barWidthA - 6 : barAreaX + barWidthA + 6}
                     y={y + 18}
                     textAnchor={barWidthA > 220 ? 'end' : 'start'}
-                    fill={barWidthA > 220 ? '#FFFFFF' : COLOR_PERIOD_A}
+                    fill={barWidthA > 220 ? 'var(--text-inverse, #FFFFFF)' : COLOR_PERIOD_A}
                     style={{
-                      fontFamily: "system-ui, -apple-system, 'Inter', sans-serif",
+                      fontFamily: SVG_FONT_FAMILY,
                       fontSize: '10px',
                       fontWeight: 600,
                       fontVariantNumeric: 'tabular-nums',
+                      opacity: mounted || prefersReducedMotion ? 1 : 0,
+                      transition: prefersReducedMotion ? 'none' : `opacity 300ms ease-out ${idx * 35 + 150}ms`,
                     }}
                   >
                     {formatCompactNumber(row.valA)}
                   </text>
 
-                  {/* Bar B (Indigo) */}
-                  <rect x={barAreaX} y={y + 24} width={barWidthB} height="12" rx="3" fill={COLOR_PERIOD_B} />
+                  {/* Bar B (Indigo / Tool Accent) with scaleX from left on mount */}
+                  <rect
+                    x={barAreaX}
+                    y={y + 24}
+                    width={barWidthB}
+                    height="12"
+                    rx="3"
+                    fill={COLOR_PERIOD_B}
+                    style={{
+                      transformBox: 'fill-box',
+                      transformOrigin: 'left',
+                      transform: mounted || prefersReducedMotion ? 'scaleX(1)' : 'scaleX(0)',
+                      transition: prefersReducedMotion ? 'none' : `transform 400ms ease-out ${idx * 35 + 20}ms`,
+                    }}
+                  />
                   <text
                     x={barWidthB > 220 ? barAreaX + barWidthB - 6 : barAreaX + barWidthB + 6}
                     y={y + 34}
                     textAnchor={barWidthB > 220 ? 'end' : 'start'}
-                    fill={barWidthB > 220 ? '#FFFFFF' : COLOR_PERIOD_B}
+                    fill={barWidthB > 220 ? 'var(--text-inverse, #FFFFFF)' : COLOR_PERIOD_B}
                     style={{
-                      fontFamily: "system-ui, -apple-system, 'Inter', sans-serif",
+                      fontFamily: SVG_FONT_FAMILY,
                       fontSize: '10px',
                       fontWeight: 700,
                       fontVariantNumeric: 'tabular-nums',
+                      opacity: mounted || prefersReducedMotion ? 1 : 0,
+                      transition: prefersReducedMotion ? 'none' : `opacity 300ms ease-out ${idx * 35 + 150}ms`,
                     }}
                   >
                     {formatCompactNumber(row.valB)}
                   </text>
 
                   {/* Delta Badge */}
-                  <rect x={badgeX} y={y + 12} width="85" height="22" rx="8" fill={delta.bg} />
-                  <text
-                    x={badgeX + 42.5}
-                    y={y + 27}
-                    textAnchor="middle"
-                    fill={delta.color}
+                  <g
                     style={{
-                      fontFamily: "system-ui, -apple-system, 'Inter', sans-serif",
-                      fontSize: '10.5px',
-                      fontWeight: 700,
-                      fontVariantNumeric: 'tabular-nums',
+                      opacity: mounted || prefersReducedMotion ? 1 : 0,
+                      transition: prefersReducedMotion ? 'none' : `opacity 300ms ease-out ${idx * 35 + 180}ms`,
                     }}
                   >
-                    {delta.text}
-                  </text>
+                    <rect x={badgeX} y={y + 12} width="85" height="22" rx="8" fill={delta.bg} />
+                    <text
+                      x={badgeX + 42.5}
+                      y={y + 27}
+                      textAnchor="middle"
+                      fill={delta.color}
+                      style={{
+                        fontFamily: SVG_FONT_FAMILY,
+                        fontSize: '10.5px',
+                        fontWeight: 700,
+                        fontVariantNumeric: 'tabular-nums',
+                      }}
+                    >
+                      {delta.text}
+                    </text>
+                  </g>
                 </g>
               );
             })}
 
             {/* Section 2: Top Categorías (if available) */}
-            {comparisonData.topCats.length > 0 && (
+            {topCatRows.length > 0 && (
               <>
                 <text
                   x="10"
-                  y={currentY + 16}
+                  y={topCatsStartY - sectionTitleHeight + 16}
                   fill="var(--text-secondary, #6B7280)"
                   style={{
-                    fontFamily: "system-ui, -apple-system, 'Inter', sans-serif",
+                    fontFamily: SVG_FONT_FAMILY,
                     fontSize: '11px',
                     fontWeight: 700,
                     letterSpacing: '0.04em',
@@ -1629,22 +1820,20 @@ export const PeriodComparisonBarChart = forwardRef<SVGSVGElement, PeriodComparis
                 >
                   Top Categorías Comparadas
                 </text>
-                {(currentY += sectionTitleHeight)}
 
-                {comparisonData.topCats.map((row) => {
-                  const y = currentY;
-                  currentY += rowHeight;
-
-                  const delta = getDeltaInfo(row.valA, row.valB, row.type);
+                {topCatRows.map((row, idx) => {
+                  const y = row.y;
+                  const delta = row.delta;
                   const maxVal = comparisonData.maxVal;
 
                   const barWidthA = Math.max(row.valA !== 0 ? 3 : 0, (Math.abs(row.valA) / maxVal) * barAreaWidth);
                   const barWidthB = Math.max(row.valB !== 0 ? 3 : 0, (Math.abs(row.valB) / maxVal) * barAreaWidth);
+                  const baseDelay = (kpiRows.length + idx) * 35;
 
                   return (
                     <g key={row.label}>
                       {/* Row Separator */}
-                      <line x1="10" y1={y + rowHeight - 2} x2={svgWidth - 10} y2={y + rowHeight - 2} stroke="#F1F5F9" />
+                      <line x1="10" y1={y + rowHeight - 2} x2={svgWidth - 10} y2={y + rowHeight - 2} stroke="var(--border-color, #E5E7EB)" />
 
                       {/* Category Name */}
                       <text
@@ -1652,7 +1841,7 @@ export const PeriodComparisonBarChart = forwardRef<SVGSVGElement, PeriodComparis
                         y={y + 25}
                         fill="var(--text-primary, #111827)"
                         style={{
-                          fontFamily: "system-ui, -apple-system, 'Inter', sans-serif",
+                          fontFamily: SVG_FONT_FAMILY,
                           fontSize: '12px',
                           fontWeight: 600,
                         }}
@@ -1661,55 +1850,92 @@ export const PeriodComparisonBarChart = forwardRef<SVGSVGElement, PeriodComparis
                       </text>
 
                       {/* Bar A */}
-                      <rect x={barAreaX} y={y + 8} width={barWidthA} height="12" rx="3" fill={COLOR_PERIOD_A} />
+                      <rect
+                        x={barAreaX}
+                        y={y + 8}
+                        width={barWidthA}
+                        height="12"
+                        rx="3"
+                        fill={COLOR_PERIOD_A}
+                        style={{
+                          transformBox: 'fill-box',
+                          transformOrigin: 'left',
+                          transform: mounted || prefersReducedMotion ? 'scaleX(1)' : 'scaleX(0)',
+                          transition: prefersReducedMotion ? 'none' : `transform 400ms ease-out ${baseDelay}ms`,
+                        }}
+                      />
                       <text
                         x={barWidthA > 220 ? barAreaX + barWidthA - 6 : barAreaX + barWidthA + 6}
                         y={y + 18}
                         textAnchor={barWidthA > 220 ? 'end' : 'start'}
-                        fill={barWidthA > 220 ? '#FFFFFF' : COLOR_PERIOD_A}
+                        fill={barWidthA > 220 ? 'var(--text-inverse, #FFFFFF)' : COLOR_PERIOD_A}
                         style={{
-                          fontFamily: "system-ui, -apple-system, 'Inter', sans-serif",
+                          fontFamily: SVG_FONT_FAMILY,
                           fontSize: '10px',
                           fontWeight: 600,
                           fontVariantNumeric: 'tabular-nums',
+                          opacity: mounted || prefersReducedMotion ? 1 : 0,
+                          transition: prefersReducedMotion ? 'none' : `opacity 300ms ease-out ${baseDelay + 150}ms`,
                         }}
                       >
                         {formatCompactNumber(row.valA)}
                       </text>
 
                       {/* Bar B */}
-                      <rect x={barAreaX} y={y + 24} width={barWidthB} height="12" rx="3" fill={COLOR_PERIOD_B} />
+                      <rect
+                        x={barAreaX}
+                        y={y + 24}
+                        width={barWidthB}
+                        height="12"
+                        rx="3"
+                        fill={COLOR_PERIOD_B}
+                        style={{
+                          transformBox: 'fill-box',
+                          transformOrigin: 'left',
+                          transform: mounted || prefersReducedMotion ? 'scaleX(1)' : 'scaleX(0)',
+                          transition: prefersReducedMotion ? 'none' : `transform 400ms ease-out ${baseDelay + 20}ms`,
+                        }}
+                      />
                       <text
                         x={barWidthB > 220 ? barAreaX + barWidthB - 6 : barAreaX + barWidthB + 6}
                         y={y + 34}
                         textAnchor={barWidthB > 220 ? 'end' : 'start'}
-                        fill={barWidthB > 220 ? '#FFFFFF' : COLOR_PERIOD_B}
+                        fill={barWidthB > 220 ? 'var(--text-inverse, #FFFFFF)' : COLOR_PERIOD_B}
                         style={{
-                          fontFamily: "system-ui, -apple-system, 'Inter', sans-serif",
+                          fontFamily: SVG_FONT_FAMILY,
                           fontSize: '10px',
                           fontWeight: 700,
                           fontVariantNumeric: 'tabular-nums',
+                          opacity: mounted || prefersReducedMotion ? 1 : 0,
+                          transition: prefersReducedMotion ? 'none' : `opacity 300ms ease-out ${baseDelay + 150}ms`,
                         }}
                       >
                         {formatCompactNumber(row.valB)}
                       </text>
 
                       {/* Delta Badge */}
-                      <rect x={badgeX} y={y + 12} width="85" height="22" rx="8" fill={delta.bg} />
-                      <text
-                        x={badgeX + 42.5}
-                        y={y + 27}
-                        textAnchor="middle"
-                        fill={delta.color}
+                      <g
                         style={{
-                          fontFamily: "system-ui, -apple-system, 'Inter', sans-serif",
-                          fontSize: '10.5px',
-                          fontWeight: 700,
-                          fontVariantNumeric: 'tabular-nums',
+                          opacity: mounted || prefersReducedMotion ? 1 : 0,
+                          transition: prefersReducedMotion ? 'none' : `opacity 300ms ease-out ${baseDelay + 180}ms`,
                         }}
                       >
-                        {delta.text}
-                      </text>
+                        <rect x={badgeX} y={y + 12} width="85" height="22" rx="8" fill={delta.bg} />
+                        <text
+                          x={badgeX + 42.5}
+                          y={y + 27}
+                          textAnchor="middle"
+                          fill={delta.color}
+                          style={{
+                            fontFamily: SVG_FONT_FAMILY,
+                            fontSize: '10.5px',
+                            fontWeight: 700,
+                            fontVariantNumeric: 'tabular-nums',
+                          }}
+                        >
+                          {delta.text}
+                        </text>
+                      </g>
                     </g>
                   );
                 })}

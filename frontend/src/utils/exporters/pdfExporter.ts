@@ -9,19 +9,34 @@ async function svgToPngDataUrl(
   return new Promise((resolve, reject) => {
     try {
       const rect = svg.getBoundingClientRect();
+
+      const parseDimensionAttr = (attrVal: string | null): number => {
+        if (!attrVal || attrVal.includes('%')) return 0;
+        const parsed = parseFloat(attrVal);
+        return isNaN(parsed) || parsed <= 0 ? 0 : parsed;
+      };
+
       const rawWidth =
         rect.width > 0
           ? rect.width
-          : parseInt(svg.getAttribute('width') || '600', 10) || 600;
+          : (svg.viewBox?.baseVal?.width && svg.viewBox.baseVal.width > 0)
+          ? svg.viewBox.baseVal.width
+          : parseDimensionAttr(svg.getAttribute('width')) || 600;
+
       const rawHeight =
         rect.height > 0
           ? rect.height
-          : parseInt(svg.getAttribute('height') || '300', 10) || 300;
+          : (svg.viewBox?.baseVal?.height && svg.viewBox.baseVal.height > 0)
+          ? svg.viewBox.baseVal.height
+          : parseDimensionAttr(svg.getAttribute('height')) || 300;
 
       const clone = svg.cloneNode(true) as SVGSVGElement;
       clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
       clone.setAttribute('width', `${rawWidth}`);
       clone.setAttribute('height', `${rawHeight}`);
+      const viewBoxAttr = svg.getAttribute('viewBox') || `0 0 ${rawWidth} ${rawHeight}`;
+      clone.setAttribute('viewBox', viewBoxAttr);
+      clone.style.opacity = '1';
 
       const serializer = new XMLSerializer();
       const svgXml = serializer.serializeToString(clone);
@@ -31,7 +46,7 @@ async function svgToPngDataUrl(
       const img = new Image();
       img.onload = () => {
         try {
-          const scale = 2; // 2x scale for sharp vector look on print
+          const scale = 3; // 3x scale for sharp ~300 DPI vector print quality
           const canvas = document.createElement('canvas');
           canvas.width = rawWidth * scale;
           canvas.height = rawHeight * scale;
@@ -42,6 +57,8 @@ async function svgToPngDataUrl(
             return;
           }
 
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
           ctx.scale(scale, scale);
           ctx.fillStyle = '#ffffff';
           ctx.fillRect(0, 0, rawWidth, rawHeight);
@@ -233,17 +250,26 @@ export async function exportToPdf(
   if (includeCharts && doc.svgElements && doc.svgElements.length > 0) {
     for (const svg of doc.svgElements) {
       try {
+        const maxChartHeightMm = 80;
         const { dataUrl, width, height } = await svgToPngDataUrl(svg);
         const aspectRatio = height / width;
-        const chartWidthMm = usableWidth;
-        const chartHeightMm = Math.min(chartWidthMm * aspectRatio, 80);
 
-        if (currentY + chartHeightMm > pageHeight - 25) {
+        let chartWidthMm = usableWidth;
+        let chartHeightMm = chartWidthMm * aspectRatio;
+
+        if (chartHeightMm > maxChartHeightMm) {
+          chartHeightMm = maxChartHeightMm;
+          chartWidthMm = chartHeightMm / aspectRatio;
+        }
+
+        const chartX = margin + (usableWidth - chartWidthMm) / 2;
+
+        if (currentY + chartHeightMm > pageHeight - 20) {
           pdfDoc.addPage();
           currentY = margin;
         }
 
-        pdfDoc.addImage(dataUrl, 'PNG', margin, currentY, chartWidthMm, chartHeightMm);
+        pdfDoc.addImage(dataUrl, 'PNG', chartX, currentY, chartWidthMm, chartHeightMm);
         currentY += chartHeightMm + 6;
       } catch (chartErr) {
         console.warn('Skipping chart rasterization for PDF:', chartErr);

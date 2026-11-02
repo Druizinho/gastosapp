@@ -60,7 +60,7 @@ const toolSections: ToolSection[] = [
     tools: [
       {
         id: 'debts-unified',
-        title: 'Deudas y Préstamos',
+        title: 'Deudas',
         description: 'Lo que debes y lo que te deben con balance neto',
         icon: <ArrowLeftRight size={28} />,
         color: TOOL_COLORS.debts.solid,

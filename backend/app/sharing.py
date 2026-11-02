@@ -13,6 +13,7 @@ from fastapi import HTTPException
 
 from . import models, schemas
 from .push_service import send_notification_to_user
+from .user_resolver import resolve_name_and_avatar, fetch_auth_users_map
 
 # Configuration of entity models and child models
 ENTITY_CONFIG = {
@@ -666,6 +667,8 @@ async def populate_share_meta(
         share_by_id[s_row.id] = s_row
         members_by_share.setdefault(s_row.id, []).append(sm_row)
         involved_user_ids.add(sm_row.user_id)
+        if s_row.owner_id:
+            involved_user_ids.add(s_row.owner_id)
 
     involved_user_ids.add(user_id)
 
@@ -694,6 +697,18 @@ async def populate_share_meta(
         elif c.status == "pending":
             pending_pana_ids_set.add(other_id)
 
+    needs_auth = any(
+        (uid not in profiles)
+        or not profiles[uid].display_name
+        or not (profiles[uid].display_name.strip() if isinstance(profiles[uid].display_name, str) else "")
+        or not getattr(profiles[uid], "avatar_url", None)
+        or not (profiles[uid].avatar_url.strip() if isinstance(profiles[uid].avatar_url, str) else "")
+        for uid in involved_user_ids
+    )
+    auth_users_map = {}
+    if needs_auth:
+        auth_users_map = await fetch_auth_users_map(db, list(involved_user_ids))
+
     cfg = ENTITY_CONFIG[entity_type]
 
     for e in entities:
@@ -702,15 +717,29 @@ async def populate_share_meta(
             share = share_by_id.get(my_sm.share_id)
             share_members_list = members_by_share.get(my_sm.share_id, [])
 
-            owner_prof = profiles.get(share.owner_id) if share else None
-            owner_name = owner_prof.display_name if owner_prof and owner_prof.display_name else "Usuario"
+            owner_id = share.owner_id if share else getattr(e, "user_id", None)
+            owner_prof = profiles.get(owner_id) if owner_id else None
+            owner_auth = auth_users_map.get(owner_id, {}) if owner_id else {}
+            owner_name, _ = resolve_name_and_avatar(
+                display_name=owner_prof.display_name if owner_prof else None,
+                raw_user_meta_data=owner_auth.get("raw_user_meta_data"),
+                email=owner_auth.get("email"),
+                default_name="Usuario"
+            )
 
             members_out: List[schemas.ShareMemberOut] = []
             partner_names: List[str] = []
 
             for m in share_members_list:
                 m_prof = profiles.get(m.user_id)
-                m_name = m_prof.display_name if m_prof and m_prof.display_name else "Usuario"
+                m_auth = auth_users_map.get(m.user_id, {})
+                m_name, m_avatar = resolve_name_and_avatar(
+                    display_name=m_prof.display_name if m_prof else None,
+                    avatar_url=m_prof.avatar_url if m_prof else None,
+                    raw_user_meta_data=m_auth.get("raw_user_meta_data"),
+                    email=m_auth.get("email"),
+                    default_name="Usuario"
+                )
                 is_me = (m.user_id == user_id)
                 is_owner = (share and m.user_id == share.owner_id)
 
@@ -722,7 +751,7 @@ async def populate_share_meta(
                         user_id=m.user_id,
                         name=m_name,
                         role=schemas.ShareRole(m.role),
-                        avatar_url=m_prof.avatar_url if m_prof else None,
+                        avatar_url=m_avatar,
                         is_me=is_me,
                         is_owner=is_owner,
                         is_my_pana=(m.user_id in my_pana_ids_set or is_me),
@@ -800,6 +829,8 @@ async def build_share_info(db: AsyncSession, share: models.Share, user_id: UUID)
 
     user_ids = {m.user_id for m in members}
     user_ids.add(user_id)
+    if share.owner_id:
+        user_ids.add(share.owner_id)
 
     prof_res = await db.execute(select(models.Profile).where(models.Profile.id.in_(user_ids)))
     profiles = {p.id: p for p in prof_res.scalars().all()}
@@ -822,10 +853,29 @@ async def build_share_info(db: AsyncSession, share: models.Share, user_id: UUID)
         elif c.status == "pending":
             pending_pana_ids_set.add(other_id)
 
+    needs_auth = any(
+        (uid not in profiles)
+        or not profiles[uid].display_name
+        or not (profiles[uid].display_name.strip() if isinstance(profiles[uid].display_name, str) else "")
+        or not getattr(profiles[uid], "avatar_url", None)
+        or not (profiles[uid].avatar_url.strip() if isinstance(profiles[uid].avatar_url, str) else "")
+        for uid in user_ids
+    )
+    auth_users_map = {}
+    if needs_auth:
+        auth_users_map = await fetch_auth_users_map(db, list(user_ids))
+
     members_out: List[schemas.ShareMemberOut] = []
     for m in members:
         m_prof = profiles.get(m.user_id)
-        m_name = m_prof.display_name if m_prof and m_prof.display_name else "Usuario"
+        m_auth = auth_users_map.get(m.user_id, {})
+        m_name, m_avatar = resolve_name_and_avatar(
+            display_name=m_prof.display_name if m_prof else None,
+            avatar_url=m_prof.avatar_url if m_prof else None,
+            raw_user_meta_data=m_auth.get("raw_user_meta_data"),
+            email=m_auth.get("email"),
+            default_name="Usuario"
+        )
         is_me = (m.user_id == user_id)
         is_owner = (m.user_id == share.owner_id)
         members_out.append(
@@ -833,7 +883,7 @@ async def build_share_info(db: AsyncSession, share: models.Share, user_id: UUID)
                 user_id=m.user_id,
                 name=m_name,
                 role=schemas.ShareRole(m.role),
-                avatar_url=m_prof.avatar_url if m_prof else None,
+                avatar_url=m_avatar,
                 is_me=is_me,
                 is_owner=is_owner,
                 is_my_pana=(m.user_id in my_pana_ids_set or is_me),
@@ -849,6 +899,9 @@ async def build_share_info(db: AsyncSession, share: models.Share, user_id: UUID)
         owner_id=share.owner_id,
         members=members_out
     )
+
+
+get_share_info = build_share_info
 
 
 async def update_member_local_category(

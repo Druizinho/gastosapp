@@ -838,7 +838,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
                 shortLabel: 'Míos',
                 count: subBudgets.length,
                 icon: <Layers size={13} />,
-                badgeColor: '#10B981',
+                badgeColor: 'var(--tool-budgets, #6366F1)',
               },
               {
                 id: 'shared',
@@ -851,7 +851,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
             ]}
             activeTab={subBudgetTab}
             onChange={setSubBudgetTab}
-            activeColor={subBudgetTab === 'shared' ? '#3B82F6' : 'var(--primary-color, #10B981)'}
+            activeColor={subBudgetTab === 'shared' ? '#3B82F6' : 'var(--tool-budgets, #6366F1)'}
             style={{ marginBottom: '1rem' }}
           />
 

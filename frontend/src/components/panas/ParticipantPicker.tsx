@@ -11,6 +11,56 @@ interface ParticipantPickerProps {
   disabled?: boolean;
 }
 
+const ParticipantAvatar: React.FC<{ name: string; avatarUrl?: string | null; size?: number }> = ({
+  name,
+  avatarUrl,
+  size = 30,
+}) => {
+  const [hasError, setHasError] = useState(false);
+  const initial = (name && name.trim()) ? name.trim().charAt(0).toUpperCase() : '?';
+
+  if (avatarUrl && !hasError) {
+    return (
+      <img
+        src={avatarUrl}
+        alt={name}
+        onError={() => setHasError(true)}
+        style={{
+          width: `${size}px`,
+          height: `${size}px`,
+          borderRadius: '50%',
+          objectFit: 'cover',
+          display: 'block',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+          border: '1.5px solid var(--surface-color, #ffffff)',
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      style={{
+        width: `${size}px`,
+        height: `${size}px`,
+        borderRadius: '50%',
+        background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: '#fff',
+        fontWeight: 600,
+        fontSize: `${size * 0.43}px`,
+        boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+        flexShrink: 0,
+      }}
+    >
+      {initial}
+    </div>
+  );
+};
+
 export const ParticipantPicker: React.FC<ParticipantPickerProps> = ({
   connections,
   selectedIds,
@@ -161,22 +211,7 @@ export const ParticipantPicker: React.FC<ParticipantPickerProps> = ({
                   {isSelected && <Check size={14} color="#fff" strokeWidth={3} />}
                 </div>
 
-                <div
-                  style={{
-                    width: '30px',
-                    height: '30px',
-                    borderRadius: '50%',
-                    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#fff',
-                    fontWeight: 600,
-                    fontSize: '0.8rem',
-                  }}
-                >
-                  {c.partner_name.charAt(0).toUpperCase()}
-                </div>
+                <ParticipantAvatar name={c.partner_name} avatarUrl={c.partner_avatar_url} size={30} />
 
                 <span
                   style={{

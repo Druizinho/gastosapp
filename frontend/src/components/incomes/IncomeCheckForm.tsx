@@ -270,7 +270,7 @@ const IncomeCheckForm: React.FC<IncomeCheckFormProps> = ({ income, monthYear, on
               type="submit"
               disabled={isSubmitting}
               className="btn-submit"
-              style={{ backgroundColor: isPartial ? '#F59E0B' : '#10B981', borderColor: 'transparent' }}
+              style={{ backgroundColor: isPartial ? '#F59E0B' : 'var(--tool-income, #3B82F6)', borderColor: 'transparent' }}
             >
               {isSubmitting ? 'Confirmando...' : 'Confirmar'}
             </button>

@@ -756,7 +756,7 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
         onBack={onBack}
         actionLabel={activeTab === 'movements' ? 'Ingreso' : 'Plantilla'}
         actionIcon={<Plus size={16} strokeWidth={2.5} />}
-        actionColor="#10B981"
+        actionColor="var(--tool-income, #3B82F6)"
         onAction={() => {
           if (activeTab === 'movements') {
             setEditingMovement(null);
@@ -842,7 +842,7 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
                 setEditingMovement(null);
                 setIsMovementFormOpen(true);
               }}
-              actionColor="#10B981"
+              actionColor="var(--tool-income, #3B82F6)"
             />
           ) : (
             realIncomes.map((movement) => renderMovementCard(movement))

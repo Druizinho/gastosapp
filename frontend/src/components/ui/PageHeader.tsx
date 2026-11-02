@@ -12,6 +12,7 @@ export interface PageHeaderProps {
   onAction?: () => void;
   actionColor?: string;
   controls?: React.ReactNode;
+  controlsBorder?: boolean;
   compactActionOnMobile?: boolean;
 }
 
@@ -25,6 +26,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   onAction,
   actionColor = 'var(--tool-budgets, #6366F1)',
   controls,
+  controlsBorder,
   compactActionOnMobile,
 }) => {
   const shouldCompact = compactActionOnMobile ?? Boolean(actionIcon);
@@ -178,7 +180,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
           style={{
             marginTop: '0.5rem',
             paddingTop: '0.75rem',
-            borderTop: '1px solid var(--border-color, rgba(0, 0, 0, 0.06))',
+            borderTop: controlsBorder === false ? 'none' : '1px solid var(--border-color, rgba(0, 0, 0, 0.06))',
           }}
         >
           {controls}

@@ -11,6 +11,12 @@ from collections import defaultdict
 
 from . import models, schemas, sharing, crud_budgets
 from .push_service import send_push_notification, send_notification_to_user, resolve_notifications_for_entity
+from .user_resolver import (
+    resolve_name_and_avatar,
+    fetch_auth_users_map,
+    find_auth_user_by_email as resolve_find_auth_user_by_email,
+    get_or_hydrate_profile,
+)
 
 _connection_request_history = defaultdict(list)
 _RATE_LIMIT_WINDOW_SECONDS = 60
@@ -47,36 +53,68 @@ def _check_connection_rate_limit(user_id: UUID) -> bool:
     return True
 
 async def find_user_by_email(db: AsyncSession, email: str) -> Optional[schemas.UserSearchResult]:
-    result = await db.execute(
-        text("SELECT id, email FROM auth.users WHERE email = :email"),
-        {"email": email}
-    )
-    auth_user = result.first()
-    if not auth_user:
+    clean_email = (email or "").strip().lower()
+    if not clean_email:
         return None
-        
-    auth_id = auth_user.id
-    
-    profile_result = await db.execute(
-        select(models.Profile).where(models.Profile.id == auth_id)
+
+    auth_user = await resolve_find_auth_user_by_email(db, clean_email)
+    if not auth_user:
+        try:
+            result = await db.execute(
+                text("SELECT id, email, raw_user_meta_data FROM auth.users WHERE LOWER(email) = :email"),
+                {"email": clean_email}
+            )
+            row = result.first()
+            if not row:
+                return None
+            auth_id = getattr(row, "id", None) if hasattr(row, "id") else row[0]
+            auth_email = getattr(row, "email", None) if hasattr(row, "email") else row[1]
+            raw_meta = getattr(row, "raw_user_meta_data", None) if hasattr(row, "raw_user_meta_data") else (row[2] if len(row) > 2 else None)
+            auth_user = {
+                "id": UUID(str(auth_id)) if not isinstance(auth_id, UUID) else auth_id,
+                "email": auth_email,
+                "raw_user_meta_data": raw_meta
+            }
+        except Exception:
+            return None
+
+    auth_id = auth_user["id"]
+    auth_email = auth_user["email"]
+
+    # Hydrate profile if needed
+    profile = await get_or_hydrate_profile(db, auth_id, auth_data=auth_user, commit=True)
+
+    display_name, avatar_url = resolve_name_and_avatar(
+        display_name=profile.display_name if profile else None,
+        avatar_url=profile.avatar_url if profile else None,
+        raw_user_meta_data=auth_user.get("raw_user_meta_data"),
+        email=auth_email
     )
-    profile = profile_result.scalars().first()
-    
-    display_name = profile.display_name if profile and profile.display_name else auth_user.email
-    
+
     return schemas.UserSearchResult(
         id=auth_id,
         display_name=display_name,
-        email=auth_user.email
+        email=auth_email
     )
 
-def _populate_connection_response(conn: models.Connection, user_id: UUID, profiles: dict) -> schemas.ConnectionResponse:
+def _populate_connection_response(
+    conn: models.Connection,
+    user_id: UUID,
+    profiles: dict,
+    auth_users: Optional[dict] = None
+) -> schemas.ConnectionResponse:
     is_requester = conn.requester_id == user_id
     partner_id = conn.receiver_id if is_requester else conn.requester_id
     partner = profiles.get(partner_id)
-    partner_name = partner.display_name if partner and partner.display_name else "Usuario"
-    partner_avatar_url = partner.avatar_url if partner else None
-    
+    auth_info = (auth_users or {}).get(partner_id, {})
+    partner_name, partner_avatar_url = resolve_name_and_avatar(
+        display_name=partner.display_name if partner else None,
+        avatar_url=partner.avatar_url if partner else None,
+        raw_user_meta_data=auth_info.get("raw_user_meta_data"),
+        email=auth_info.get("email"),
+        default_name="Usuario"
+    )
+
     return schemas.ConnectionResponse(
         id=conn.id,
         requester_id=conn.requester_id,
@@ -100,21 +138,33 @@ async def get_connections(db: AsyncSession, user_id: UUID) -> List[schemas.Conne
         ).order_by(models.Connection.created_at.desc())
     )
     connections = result.scalars().all()
-    
+
     # Get all involved profiles
     partner_ids = set()
     for c in connections:
         partner_ids.add(c.receiver_id if c.requester_id == user_id else c.requester_id)
-        
+
     if not partner_ids:
         return []
-        
+
     profiles_result = await db.execute(
         select(models.Profile).where(models.Profile.id.in_(partner_ids))
     )
     profiles = {p.id: p for p in profiles_result.scalars().all()}
-    
-    return [_populate_connection_response(c, user_id, profiles) for c in connections]
+
+    needs_auth = any(
+        (pid not in profiles)
+        or not profiles[pid].display_name
+        or not (profiles[pid].display_name.strip() if isinstance(profiles[pid].display_name, str) else "")
+        or not profiles[pid].avatar_url
+        or not (profiles[pid].avatar_url.strip() if isinstance(profiles[pid].avatar_url, str) else "")
+        for pid in partner_ids
+    )
+    auth_users = {}
+    if needs_auth:
+        auth_users = await fetch_auth_users_map(db, list(partner_ids))
+
+    return [_populate_connection_response(c, user_id, profiles, auth_users) for c in connections]
 
 async def create_connection_request(db: AsyncSession, requester_id: UUID, target_email: str):
     # SEC-09: Prevenir enumeración masiva de correos mediante rate limiting
@@ -170,7 +220,13 @@ async def create_connection_request(db: AsyncSession, requester_id: UUID, target
     await db.commit()
     await db.refresh(conn)
     
-    profiles = {target.id: models.Profile(id=target.id, display_name=target.display_name)}
+    target_prof_res = await db.execute(select(models.Profile).where(models.Profile.id == target.id))
+    target_prof = target_prof_res.scalars().first()
+    if target_prof:
+        profiles = {target.id: target_prof}
+    else:
+        target_avatar = getattr(target, "avatar_url", None)
+        profiles = {target.id: models.Profile(id=target.id, display_name=target.display_name, avatar_url=target_avatar)}
     return _populate_connection_response(conn, requester_id, profiles), None
 
 async def accept_connection(db: AsyncSession, connection_id: UUID, user_id: UUID):
@@ -384,12 +440,8 @@ async def get_panas_overview(db: AsyncSession, user_id: UUID) -> schemas.PanasGl
     prof_res = await db.execute(select(models.Profile).where(models.Profile.id.in_(partner_ids)))
     profiles_by_id = {p.id: p for p in prof_res.scalars().all()}
 
-    # Batch-fetch emails from auth.users
-    email_res = await db.execute(
-        text("SELECT id, email FROM auth.users WHERE id = ANY(:pids)"),
-        {"pids": partner_ids}
-    )
-    emails_by_id = {row.id: row.email for row in email_res.all()}
+    # Batch-fetch auth users map from auth.users with safe fallback
+    auth_users_map = await fetch_auth_users_map(db, partner_ids)
 
     # Batch-fetch all shares where user_id is a member, along with all ShareMembers in those shares
     my_share_ids_subq = select(models.ShareMember.share_id).where(models.ShareMember.user_id == user_id)
@@ -448,8 +500,16 @@ async def get_panas_overview(db: AsyncSession, user_id: UUID) -> schemas.PanasGl
     for conn in connections:
         partner_id = conn.receiver_id if conn.requester_id == user_id else conn.requester_id
         prof = profiles_by_id.get(partner_id)
-        partner_name = prof.display_name if prof and prof.display_name else "Pana"
-        partner_email = emails_by_id.get(partner_id)
+        auth_info = auth_users_map.get(partner_id, {})
+        partner_email = auth_info.get("email")
+
+        partner_name, partner_avatar_url = resolve_name_and_avatar(
+            display_name=prof.display_name if prof else None,
+            avatar_url=prof.avatar_url if prof else None,
+            raw_user_meta_data=auth_info.get("raw_user_meta_data"),
+            email=partner_email,
+            default_name="Pana"
+        )
 
         shared_fe_count = 0
         pending_fe_count = 0
@@ -502,7 +562,7 @@ async def get_panas_overview(db: AsyncSession, user_id: UUID) -> schemas.PanasGl
                 id=conn.id,
                 partner_id=partner_id,
                 partner_name=partner_name,
-                partner_avatar_url=prof.avatar_url if prof else None,
+                partner_avatar_url=partner_avatar_url,
                 partner_email=partner_email,
                 status=conn.status,
                 created_at=conn.created_at,
@@ -548,21 +608,30 @@ async def get_pana_details(db: AsyncSession, user_id: UUID, partner_id: UUID) ->
 
     prof_res = await db.execute(select(models.Profile).where(models.Profile.id == partner_id))
     prof = prof_res.scalars().first()
-    partner_name = prof.display_name if prof and prof.display_name else "Pana"
-    partner_avatar_url = prof.avatar_url if prof else None
 
     partner_email = None
+    partner_meta = None
     try:
         async with db.begin_nested():
-            email_res = await db.execute(
-                text("SELECT email FROM auth.users WHERE id = CAST(:pid AS uuid)"),
+            auth_res = await db.execute(
+                text("SELECT email, raw_user_meta_data FROM auth.users WHERE id = CAST(:pid AS uuid)"),
                 {"pid": str(partner_id)}
             )
-            email_row = email_res.first()
-            if email_row:
-                partner_email = getattr(email_row, 'email', None) or (email_row[0] if len(email_row) > 0 else None)
+            auth_row = auth_res.first()
+            if auth_row:
+                partner_email = getattr(auth_row, 'email', None) if hasattr(auth_row, 'email') else (auth_row[0] if len(auth_row) > 0 else None)
+                partner_meta = getattr(auth_row, 'raw_user_meta_data', None) if hasattr(auth_row, 'raw_user_meta_data') else (auth_row[1] if len(auth_row) > 1 else None)
     except Exception:
         partner_email = None
+        partner_meta = None
+
+    partner_name, partner_avatar_url = resolve_name_and_avatar(
+        display_name=prof.display_name if prof else None,
+        avatar_url=prof.avatar_url if prof else None,
+        raw_user_meta_data=partner_meta,
+        email=partner_email,
+        default_name="Pana"
+    )
 
     # Query all shares between user_id and partner_id
     shares_res = await db.execute(

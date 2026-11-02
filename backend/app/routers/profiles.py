@@ -8,6 +8,7 @@ from app.database import get_db
 from app import schemas, crud
 from app.auth import get_current_user
 from app.models import Profile, Category
+from app.user_resolver import get_or_hydrate_profile
 
 router = APIRouter(
     prefix="/api/profile",
@@ -20,14 +21,7 @@ async def get_profile(
     db: AsyncSession = Depends(get_db),
     user_id: UUID = Depends(get_current_user)
 ):
-    result = await db.execute(select(Profile).where(Profile.id == user_id))
-    profile = result.scalar_one_or_none()
-    if not profile:
-        # Auto-create profile if it doesn't exist (edge case for pre-existing users)
-        profile = Profile(id=user_id)
-        db.add(profile)
-        await db.commit()
-        await db.refresh(profile)
+    profile = await get_or_hydrate_profile(db, user_id=user_id)
         
     # Idempotent lazy seeding if user has 0 categories
     await crud.seed_default_categories(db, user_id=user_id, only_if_empty=True)
@@ -39,16 +33,8 @@ async def update_profile(
     db: AsyncSession = Depends(get_db),
     user_id: UUID = Depends(get_current_user)
 ):
-    result = await db.execute(select(Profile).where(Profile.id == user_id))
-    profile = result.scalar_one_or_none()
-    
-    if not profile:
-        # Auto-create if missing
-        profile = Profile(id=user_id)
-        db.add(profile)
-        await db.commit()
-        await db.refresh(profile)
-        await crud.seed_default_categories(db, user_id=user_id, only_if_empty=True)
+    profile = await get_or_hydrate_profile(db, user_id=user_id)
+    await crud.seed_default_categories(db, user_id=user_id, only_if_empty=True)
 
     # Update fields
     update_data = profile_data.model_dump(exclude_unset=True)

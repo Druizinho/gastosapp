@@ -388,6 +388,7 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
               ]}
               activeTab={mode}
               onChange={handleModeChange}
+              activeColor={mode === 'income' ? 'var(--tool-income, #3B82F6)' : 'var(--expense-color, #EF4444)'}
             />
           </div>
         )}

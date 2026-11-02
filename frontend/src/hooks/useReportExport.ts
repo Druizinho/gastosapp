@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import type {
   ExportConfig,
   ExportFormatType,
@@ -214,17 +214,16 @@ export async function generateNormalizedDocument(
     estimatedIncomes?: EstimatedIncome[];
   }
 ): Promise<NormalizedExportDocument> {
-  const rates = await getRates().catch(() => null);
+  const ratesPromise = getRates().catch(() => null);
   const svgs = options?.svgElements || [];
 
   if (cfg.source === 'summary') {
-    const summary = await getSummaryRange(cfg.dateFromA, cfg.dateToA);
-    let expenses: any[] = [];
-    let incomes: any[] = [];
-    if (cfg.includeTransactions) {
-      expenses = await getExpenses(cfg.dateFromA, cfg.dateToA).catch(() => []);
-      incomes = await getIncomes(cfg.dateFromA, cfg.dateToA).catch(() => []);
-    }
+    const [rates, summary, expenses, incomes] = await Promise.all([
+      ratesPromise,
+      getSummaryRange(cfg.dateFromA, cfg.dateToA),
+      cfg.includeTransactions ? getExpenses(cfg.dateFromA, cfg.dateToA).catch(() => []) : Promise.resolve([]),
+      cfg.includeTransactions ? getIncomes(cfg.dateFromA, cfg.dateToA).catch(() => []) : Promise.resolve([]),
+    ]);
     return buildSummaryDocument({
       config: cfg,
       summary,
@@ -236,20 +235,19 @@ export async function generateNormalizedDocument(
   }
 
   if (cfg.source === 'comparison') {
-    const comparison = await getReportAnalysis({
-      date_from_a: cfg.dateFromA,
-      date_to_a: cfg.dateToA,
-      date_from_b: cfg.dateFromB,
-      date_to_b: cfg.dateToB,
-    });
-    let expensesA: any[] = [];
-    let expensesB: any[] = [];
-    if (cfg.includeTransactions) {
-      expensesA = await getExpenses(cfg.dateFromA, cfg.dateToA).catch(() => []);
-      if (cfg.dateFromB && cfg.dateToB) {
-        expensesB = await getExpenses(cfg.dateFromB, cfg.dateToB).catch(() => []);
-      }
-    }
+    const [rates, comparison, expensesA, expensesB] = await Promise.all([
+      ratesPromise,
+      getReportAnalysis({
+        date_from_a: cfg.dateFromA,
+        date_to_a: cfg.dateToA,
+        date_from_b: cfg.dateFromB,
+        date_to_b: cfg.dateToB,
+      }),
+      cfg.includeTransactions ? getExpenses(cfg.dateFromA, cfg.dateToA).catch(() => []) : Promise.resolve([]),
+      cfg.includeTransactions && cfg.dateFromB && cfg.dateToB
+        ? getExpenses(cfg.dateFromB, cfg.dateToB).catch(() => [])
+        : Promise.resolve([]),
+    ]);
     return buildComparisonDocument({
       config: cfg,
       comparison,
@@ -261,10 +259,12 @@ export async function generateNormalizedDocument(
   }
 
   if (cfg.source === 'debts') {
-    const debts =
+    const [rates, debts] = await Promise.all([
+      ratesPromise,
       options?.debts && options.debts.length > 0
-        ? options.debts
-        : await getDebts().catch(() => []);
+        ? Promise.resolve(options.debts)
+        : getDebts().catch(() => []),
+    ]);
     return buildDebtsDocument({
       config: cfg,
       debts,
@@ -274,11 +274,13 @@ export async function generateNormalizedDocument(
   }
 
   if (cfg.source === 'savings') {
-    const allGoals =
+    const [rates, allGoals] = await Promise.all([
+      ratesPromise,
       options?.savings && options.savings.length > 0
-        ? options.savings
-        : await getSavingGoals().catch(() => []);
-    const savings = allGoals.filter((g) => g.type !== 'project');
+        ? Promise.resolve(options.savings)
+        : getSavingGoals().catch(() => []),
+    ]);
+    const savings = allGoals.filter((g) => g.type !== 'project' && !(g as any).is_project);
     return buildSavingsDocument({
       config: cfg,
       savings,
@@ -288,11 +290,13 @@ export async function generateNormalizedDocument(
   }
 
   if (cfg.source === 'projects') {
-    const allGoals =
+    const [rates, allGoals] = await Promise.all([
+      ratesPromise,
       options?.savings && options.savings.length > 0
-        ? options.savings
-        : await getSavingGoals().catch(() => []);
-    const projects = allGoals.filter((g) => g.type === 'project');
+        ? Promise.resolve(options.savings)
+        : getSavingGoals().catch(() => []),
+    ]);
+    const projects = allGoals.filter((g) => g.type === 'project' || (g as any).is_project);
     return buildProjectsDocument({
       config: cfg,
       projects,
@@ -302,9 +306,12 @@ export async function generateNormalizedDocument(
   }
 
   if (cfg.source === 'budgets') {
-    const mb =
-      options?.budgetData ||
-      (await getMonthlyBudget(cfg.monthYear).catch(() => null));
+    const [rates, mb] = await Promise.all([
+      ratesPromise,
+      options?.budgetData
+        ? Promise.resolve(options.budgetData)
+        : getMonthlyBudget(cfg.monthYear).catch(() => null),
+    ]);
     if (!mb) {
       throw new Error(`No se pudo obtener el presupuesto para ${cfg.monthYear}`);
     }
@@ -328,9 +335,12 @@ export async function generateNormalizedDocument(
 
   if (cfg.source === 'fixed_expenses') {
     const ym = cfg.monthYear;
-    const fixedExpenses =
-      options?.fixedExpenses ||
-      (await getMonthlyFixedExpenses(ym).catch(() => getFixedExpenses()));
+    const [rates, fixedExpenses] = await Promise.all([
+      ratesPromise,
+      options?.fixedExpenses
+        ? Promise.resolve(options.fixedExpenses)
+        : getMonthlyFixedExpenses(ym).catch(() => getFixedExpenses()),
+    ]);
     return buildFixedExpensesDocument({
       config: cfg,
       fixedExpenses,
@@ -342,9 +352,12 @@ export async function generateNormalizedDocument(
 
   if (cfg.source === 'estimated_incomes') {
     const ym = cfg.monthYear;
-    const estimatedIncomes =
-      options?.estimatedIncomes ||
-      (await getMonthlyIncomes(ym).catch(() => getEstimatedIncomes()));
+    const [rates, estimatedIncomes] = await Promise.all([
+      ratesPromise,
+      options?.estimatedIncomes
+        ? Promise.resolve(options.estimatedIncomes)
+        : getMonthlyIncomes(ym).catch(() => getEstimatedIncomes()),
+    ]);
     return buildEstimatedIncomeDocument({
       config: cfg,
       estimatedIncomes,
@@ -362,16 +375,16 @@ export async function generateNormalizedDocument(
     const fromDate = toIsoDate(new Date(yNum, mNum - 1, 1));
     const toDate = toIsoDate(new Date(yNum, mNum, 0));
 
-    const fixedExpenses =
-      options?.fixedExpenses ||
-      (await getMonthlyFixedExpenses(ym).catch(() => getFixedExpenses()));
-    const estimatedIncomes =
-      options?.estimatedIncomes ||
-      (await getMonthlyIncomes(ym).catch(() => getEstimatedIncomes()));
-    let realIncomes: any[] = [];
-    if (cfg.includeTransactions) {
-      realIncomes = await getIncomes(fromDate, toDate).catch(() => []);
-    }
+    const [rates, fixedExpenses, estimatedIncomes, realIncomes] = await Promise.all([
+      ratesPromise,
+      options?.fixedExpenses
+        ? Promise.resolve(options.fixedExpenses)
+        : getMonthlyFixedExpenses(ym).catch(() => getFixedExpenses()),
+      options?.estimatedIncomes
+        ? Promise.resolve(options.estimatedIncomes)
+        : getMonthlyIncomes(ym).catch(() => getEstimatedIncomes()),
+      cfg.includeTransactions ? getIncomes(fromDate, toDate).catch(() => []) : Promise.resolve([]),
+    ]);
     return buildFixedAndIncomeDocument({
       config: cfg,
       fixedExpenses,
@@ -530,7 +543,7 @@ export function calculatePreviewMetadata(
 
   if (source === 'savings') {
     const allGoals = entities?.savings || [];
-    const pureSavings = allGoals.filter((g) => g.type !== 'project');
+    const pureSavings = allGoals.filter((g) => g.type !== 'project' && !(g as any).is_project);
 
     if (config.selectedSavingId && config.selectedSavingId !== 'all') {
       const selected = pureSavings.find((g) => g.id === config.selectedSavingId);
@@ -539,6 +552,7 @@ export function calculatePreviewMetadata(
         const amt = Number(d.amount || 0);
         return d.transaction_type === 'withdrawal' ? acc - amt : acc + amt;
       }, 0);
+      const hasTarget = Boolean(selected?.target_amount && Number(selected.target_amount) > 0);
       return {
         title: selected ? `Meta de Ahorro: ${selected.name}` : 'Meta Específica',
         subtitle: `Seguimiento individual de fondo en ${currency}`,
@@ -550,13 +564,18 @@ export function calculatePreviewMetadata(
         kpis: [
           { label: 'Meta', value: selected?.name || 'N/A' },
           {
-            label: 'Objetivo',
-            value: selected ? `${selected.currency} ${Number(selected.target_amount || 0).toLocaleString()}` : '-',
-          },
-          {
-            label: 'Ahorrado',
+            label: 'Total Ahorrado',
             value: selected ? `${selected.currency} ${Number(savedAmount).toLocaleString()}` : '-',
             highlight: 'positive',
+          },
+          {
+            label: hasTarget ? 'Presupuesto Meta' : 'Estado',
+            value: selected
+              ? hasTarget
+                ? `${selected.currency} ${Number(selected.target_amount).toLocaleString()}`
+                : (selected.is_completed ? 'Completado' : 'En curso')
+              : '-',
+            highlight: selected?.is_completed ? 'positive' : 'warning',
           },
         ],
       };
@@ -585,11 +604,16 @@ export function calculatePreviewMetadata(
 
   if (source === 'projects') {
     const allGoals = entities?.savings || [];
-    const projects = allGoals.filter((g) => g.type === 'project');
+    const projects = allGoals.filter((g) => g.type === 'project' || (g as any).is_project);
 
     if (config.selectedProjectId && config.selectedProjectId !== 'all') {
       const selected = projects.find((p) => p.id === config.selectedProjectId);
       const hasRecords = Boolean(selected);
+      const executedAmount = (selected?.deposits || []).reduce((acc, d) => {
+        const amt = Number(d.amount || 0);
+        return d.transaction_type === 'withdrawal' ? acc - amt : acc + amt;
+      }, 0);
+      const hasTarget = Boolean(selected?.target_amount && Number(selected.target_amount) > 0);
       return {
         title: selected ? `Proyecto: ${selected.name}` : 'Proyecto Específico',
         subtitle: `Costos y ejecución presupuestaria en ${currency}`,
@@ -601,12 +625,17 @@ export function calculatePreviewMetadata(
         kpis: [
           { label: 'Proyecto', value: selected?.name || 'N/A' },
           {
-            label: 'Presupuesto',
-            value: selected ? `${selected.currency} ${Number(selected.target_amount || 0).toLocaleString()}` : '-',
+            label: 'Total Ejecutado',
+            value: selected ? `${selected.currency} ${executedAmount.toLocaleString()}` : '-',
+            highlight: 'positive',
           },
           {
-            label: 'Estado',
-            value: selected ? (selected.is_completed ? 'Completado' : 'En ejecución') : '-',
+            label: hasTarget ? 'Presupuesto Meta' : 'Estado',
+            value: selected
+              ? hasTarget
+                ? `${selected.currency} ${Number(selected.target_amount).toLocaleString()}`
+                : (selected.is_completed ? 'Completado' : 'En curso')
+              : '-',
             highlight: selected?.is_completed ? 'positive' : 'warning',
           },
         ],
@@ -627,7 +656,7 @@ export function calculatePreviewMetadata(
       emptyWarning: allGoals.length > 0 && count === 0 ? 'No hay proyectos registrados.' : undefined,
       kpis: [
         { label: 'Total Proyectos', value: `${count}`, highlight: count > 0 ? 'positive' : 'warning' },
-        { label: 'En Ejecución', value: `${activeCount}` },
+        { label: 'En Curso', value: `${activeCount}` },
         { label: 'Concluidos', value: `${completedCount}`, highlight: 'positive' },
       ],
     };
@@ -783,9 +812,50 @@ export interface UseReportExportReturn {
 export function useReportExport(options: UseReportExportOptions = {}): UseReportExportReturn {
   const { config: callerConfig, entities: callerEntities, getSvgElements, onSuccess, onError } = options;
 
-  const [activeConfig, setActiveConfig] = useState<ExportConfig>(() => callerConfig || getDefaultExportConfig());
-  const [internalEntities, setInternalEntities] = useState<ExportEntitiesCache>({});
+  const [activeConfig] = useState<ExportConfig>(() => callerConfig || getDefaultExportConfig());
+  const cfg = callerConfig ?? activeConfig;
+
+  interface InternalEntitiesCache {
+    debts?: Debt[];
+    savings?: SavingGoal[];
+    budgetDataByMonth: Record<string, MonthlyBudgetResponse | null>;
+    fixedExpensesByMonth: Record<string, FixedExpense[]>;
+    estimatedIncomesByMonth: Record<string, EstimatedIncome[]>;
+  }
+
+  const [internalEntities, setInternalEntities] = useState<InternalEntitiesCache>({
+    budgetDataByMonth: {},
+    fixedExpensesByMonth: {},
+    estimatedIncomesByMonth: {},
+  });
+  const [rawLoadingEntities, setRawLoadingEntities] = useState<boolean>(false);
   const [loadingEntities, setLoadingEntities] = useState<boolean>(false);
+
+  // Mount tracking to prevent setState after unmount
+  const isMountedRef = useRef<boolean>(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  // Delayed loading flag (~300ms) to avoid brief flicker on fast loads
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    if (rawLoadingEntities) {
+      timer = setTimeout(() => {
+        if (isMountedRef.current) {
+          setLoadingEntities(true);
+        }
+      }, 300);
+    } else {
+      setLoadingEntities(false);
+    }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [rawLoadingEntities]);
 
   // Export progress & execution state
   const [isExporting, setIsExporting] = useState<boolean>(false);
@@ -795,85 +865,189 @@ export function useReportExport(options: UseReportExportOptions = {}): UseReport
   const [exportSuccessMessage, setExportSuccessMessage] = useState<string | null>(null);
   const [exportActionLoading, setExportActionLoading] = useState<'download' | 'share' | 'email' | null>(null);
 
-  // Sync when caller updates config
-  if (callerConfig && callerConfig !== activeConfig) {
-    // Only update if fundamentally different reference/source
-    if (
-      callerConfig.source !== activeConfig.source ||
-      callerConfig.format !== activeConfig.format ||
-      callerConfig.currency !== activeConfig.currency ||
-      callerConfig.monthYear !== activeConfig.monthYear ||
-      callerConfig.dateFromA !== activeConfig.dateFromA ||
-      callerConfig.dateToA !== activeConfig.dateToA
-    ) {
-      setActiveConfig(callerConfig);
-    }
-  }
+  // Helper to resolve entities for a specific monthYear (or callerEntities if provided)
+  const resolveEntitiesForMonth = useCallback(
+    (targetMonthYear: string): ExportEntitiesCache => {
+      const budget =
+        callerEntities?.budgetData !== undefined
+          ? (callerEntities.budgetData?.month_year && callerEntities.budgetData.month_year !== targetMonthYear
+              ? undefined
+              : callerEntities.budgetData)
+          : internalEntities.budgetDataByMonth[targetMonthYear];
 
-  // Merged entities (caller provides priority)
-  const mergedEntities = useMemo<ExportEntitiesCache>(() => ({
-    debts: callerEntities?.debts ?? internalEntities.debts,
-    savings: callerEntities?.savings ?? internalEntities.savings,
-    budgetData: callerEntities?.budgetData ?? internalEntities.budgetData,
-    fixedExpenses: callerEntities?.fixedExpenses ?? internalEntities.fixedExpenses,
-    estimatedIncomes: callerEntities?.estimatedIncomes ?? internalEntities.estimatedIncomes,
-  }), [callerEntities, internalEntities]);
+      return {
+        debts: callerEntities?.debts ?? internalEntities.debts,
+        savings: callerEntities?.savings ?? internalEntities.savings,
+        budgetData: budget,
+        fixedExpenses: callerEntities?.fixedExpenses ?? internalEntities.fixedExpensesByMonth[targetMonthYear],
+        estimatedIncomes: callerEntities?.estimatedIncomes ?? internalEntities.estimatedIncomesByMonth[targetMonthYear],
+      };
+    },
+    [callerEntities, internalEntities]
+  );
+
+  // Merged entities resolved based on activeConfig.monthYear
+  const mergedEntities = useMemo<ExportEntitiesCache>(() => {
+    return resolveEntitiesForMonth(cfg.monthYear);
+  }, [cfg.monthYear, resolveEntitiesForMonth]);
+
+  // Track loaded sources/monthYears to avoid duplicate requests & infinite loops
+  const loadedSourcesRef = useRef<{
+    debts?: boolean;
+    savings?: boolean;
+    budgets: Record<string, boolean>;
+    fixed_expenses: Record<string, boolean>;
+    estimated_incomes: Record<string, boolean>;
+  }>({
+    budgets: {},
+    fixed_expenses: {},
+    estimated_incomes: {},
+  });
+
+  // Per-source/month request tracking to guard against stale responses and race conditions
+  const requestTrackerRef = useRef<Record<string, number>>({});
+  const inFlightTrackerRef = useRef<Record<string, boolean>>({});
+
+  // Keep refs for callerEntities and internalEntities so loadEntitiesForSource has stable identity
+  const callerEntitiesRef = useRef(callerEntities);
+  const internalEntitiesRef = useRef(internalEntities);
+  useEffect(() => {
+    callerEntitiesRef.current = callerEntities;
+    internalEntitiesRef.current = internalEntities;
+  }, [callerEntities, internalEntities]);
 
   // Live Blueprint Preview memo
   const previewData = useMemo<ReportPreviewMetadata>(() => {
-    const cfg = callerConfig || activeConfig;
     return calculatePreviewMetadata(cfg, mergedEntities);
-  }, [callerConfig, activeConfig, mergedEntities]);
+  }, [cfg, mergedEntities]);
 
   // Lazy entity loader for sources requiring pre-cached options
-  const loadEntitiesForSource = useCallback(async (source: ExportSourceType, monthYear?: string) => {
-    const ym = monthYear || activeConfig.monthYear;
-    try {
-      setLoadingEntities(true);
-      if (source === 'debts' && (!mergedEntities.debts || mergedEntities.debts.length === 0)) {
-        const debts = await getDebts().catch(() => []);
-        setInternalEntities((prev) => ({ ...prev, debts: debts || [] }));
-      } else if ((source === 'savings' || source === 'projects') && (!mergedEntities.savings || mergedEntities.savings.length === 0)) {
-        const goals = await getSavingGoals().catch(() => []);
-        setInternalEntities((prev) => ({ ...prev, savings: goals || [] }));
+  const loadEntitiesForSource = useCallback(
+    async (source: ExportSourceType, monthYear?: string) => {
+      const ym = monthYear || cfg.monthYear;
+      const callerEnt = callerEntitiesRef.current;
+      const intEnt = internalEntitiesRef.current;
+      const loaded = loadedSourcesRef.current;
+
+      let requestKey = '';
+
+      if (source === 'debts') {
+        requestKey = 'debts';
+        if (callerEnt?.debts !== undefined || intEnt.debts !== undefined || loaded.debts) return;
+      } else if (source === 'savings' || source === 'projects') {
+        requestKey = 'savings';
+        if (callerEnt?.savings !== undefined || intEnt.savings !== undefined || loaded.savings) return;
       } else if (source === 'budgets') {
-        const mb = await getMonthlyBudget(ym).catch(() => null);
-        setInternalEntities((prev) => ({ ...prev, budgetData: mb }));
+        requestKey = `budgets:${ym}`;
+        if (
+          (callerEnt?.budgetData !== undefined && (!callerEnt.budgetData?.month_year || callerEnt.budgetData.month_year === ym)) ||
+          intEnt.budgetDataByMonth[ym] !== undefined ||
+          loaded.budgets[ym]
+        ) {
+          return;
+        }
       } else if (source === 'fixed_expenses') {
-        const fixed = await getMonthlyFixedExpenses(ym).catch(() => getFixedExpenses());
-        setInternalEntities((prev) => ({ ...prev, fixedExpenses: fixed || [] }));
+        requestKey = `fixed_expenses:${ym}`;
+        if (callerEnt?.fixedExpenses !== undefined || intEnt.fixedExpensesByMonth[ym] !== undefined || loaded.fixed_expenses[ym]) {
+          return;
+        }
       } else if (source === 'estimated_incomes') {
-        const incomes = await getMonthlyIncomes(ym).catch(() => getEstimatedIncomes());
-        setInternalEntities((prev) => ({ ...prev, estimatedIncomes: incomes || [] }));
+        requestKey = `estimated_incomes:${ym}`;
+        if (callerEnt?.estimatedIncomes !== undefined || intEnt.estimatedIncomesByMonth[ym] !== undefined || loaded.estimated_incomes[ym]) {
+          return;
+        }
+      } else {
+        return;
       }
-    } catch (e) {
-      console.warn('Error loading entities for report export:', e);
-    } finally {
-      setLoadingEntities(false);
-    }
-  }, [activeConfig.monthYear, mergedEntities]);
+
+      if (inFlightTrackerRef.current[requestKey]) {
+        return;
+      }
+
+      inFlightTrackerRef.current[requestKey] = true;
+      const currentReqId = (requestTrackerRef.current[requestKey] || 0) + 1;
+      requestTrackerRef.current[requestKey] = currentReqId;
+
+      setRawLoadingEntities(true);
+
+      try {
+        if (source === 'debts') {
+          const debts = await getDebts().catch(() => []);
+          if (isMountedRef.current && requestTrackerRef.current[requestKey] === currentReqId) {
+            loaded.debts = true;
+            setInternalEntities((prev) => ({ ...prev, debts: debts || [] }));
+          }
+        } else if (source === 'savings' || source === 'projects') {
+          const goals = await getSavingGoals().catch(() => []);
+          if (isMountedRef.current && requestTrackerRef.current[requestKey] === currentReqId) {
+            loaded.savings = true;
+            setInternalEntities((prev) => ({ ...prev, savings: goals || [] }));
+          }
+        } else if (source === 'budgets') {
+          const mb = await getMonthlyBudget(ym).catch(() => null);
+          if (isMountedRef.current && requestTrackerRef.current[requestKey] === currentReqId) {
+            loaded.budgets[ym] = true;
+            setInternalEntities((prev) => ({
+              ...prev,
+              budgetDataByMonth: { ...prev.budgetDataByMonth, [ym]: mb },
+            }));
+          }
+        } else if (source === 'fixed_expenses') {
+          const fixed = await getMonthlyFixedExpenses(ym).catch(() => getFixedExpenses());
+          if (isMountedRef.current && requestTrackerRef.current[requestKey] === currentReqId) {
+            loaded.fixed_expenses[ym] = true;
+            setInternalEntities((prev) => ({
+              ...prev,
+              fixedExpensesByMonth: { ...prev.fixedExpensesByMonth, [ym]: fixed || [] },
+            }));
+          }
+        } else if (source === 'estimated_incomes') {
+          const incomes = await getMonthlyIncomes(ym).catch(() => getEstimatedIncomes());
+          if (isMountedRef.current && requestTrackerRef.current[requestKey] === currentReqId) {
+            loaded.estimated_incomes[ym] = true;
+            setInternalEntities((prev) => ({
+              ...prev,
+              estimatedIncomesByMonth: { ...prev.estimatedIncomesByMonth, [ym]: incomes || [] },
+            }));
+          }
+        }
+      } catch (e) {
+        console.warn('Error loading entities for report export:', e);
+      } finally {
+        delete inFlightTrackerRef.current[requestKey];
+        if (isMountedRef.current) {
+          const hasInFlight = Object.values(inFlightTrackerRef.current).some(Boolean);
+          if (!hasInFlight) {
+            setRawLoadingEntities(false);
+          }
+        }
+      }
+    },
+    [cfg.monthYear]
+  );
 
   // Wrapper for document generator
   const handleGenerateDoc = useCallback(
-    async (cfg: ExportConfig): Promise<NormalizedExportDocument> => {
+    async (configToGen: ExportConfig): Promise<NormalizedExportDocument> => {
       const svgs = getSvgElements ? getSvgElements() : [];
-      return generateNormalizedDocument(cfg, {
+      const targetEntities = resolveEntitiesForMonth(configToGen.monthYear);
+      return generateNormalizedDocument(configToGen, {
         svgElements: svgs,
-        debts: mergedEntities.debts,
-        savings: mergedEntities.savings,
-        budgetData: mergedEntities.budgetData,
-        fixedExpenses: mergedEntities.fixedExpenses,
-        estimatedIncomes: mergedEntities.estimatedIncomes,
+        debts: targetEntities.debts,
+        savings: targetEntities.savings,
+        budgetData: targetEntities.budgetData,
+        fixedExpenses: targetEntities.fixedExpenses,
+        estimatedIncomes: targetEntities.estimatedIncomes,
       });
     },
-    [getSvgElements, mergedEntities]
+    [getSvgElements, resolveEntitiesForMonth]
   );
 
   // Main Export Dispatcher
   const exportDocument = useCallback(
     async (params: ExportDocumentOptions): Promise<{ success: boolean; filename?: string; error?: string }> => {
       const { action, format, config, emailRecipient, svgElements } = params;
-      const targetConfig: ExportConfig = config || callerConfig || activeConfig;
+      const targetConfig: ExportConfig = config || cfg;
       const targetFormat: ExportFormatType = format || targetConfig.format;
       const effectiveConfig: ExportConfig = { ...targetConfig, format: targetFormat };
 
@@ -900,13 +1074,14 @@ export function useReportExport(options: UseReportExportOptions = {}): UseReport
         const svgs = svgElements || (getSvgElements ? getSvgElements() : []);
         setExportProgress(35);
         setExportProgressStage('Estructurando documento normalizado...');
+        const targetEntities = resolveEntitiesForMonth(effectiveConfig.monthYear);
         const doc = await generateNormalizedDocument(effectiveConfig, {
           svgElements: svgs,
-          debts: mergedEntities.debts,
-          savings: mergedEntities.savings,
-          budgetData: mergedEntities.budgetData,
-          fixedExpenses: mergedEntities.fixedExpenses,
-          estimatedIncomes: mergedEntities.estimatedIncomes,
+          debts: targetEntities.debts,
+          savings: targetEntities.savings,
+          budgetData: targetEntities.budgetData,
+          fixedExpenses: targetEntities.fixedExpenses,
+          estimatedIncomes: targetEntities.estimatedIncomes,
         });
 
         // Step 2: Render to binary blob
@@ -979,7 +1154,7 @@ export function useReportExport(options: UseReportExportOptions = {}): UseReport
         setExportActionLoading(null);
       }
     },
-    [callerConfig, activeConfig, getSvgElements, mergedEntities, onSuccess, onError]
+    [cfg, getSvgElements, resolveEntitiesForMonth, onSuccess, onError]
   );
 
   const clearExportStatus = useCallback(() => {

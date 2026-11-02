@@ -12,16 +12,16 @@ import {
   ArrowLeftRight,
   ChevronDown,
   ChevronUp,
-  FileText,
-  Share2,
 } from 'lucide-react';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 import { PageHeader } from '../ui/PageHeader';
+import { SegmentedTabs } from '../ui/SegmentedTabs';
+import { Skeleton, SkeletonCircle } from '../ui/Skeleton';
+import { EmptyState } from '../ui/EmptyState';
 import { useAuth } from '../../context/AuthContext';
 import { useCurrencyPreference } from '../../context/CurrencyPreferenceContext';
-import { useToast } from '../ui/Toast';
-import { useReportExport } from '../../hooks/useReportExport';
-import { TOOL_COLORS } from '../../utils/toolColors';
 import {
   CategoryDonutChart,
   CashflowTrendChart,
@@ -37,7 +37,6 @@ import {
 } from '../../api';
 
 import type {
-  MainCurrencyPreference,
   PeriodComparisonResponse,
   ExportConfig,
   ExportSourceType,
@@ -51,7 +50,6 @@ import {
   resolveBalanceTotal,
   resolveCategoryTotal,
   resolveDailyAvg,
-  ORDERED_CURRENCIES,
 } from '../../utils/currencySummary';
 
 // ---------------------------------------------------------------------------
@@ -75,6 +73,29 @@ function formatShortDate(isoDate: string): string {
   const monthIdx = parseInt(parts[1], 10) - 1;
   const monthName = MONTH_NAMES_ES[monthIdx] || parts[1];
   return `${day} ${monthName}`;
+}
+
+function formatReadableRange(fromStr: string, toStr: string, includeYear: boolean = true): string {
+  if (!fromStr || !toStr) return '';
+  const [y1, m1, d1] = fromStr.split('-').map(Number);
+  const [y2, m2, d2] = toStr.split('-').map(Number);
+  if (!y1 || !m1 || !d1 || !y2 || !m2 || !d2) return `${fromStr} – ${toStr}`;
+  const date1 = new Date(y1, m1 - 1, d1);
+  const date2 = new Date(y2, m2 - 1, d2);
+
+  const cleanMonth1 = format(date1, 'MMM', { locale: es }).replace('.', '');
+  const cleanMonth2 = format(date2, 'MMM', { locale: es }).replace('.', '');
+
+  if (y1 === y2) {
+    if (m1 === m2) {
+      if (d1 === d2) {
+        return includeYear ? `${d1} ${cleanMonth1} ${y1}` : `${d1} ${cleanMonth1}`;
+      }
+      return includeYear ? `${d1} – ${d2} ${cleanMonth1} ${y1}` : `${d1} – ${d2} ${cleanMonth1}`;
+    }
+    return includeYear ? `${d1} ${cleanMonth1} – ${d2} ${cleanMonth2} ${y1}` : `${d1} ${cleanMonth1} – ${d2} ${cleanMonth2}`;
+  }
+  return includeYear ? `${d1} ${cleanMonth1} ${y1} – ${d2} ${cleanMonth2} ${y2}` : `${d1} ${cleanMonth1} – ${d2} ${cleanMonth2}`;
 }
 
 function getRangeDays(from: string, to: string): number {
@@ -177,18 +198,7 @@ function computeDelta(valA: number, valB: number): { abs: number; pct: number | 
 function renderDeltaBadge(pctTotal: number | null, pctDaily: number | null, isExpense: boolean = false) {
   if (pctTotal === null || isNaN(pctTotal)) {
     return (
-      <span
-        style={{
-          display: 'inline-block',
-          padding: '2px 6px',
-          borderRadius: '5px',
-          fontSize: '0.69rem',
-          fontWeight: 700,
-          fontVariantNumeric: 'tabular-nums',
-          background: 'rgba(148, 163, 184, 0.15)',
-          color: '#64748B',
-        }}
-      >
+      <span className="reports-delta-badge reports-delta-badge--neutral">
         N/A
       </span>
     );
@@ -202,27 +212,73 @@ function renderDeltaBadge(pctTotal: number | null, pctDaily: number | null, isEx
 
   return (
     <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        padding: '2px 6px',
-        borderRadius: '5px',
-        fontSize: '0.69rem',
-        fontWeight: 700,
-        fontVariantNumeric: 'tabular-nums',
-        background: isGood ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
-        color: isGood ? '#059669' : '#DC2626',
-        maxWidth: '100%',
-        whiteSpace: 'nowrap',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-      }}
+      className={`reports-delta-badge ${isGood ? 'reports-delta-badge--good' : 'reports-delta-badge--bad'}`}
       title={`Variación total: ${pctTotal.toFixed(1)}% | Por día: ${(pctDaily || 0).toFixed(1)}%`}
     >
       {totalPart}{dailyPart}
     </span>
   );
 }
+
+const ReportsSkeleton: React.FC = () => (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }} aria-busy="true" aria-label="Cargando análisis financiero">
+    {/* 4 KPI Skeletons in .reports-kpi-grid */}
+    <div className="reports-kpi-grid">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="reports-kpi-card" style={{ gap: '8px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Skeleton width="45%" height={12} borderRadius={4} />
+            <Skeleton width={16} height={16} borderRadius={4} />
+          </div>
+          <Skeleton width="75%" height={24} borderRadius={6} />
+          <Skeleton width="50%" height={11} borderRadius={4} style={{ marginTop: 'auto' }} />
+        </div>
+      ))}
+    </div>
+
+    {/* Donut Chart Skeleton */}
+    <div
+      style={{
+        background: 'var(--surface-color, #FFFFFF)',
+        border: '1px solid var(--border-color, rgba(0, 0, 0, 0.08))',
+        borderRadius: '16px',
+        padding: '1.25rem',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: '1rem',
+      }}
+    >
+      <div style={{ alignSelf: 'flex-start', width: '100%' }}>
+        <Skeleton width="40%" height={16} borderRadius={4} />
+      </div>
+      <div style={{ padding: '1rem 0' }}>
+        <SkeletonCircle size={180} />
+      </div>
+      <div style={{ width: '100%', display: 'flex', justifyContent: 'center', gap: '16px' }}>
+        <Skeleton width={80} height={12} borderRadius={4} />
+        <Skeleton width={80} height={12} borderRadius={4} />
+        <Skeleton width={80} height={12} borderRadius={4} />
+      </div>
+    </div>
+
+    {/* Trend Chart Skeleton */}
+    <div
+      style={{
+        background: 'var(--surface-color, #FFFFFF)',
+        border: '1px solid var(--border-color, rgba(0, 0, 0, 0.08))',
+        borderRadius: '16px',
+        padding: '1.25rem',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '1rem',
+      }}
+    >
+      <Skeleton width="45%" height={16} borderRadius={4} />
+      <Skeleton width="100%" height={180} borderRadius={8} />
+    </div>
+  </div>
+);
 
 const PRESET_OPTIONS = [
   { id: 'month', label: 'Este mes' },
@@ -241,8 +297,7 @@ export const ReportsHub: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
-  const { mainCurrency: userDefaultCurrency } = useCurrencyPreference();
-  const toast = useToast();
+  const { mainCurrency } = useCurrencyPreference();
 
   const shortcuts = useMemo(() => getSymmetricShortcuts(), []);
 
@@ -250,12 +305,12 @@ export const ReportsHub: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'analysis' | 'export'>(() => {
     return searchParams.get('tab') === 'export' ? 'export' : 'analysis';
   });
-  const [reportCurrency, setReportCurrency] = useState<MainCurrencyPreference>(() => userDefaultCurrency || 'USD');
 
   // SVG Chart refs for embedding in PDF
   const donutChartRef = useRef<SVGSVGElement | null>(null);
   const trendChartRef = useRef<SVGSVGElement | null>(null);
   const compChartRef = useRef<SVGSVGElement | null>(null);
+  const analysisRequestIdRef = useRef(0);
 
   // -------------------------------------------------------------------------
   // TAB 1: Ultra-Compact Filter & Analysis State
@@ -290,16 +345,32 @@ export const ReportsHub: React.FC = () => {
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [expensesA, setExpensesA] = useState<Expense[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const expensesFetchedRangeRef = useRef<{ from: string; to: string } | null>(null);
 
-  // -------------------------------------------------------------------------
-  // Native Share support detection
-  // -------------------------------------------------------------------------
-  const [canShare, setCanShare] = useState(false);
-  useEffect(() => {
-    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
-      setCanShare(true);
-    }
-  }, []);
+  const handleSelectCategory = useCallback(
+    async (cat: string | null) => {
+      setSelectedCategory(cat);
+      if (!cat) return;
+
+      if (
+        expensesFetchedRangeRef.current?.from === dateFromA &&
+        expensesFetchedRangeRef.current?.to === dateToA
+      ) {
+        return;
+      }
+
+      try {
+        const data = await getExpenses(dateFromA, dateToA);
+        setExpensesA(data);
+        expensesFetchedRangeRef.current = { from: dateFromA, to: dateToA };
+      } catch (err) {
+        console.warn('Failed to fetch transactions for category drill-down:', err);
+        setExpensesA([]);
+      }
+    },
+    [dateFromA, dateToA]
+  );
 
   // -------------------------------------------------------------------------
   // TAB 2: Configurador de Exportación State
@@ -312,7 +383,7 @@ export const ReportsHub: React.FC = () => {
     return {
       source: sourceParam,
       format: 'pdf',
-      currency: userDefaultCurrency || 'USD',
+      currency: mainCurrency || 'USD',
       dateFromA: searchParams.get('from') || shortcuts.thisMonthStart,
       dateToA: searchParams.get('to') || shortcuts.thisMonthEnd,
       dateFromB: searchParams.get('from_b') || shortcuts.lastMonthStart,
@@ -330,27 +401,6 @@ export const ReportsHub: React.FC = () => {
       includeOriginalCurrency: true,
     };
   });
-
-  // -------------------------------------------------------------------------
-  // Centralized useReportExport Hook
-  // -------------------------------------------------------------------------
-  const { exportDocument, isExporting, exportActionLoading } = useReportExport({
-    getSvgElements: () => {
-      const svgs: SVGSVGElement[] = [];
-      if (donutChartRef.current) svgs.push(donutChartRef.current);
-      if (trendChartRef.current) svgs.push(trendChartRef.current);
-      if (isComparisonMode && compChartRef.current) svgs.push(compChartRef.current);
-      return svgs;
-    },
-    onSuccess: (msg) => {
-      toast.success(msg || 'Reporte generado con éxito');
-    },
-    onError: (err) => {
-      toast.error(err || 'Error al generar el reporte');
-    },
-  });
-
-  const [quickExportFormat, setQuickExportFormat] = useState<'pdf' | 'xlsx' | null>(null);
 
   // -------------------------------------------------------------------------
   // URL Deep-linking Synchronizer
@@ -397,6 +447,17 @@ export const ReportsHub: React.FC = () => {
   // Tab change handler updating URL
   const handleTabChange = (newTab: 'analysis' | 'export') => {
     setActiveTab(newTab);
+    if (newTab === 'export') {
+      setExportConfig((prev) => ({
+        ...prev,
+        source: isComparisonMode ? 'comparison' : 'summary',
+        dateFromA,
+        dateToA,
+        dateFromB: isComparisonMode ? dateFromB : undefined,
+        dateToB: isComparisonMode ? dateToB : undefined,
+        currency: prev.currency || mainCurrency,
+      }));
+    }
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
@@ -411,64 +472,111 @@ export const ReportsHub: React.FC = () => {
     );
   };
 
-  // Keep currency synced if user changes top switcher
-  const handleCurrencyChange = (newCur: MainCurrencyPreference) => {
-    setReportCurrency(newCur);
-    setExportConfig((prev) => ({ ...prev, currency: newCur }));
-  };
+  const handleExportConfigChange = useCallback((nextConfig: ExportConfig) => {
+    setExportConfig(nextConfig);
+
+    if (nextConfig.dateFromA && nextConfig.dateFromA !== dateFromA) {
+      setDateFromA(nextConfig.dateFromA);
+    }
+    if (nextConfig.dateToA && nextConfig.dateToA !== dateToA) {
+      setDateToA(nextConfig.dateToA);
+    }
+    if (nextConfig.dateFromB && nextConfig.dateFromB !== dateFromB) {
+      setDateFromB(nextConfig.dateFromB);
+    }
+    if (nextConfig.dateToB && nextConfig.dateToB !== dateToB) {
+      setDateToB(nextConfig.dateToB);
+    }
+    if (nextConfig.source === 'comparison' && !isComparisonMode) {
+      setIsComparisonMode(true);
+    } else if (nextConfig.source === 'summary' && isComparisonMode) {
+      setIsComparisonMode(false);
+    }
+  }, [dateFromA, dateToA, dateFromB, dateToB, isComparisonMode]);
 
   // -------------------------------------------------------------------------
   // Fetch Analysis Data (Tab 1)
   // -------------------------------------------------------------------------
   const fetchAnalysis = useCallback(async () => {
-    if (!dateFromA || !dateToA) return;
+    if (!dateFromA || !dateToA) {
+      ++analysisRequestIdRef.current;
+      setLoadingAnalysis(false);
+      return;
+    }
 
     const daysA = getRangeDays(dateFromA, dateToA);
     if (dateFromA > dateToA) {
+      ++analysisRequestIdRef.current;
+      setLoadingAnalysis(false);
       setAnalysisError('La fecha inicial del Periodo A no puede ser posterior a la fecha final.');
       return;
     }
     if (daysA > 366) {
+      ++analysisRequestIdRef.current;
+      setLoadingAnalysis(false);
       setAnalysisError('El Periodo A supera los 366 días (máximo permitido).');
       return;
     }
 
     if (isComparisonMode) {
-      if (!dateFromB || !dateToB) return;
+      if (!dateFromB || !dateToB) {
+        ++analysisRequestIdRef.current;
+        setLoadingAnalysis(false);
+        return;
+      }
       const daysB = getRangeDays(dateFromB, dateToB);
       if (dateFromB > dateToB) {
+        ++analysisRequestIdRef.current;
+        setLoadingAnalysis(false);
         setAnalysisError('La fecha inicial del Periodo B no puede ser posterior a la fecha final.');
         return;
       }
       if (daysB > 366) {
+        ++analysisRequestIdRef.current;
+        setLoadingAnalysis(false);
         setAnalysisError('El Periodo B supera los 366 días (máximo permitido).');
         return;
       }
     }
 
+    const currentRequestId = ++analysisRequestIdRef.current;
     setLoadingAnalysis(true);
     setAnalysisError(null);
 
+    // Reset drilldown transactions cache on filter changes (lazy fetch on slice click)
+    setExpensesA([]);
+    setSelectedCategory(null);
+    expensesFetchedRangeRef.current = null;
+
     try {
-      getExpenses(dateFromA, dateToA).then(setExpensesA).catch(() => setExpensesA([]));
       const data = await getReportAnalysis({
         date_from_a: dateFromA,
         date_to_a: dateToA,
         date_from_b: isComparisonMode ? dateFromB : undefined,
         date_to_b: isComparisonMode ? dateToB : undefined,
       });
-      setAnalysisData(data);
+      if (analysisRequestIdRef.current === currentRequestId) {
+        setAnalysisData(data);
+      }
     } catch (err: any) {
-      console.error('Failed to fetch report analysis:', err);
-      const msg = err?.response?.data?.detail || err?.message || 'Error al obtener el análisis del periodo';
-      setAnalysisError(msg);
+      if (analysisRequestIdRef.current === currentRequestId) {
+        console.error('Failed to fetch report analysis:', err);
+        const msg = err?.response?.data?.detail || err?.message || 'Error al obtener el análisis del periodo';
+        setAnalysisError(msg);
+      }
     } finally {
-      setLoadingAnalysis(false);
+      if (analysisRequestIdRef.current === currentRequestId) {
+        setLoadingAnalysis(false);
+      }
     }
   }, [dateFromA, dateToA, dateFromB, dateToB, isComparisonMode]);
 
   useEffect(() => {
     fetchAnalysis();
+    const reqRef = analysisRequestIdRef;
+    return () => {
+      reqRef.current++;
+    };
   }, [fetchAnalysis]);
 
   // -------------------------------------------------------------------------
@@ -528,6 +636,9 @@ export const ReportsHub: React.FC = () => {
   const handleToggleComparison = () => {
     const nextCompare = !isComparisonMode;
     setIsComparisonMode(nextCompare);
+    if (nextCompare) {
+      setIsDatePickersOpen(true);
+    }
     if (activePreset !== 'custom') {
       applyPresetDates(activePreset, nextCompare);
     } else if (nextCompare && (!dateFromB || !dateToB)) {
@@ -537,65 +648,35 @@ export const ReportsHub: React.FC = () => {
   };
 
   // -------------------------------------------------------------------------
-  // 1-Click Quick Export Handler
-  // -------------------------------------------------------------------------
-  const handleQuickExport = async (format: 'pdf' | 'xlsx', action: 'download' | 'share' = 'download') => {
-    setQuickExportFormat(format);
-    try {
-      const currentConfig: ExportConfig = {
-        ...exportConfig,
-        source: isComparisonMode ? 'comparison' : 'summary',
-        format,
-        currency: reportCurrency,
-        dateFromA,
-        dateToA,
-        dateFromB: isComparisonMode ? dateFromB : undefined,
-        dateToB: isComparisonMode ? dateToB : undefined,
-        includeCharts: true,
-        includeHeaderCard: true,
-        includeCategories: true,
-        includeTransactions: true,
-        includeOriginalCurrency: true,
-      };
-
-      await exportDocument({
-        action,
-        format,
-        config: currentConfig,
-      });
-    } finally {
-      setQuickExportFormat(null);
-    }
-  };
-
-  // -------------------------------------------------------------------------
   // Tab 1 KPI Aggregations
   // -------------------------------------------------------------------------
+  const effectiveCurrency = (activeTab === 'export' && exportConfig.currency) ? exportConfig.currency : mainCurrency;
+
   const pA = analysisData?.period_a;
   const pB = analysisData?.period_b;
 
-  const incomeA = useMemo(() => resolveIncomeTotal(pA, reportCurrency), [pA, reportCurrency]);
-  const incomeB = useMemo(() => (pB ? resolveIncomeTotal(pB, reportCurrency) : 0), [pB, reportCurrency]);
+  const incomeA = useMemo(() => resolveIncomeTotal(pA, effectiveCurrency), [pA, effectiveCurrency]);
+  const incomeB = useMemo(() => (pB ? resolveIncomeTotal(pB, effectiveCurrency) : 0), [pB, effectiveCurrency]);
   const deltaIncome = useMemo(() => computeDelta(incomeA, incomeB), [incomeA, incomeB]);
 
-  const expenseA = useMemo(() => resolveCurrencyTotal(pA, reportCurrency), [pA, reportCurrency]);
-  const expenseB = useMemo(() => (pB ? resolveCurrencyTotal(pB, reportCurrency) : 0), [pB, reportCurrency]);
+  const expenseA = useMemo(() => resolveCurrencyTotal(pA, effectiveCurrency), [pA, effectiveCurrency]);
+  const expenseB = useMemo(() => (pB ? resolveCurrencyTotal(pB, effectiveCurrency) : 0), [pB, effectiveCurrency]);
   const deltaExpense = useMemo(() => computeDelta(expenseA, expenseB), [expenseA, expenseB]);
 
-  const balanceA = useMemo(() => resolveBalanceTotal(pA, reportCurrency), [pA, reportCurrency]);
-  const balanceB = useMemo(() => (pB ? resolveBalanceTotal(pB, reportCurrency) : 0), [pB, reportCurrency]);
+  const balanceA = useMemo(() => resolveBalanceTotal(pA, effectiveCurrency), [pA, effectiveCurrency]);
+  const balanceB = useMemo(() => (pB ? resolveBalanceTotal(pB, effectiveCurrency) : 0), [pB, effectiveCurrency]);
   const deltaBalance = useMemo(() => computeDelta(balanceA, balanceB), [balanceA, balanceB]);
 
-  const dailyAvgA = useMemo(() => resolveDailyAvg(pA, reportCurrency), [pA, reportCurrency]);
-  const dailyAvgB = useMemo(() => (pB ? resolveDailyAvg(pB, reportCurrency) : 0), [pB, reportCurrency]);
+  const dailyAvgA = useMemo(() => resolveDailyAvg(pA, effectiveCurrency), [pA, effectiveCurrency]);
+  const dailyAvgB = useMemo(() => (pB ? resolveDailyAvg(pB, effectiveCurrency) : 0), [pB, effectiveCurrency]);
   const deltaDailyAvg = useMemo(() => computeDelta(dailyAvgA, dailyAvgB), [dailyAvgA, dailyAvgB]);
 
   // Donut chart categories
   const donutCategories: CategoryDonutItem[] = useMemo(() => {
     if (!analysisData?.period_a?.by_category) return [];
-    const expTotal = resolveCurrencyTotal(analysisData.period_a, reportCurrency);
+    const expTotal = resolveCurrencyTotal(analysisData.period_a, effectiveCurrency);
     return analysisData.period_a.by_category.map((cat) => {
-      const amount = resolveCategoryTotal(cat, reportCurrency);
+      const amount = resolveCategoryTotal(cat, effectiveCurrency);
       const percentage = expTotal > 0 ? (amount / expTotal) * 100 : 0;
       return {
         category: cat.category,
@@ -603,7 +684,7 @@ export const ReportsHub: React.FC = () => {
         percentage,
       };
     });
-  }, [analysisData?.period_a, reportCurrency]);
+  }, [analysisData, effectiveCurrency]);
 
   // Bar chart KPI periods
   const periodAKpi: PeriodSummaryKPI = useMemo(
@@ -637,6 +718,8 @@ export const ReportsHub: React.FC = () => {
     return `${aText} vs ${bText}`;
   }, [dateFromA, dateToA, dateFromB, dateToB, isComparisonMode]);
 
+  const showDateInputs = activePreset === 'custom' || isComparisonMode || isDatePickersOpen;
+
   // -------------------------------------------------------------------------
   // Transition from Tab 1 to Tab 2 ("Exportar este análisis")
   // -------------------------------------------------------------------------
@@ -645,7 +728,7 @@ export const ReportsHub: React.FC = () => {
     setExportConfig((prev) => ({
       ...prev,
       source,
-      currency: reportCurrency,
+      currency: prev.currency || mainCurrency,
       dateFromA,
       dateToA,
       dateFromB: isComparisonMode ? dateFromB : undefined,
@@ -670,123 +753,46 @@ export const ReportsHub: React.FC = () => {
   };
 
   // -------------------------------------------------------------------------
-  // Header Controls (Tabs + Currency Switcher)
+  // Header Tabs & Date Range Subtitle
   // -------------------------------------------------------------------------
-  const headerControls = (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%' }}>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '0.5rem',
-        }}
-      >
-        {/* 2 Tabs Segmented Control */}
-        <div
-          role="tablist"
-          style={{
-            display: 'inline-flex',
-            background: 'var(--bg-secondary, #F1F5F9)',
-            padding: '3px',
-            borderRadius: '9999px',
-            border: '1px solid var(--border-color, rgba(0, 0, 0, 0.08))',
-          }}
-        >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === 'analysis'}
-            onClick={() => handleTabChange('analysis')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '6px 14px',
-              borderRadius: '9999px',
-              border: 'none',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              background: activeTab === 'analysis' ? 'var(--surface-color, #FFFFFF)' : 'transparent',
-              color: activeTab === 'analysis' ? 'var(--tool-reports, #06B6D4)' : 'var(--text-secondary, #64748B)',
-              boxShadow: activeTab === 'analysis' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-              transition: 'background-color 150ms ease, color 150ms ease, transform 150ms ease',
-            }}
-            onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.96)')}
-            onMouseUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
-            onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
-          >
-            <BarChart3 size={16} />
-            <span>Resumen y Comparador</span>
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === 'export'}
-            onClick={() => handleTabChange('export')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '6px 14px',
-              borderRadius: '9999px',
-              border: 'none',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              background: activeTab === 'export' ? 'var(--surface-color, #FFFFFF)' : 'transparent',
-              color: activeTab === 'export' ? 'var(--tool-reports, #06B6D4)' : 'var(--text-secondary, #64748B)',
-              boxShadow: activeTab === 'export' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-              transition: 'background-color 150ms ease, color 150ms ease, transform 150ms ease',
-            }}
-            onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.96)')}
-            onMouseUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
-            onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
-          >
-            <FileSpreadsheet size={16} />
-            <span>Exportar Archivos</span>
-          </button>
-        </div>
-
-        {/* Currency Switcher */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-tertiary, #94A3B8)', marginRight: '4px' }}>
-            Moneda:
-          </span>
-          {ORDERED_CURRENCIES.map((cur) => {
-            const isSelected = reportCurrency === cur;
-            return (
-              <button
-                key={cur}
-                type="button"
-                onClick={() => handleCurrencyChange(cur)}
-                style={{
-                  padding: '4px 10px',
-                  borderRadius: '6px',
-                  border: isSelected
-                    ? '1.5px solid var(--tool-reports, #06B6D4)'
-                    : '1px solid var(--border-color, rgba(0,0,0,0.08))',
-                  background: isSelected ? 'var(--tool-reports-bg, rgba(6, 182, 212, 0.12))' : 'var(--surface-color, #FFFFFF)',
-                  color: isSelected ? 'var(--tool-reports, #06B6D4)' : 'var(--text-secondary, #64748B)',
-                  fontSize: '0.75rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  transition: 'background-color 150ms ease, border-color 150ms ease, color 150ms ease, transform 150ms ease',
-                }}
-                onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.96)')}
-                onMouseUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
-                onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
-              >
-                {cur}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </div>
+  const hubTabs = useMemo(
+    () => [
+      {
+        id: 'analysis' as const,
+        label: 'Resumen y Comparador',
+        shortLabel: 'Resumen',
+        icon: <BarChart3 size={16} />,
+      },
+      {
+        id: 'export' as const,
+        label: 'Exportar Archivos',
+        shortLabel: 'Exportar',
+        icon: <FileSpreadsheet size={16} />,
+      },
+    ],
+    []
   );
+
+  const headerControls = (
+    <SegmentedTabs
+      tabs={hubTabs}
+      activeTab={activeTab}
+      onChange={handleTabChange}
+      activeColor="var(--tool-reports, #06B6D4)"
+    />
+  );
+
+  const headerSubtitle = useMemo(() => {
+    if (isComparisonMode && dateFromB && dateToB) {
+      const yA = dateFromA?.slice(0, 4);
+      const yB = dateFromB?.slice(0, 4);
+      if (yA === yB) {
+        return `${formatReadableRange(dateFromA, dateToA, false)} vs. ${formatReadableRange(dateFromB, dateToB, true)}`;
+      }
+      return `${formatReadableRange(dateFromA, dateToA, true)} vs. ${formatReadableRange(dateFromB, dateToB, true)}`;
+    }
+    return formatReadableRange(dateFromA, dateToA, true);
+  }, [isComparisonMode, dateFromA, dateToA, dateFromB, dateToB]);
 
   return (
     <div
@@ -801,42 +807,59 @@ export const ReportsHub: React.FC = () => {
       {/* Header */}
       <PageHeader
         title="Resúmenes y Exportación"
-        subtitle="Analiza tendencias, compara periodos y exporta reportes ejecutivos"
+        subtitle={headerSubtitle}
         onBack={() => navigate('/herramientas')}
         controls={headerControls}
-        actionColor={TOOL_COLORS.reports.solid}
+        controlsBorder={false}
+        actionColor="var(--tool-reports, #06B6D4)"
       />
 
       {/* =================================================================== */}
-      {/* TAB 1: RESUMEN Y COMPARADOR                                         */}
+      {/* TAB 1: RESUMEN Y COMPARADOR (kept mounted so SVG charts remain accessible) */}
       {/* =================================================================== */}
-      {activeTab === 'analysis' && (
+      <div
+        style={
+          activeTab === 'analysis'
+            ? undefined
+            : {
+                position: 'absolute',
+                left: '-9999px',
+                top: '-9999px',
+                width: '1000px',
+                height: '1000px',
+                opacity: 0,
+                pointerEvents: 'none',
+                visibility: 'hidden',
+              }
+        }
+        aria-hidden={activeTab !== 'analysis'}
+      >
         <section aria-label="Análisis y Comparación de Periodos" style={{ display: 'flex', flexDirection: 'column', gap: '1.15rem' }}>
-          {/* Ultra-Compact Filter Bar with Progressive Disclosure & 1-Click Export */}
-          <div
-            style={{
-              background: 'var(--surface-color, #FFFFFF)',
-              borderRadius: '16px',
-              padding: '0.75rem',
-              border: '1px solid var(--border-color, rgba(0, 0, 0, 0.08))',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.625rem',
-            }}
-          >
+          {/* Floating Control Bar without Nested Cards */}
+          <div className="reports-filter-card reports-filter-floating">
             {/* Row 1: 1-line control bar with horizontal scrollable presets + toggle chip */}
             <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'space-between',
                 gap: '8px',
-                flexWrap: 'nowrap',
+                width: '100%',
               }}
             >
               {/* Horizontal scrollable preset pills */}
-              <div className="reports-filter-scroll" style={{ flex: 1, minWidth: 0 }}>
+              <div
+                className="reports-filter-scroll"
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  overflowX: 'auto',
+                  WebkitOverflowScrolling: 'touch',
+                  padding: '4px 2rem 4px 2px',
+                  gap: '8px',
+                }}
+              >
                 {PRESET_OPTIONS.map((pill) => {
                   const isSel = activePreset === pill.id;
                   return (
@@ -844,26 +867,7 @@ export const ReportsHub: React.FC = () => {
                       key={pill.id}
                       type="button"
                       onClick={() => handlePresetSelect(pill.id)}
-                      style={{
-                        flexShrink: 0,
-                        padding: '5px 12px',
-                        borderRadius: '9999px',
-                        border: isSel
-                          ? '1.5px solid var(--tool-reports, #06B6D4)'
-                          : '1px solid var(--border-color, rgba(0,0,0,0.08))',
-                        background: isSel
-                          ? 'var(--tool-reports-bg, rgba(6, 182, 212, 0.12))'
-                          : 'var(--bg-secondary, #F8FAFC)',
-                        color: isSel ? 'var(--tool-reports, #06B6D4)' : 'var(--text-secondary, #64748B)',
-                        fontSize: '0.78rem',
-                        fontWeight: isSel ? 700 : 500,
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                        transition: 'background-color 150ms ease, border-color 150ms ease, color 150ms ease, transform 150ms ease',
-                      }}
-                      onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.96)')}
-                      onMouseUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
-                      onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+                      className={`reports-preset-btn ${isSel ? 'reports-preset-btn--active' : ''}`}
                     >
                       {pill.label}
                     </button>
@@ -876,30 +880,8 @@ export const ReportsHub: React.FC = () => {
                 type="button"
                 onClick={handleToggleComparison}
                 aria-pressed={isComparisonMode}
-                style={{
-                  flexShrink: 0,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  padding: '5px 11px',
-                  borderRadius: '9999px',
-                  border: isComparisonMode
-                    ? '1.5px solid var(--tool-reports, #06B6D4)'
-                    : '1px solid var(--border-color, rgba(0,0,0,0.1))',
-                  background: isComparisonMode
-                    ? 'var(--tool-reports, #06B6D4)'
-                    : 'var(--bg-secondary, #F8FAFC)',
-                  color: isComparisonMode ? '#FFFFFF' : 'var(--text-secondary, #64748B)',
-                  fontSize: '0.78rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  boxShadow: isComparisonMode ? '0 1px 3px rgba(6, 182, 212, 0.3)' : 'none',
-                  transition: 'background-color 150ms ease, border-color 150ms ease, color 150ms ease, transform 150ms ease',
-                }}
-                onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.96)')}
-                onMouseUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
-                onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+                className={`reports-compare-btn ${isComparisonMode ? 'reports-compare-btn--active' : ''}`}
+                style={{ flexShrink: 0 }}
                 title={isComparisonMode ? 'Desactivar comparación de periodos' : 'Activar comparador A vs B'}
               >
                 <ArrowLeftRight size={13} strokeWidth={2.5} />
@@ -907,291 +889,167 @@ export const ReportsHub: React.FC = () => {
               </button>
             </div>
 
-            {/* Row 2: Progressive Disclosure Summary Chip + 1-Click Direct Export Group */}
+            {/* Row 2: Progressive Disclosure Summary Chip + small reloading spinner (No dividers) */}
             <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'space-between',
-                flexWrap: 'wrap',
                 gap: '8px',
-                paddingTop: '0.35rem',
-                borderTop: '1px solid var(--border-color, rgba(0, 0, 0, 0.05))',
+                flexWrap: 'wrap',
               }}
             >
               {/* Progressive Disclosure Date Summary Chip */}
               <button
                 type="button"
                 onClick={() => setIsDatePickersOpen((prev) => !prev)}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '4px 10px',
-                  borderRadius: '8px',
-                  border: '1px solid var(--border-color, rgba(0, 0, 0, 0.08))',
-                  background: isDatePickersOpen
-                    ? 'var(--tool-reports-bg, rgba(6, 182, 212, 0.08))'
-                    : 'var(--surface-color, #FFFFFF)',
-                  color: 'var(--text-primary, #0F172A)',
-                  fontSize: '0.78rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  fontVariantNumeric: 'tabular-nums',
-                  transition: 'background-color 150ms ease, border-color 150ms ease, transform 150ms ease',
-                }}
-                onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.96)')}
-                onMouseUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
-                onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+                className={`reports-date-chip ${showDateInputs ? 'reports-date-chip--open' : ''}`}
                 title="Mostrar u ocultar selectores de fecha exactos"
               >
                 <Calendar size={13} color="var(--tool-reports, #06B6D4)" />
                 <span>{dateSummaryText}</span>
-                <span style={{ color: 'var(--text-tertiary, #94A3B8)', fontSize: '0.72rem', fontWeight: 500 }}>
-                  · {isDatePickersOpen ? 'Ocultar' : 'Editar fechas'}
-                </span>
-                {isDatePickersOpen ? (
-                  <ChevronUp size={13} color="var(--text-tertiary, #94A3B8)" />
-                ) : (
-                  <ChevronDown size={13} color="var(--text-tertiary, #94A3B8)" />
+                {!isComparisonMode && activePreset !== 'custom' && (
+                  <>
+                    <span style={{ color: 'var(--text-tertiary, #94A3B8)', fontSize: '0.72rem', fontWeight: 500 }}>
+                      · {showDateInputs ? 'Ocultar' : 'Editar fechas'}
+                    </span>
+                    {showDateInputs ? (
+                      <ChevronUp size={13} color="var(--text-tertiary, #94A3B8)" />
+                    ) : (
+                      <ChevronDown size={13} color="var(--text-tertiary, #94A3B8)" />
+                    )}
+                  </>
                 )}
               </button>
 
-              {/* 1-Click Direct Export Group */}
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                {/* PDF Rápido Button */}
-                <button
-                  type="button"
-                  disabled={isExporting}
-                  onClick={() => handleQuickExport('pdf', 'download')}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    padding: '4px 9px',
-                    borderRadius: '8px',
-                    border: '1px solid rgba(6, 182, 212, 0.35)',
-                    background: 'var(--tool-reports-bg, rgba(6, 182, 212, 0.08))',
-                    color: 'var(--tool-reports, #06B6D4)',
-                    fontSize: '0.76rem',
-                    fontWeight: 700,
-                    cursor: isExporting ? 'not-allowed' : 'pointer',
-                    opacity: isExporting ? 0.6 : 1,
-                    transition: 'background-color 150ms ease, transform 150ms ease',
-                  }}
-                  onMouseDown={(e) => !isExporting && (e.currentTarget.style.transform = 'scale(0.96)')}
-                  onMouseUp={(e) => !isExporting && (e.currentTarget.style.transform = 'scale(1)')}
-                  onMouseLeave={(e) => !isExporting && (e.currentTarget.style.transform = 'scale(1)')}
-                  title="Descargar análisis del periodo en PDF"
-                >
-                  {isExporting && quickExportFormat === 'pdf' && exportActionLoading === 'download' ? (
-                    <Loader2 size={13} className="animate-spin" />
-                  ) : (
-                    <FileText size={13} />
-                  )}
-                  <span>PDF Rápido</span>
-                </button>
-
-                {/* Excel Button */}
-                <button
-                  type="button"
-                  disabled={isExporting}
-                  onClick={() => handleQuickExport('xlsx', 'download')}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    padding: '4px 9px',
-                    borderRadius: '8px',
-                    border: '1px solid rgba(16, 185, 129, 0.35)',
-                    background: 'rgba(16, 185, 129, 0.08)',
-                    color: '#059669',
-                    fontSize: '0.76rem',
-                    fontWeight: 700,
-                    cursor: isExporting ? 'not-allowed' : 'pointer',
-                    opacity: isExporting ? 0.6 : 1,
-                    transition: 'background-color 150ms ease, transform 150ms ease',
-                  }}
-                  onMouseDown={(e) => !isExporting && (e.currentTarget.style.transform = 'scale(0.96)')}
-                  onMouseUp={(e) => !isExporting && (e.currentTarget.style.transform = 'scale(1)')}
-                  onMouseLeave={(e) => !isExporting && (e.currentTarget.style.transform = 'scale(1)')}
-                  title="Descargar análisis del periodo en Excel"
-                >
-                  {isExporting && quickExportFormat === 'xlsx' && exportActionLoading === 'download' ? (
-                    <Loader2 size={13} className="animate-spin" />
-                  ) : (
-                    <FileSpreadsheet size={13} />
-                  )}
-                  <span>Excel</span>
-                </button>
-
-                {/* Share Button (on mobile/supported browsers) */}
-                {canShare && (
-                  <button
-                    type="button"
-                    disabled={isExporting}
-                    onClick={() => handleQuickExport('pdf', 'share')}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      padding: '4px 8px',
-                      borderRadius: '8px',
-                      border: '1px solid var(--border-color, rgba(0, 0, 0, 0.1))',
-                      background: 'var(--surface-color, #FFFFFF)',
-                      color: 'var(--text-secondary, #64748B)',
-                      fontSize: '0.76rem',
-                      fontWeight: 600,
-                      cursor: isExporting ? 'not-allowed' : 'pointer',
-                      opacity: isExporting ? 0.6 : 1,
-                      transition: 'background-color 150ms ease, transform 150ms ease',
-                    }}
-                    onMouseDown={(e) => !isExporting && (e.currentTarget.style.transform = 'scale(0.96)')}
-                    onMouseUp={(e) => !isExporting && (e.currentTarget.style.transform = 'scale(1)')}
-                    onMouseLeave={(e) => !isExporting && (e.currentTarget.style.transform = 'scale(1)')}
-                    title="Compartir reporte PDF"
-                  >
-                    {isExporting && exportActionLoading === 'share' ? (
-                      <Loader2 size={13} className="animate-spin" />
-                    ) : (
-                      <Share2 size={13} />
-                    )}
-                    <span>Compartir</span>
-                  </button>
-                )}
-              </div>
+              {/* Small spinner indicator during refetch when previous data is visible */}
+              {loadingAnalysis && analysisData && (
+                <span className="reports-reloading-badge" aria-live="polite">
+                  <Loader2 size={13} className="animate-spin" />
+                  <span>Actualizando...</span>
+                </span>
+              )}
             </div>
 
-            {/* Collapsible Exact Date Pickers (Shown when custom or when chip is toggled) */}
-            {isDatePickersOpen && (
+            {/* Clean floating date inputs container (Shown when custom or comparison or open) */}
+            {showDateInputs && (
               <div
                 style={{
-                  marginTop: '0.25rem',
-                  paddingTop: '0.75rem',
-                  borderTop: '1px solid var(--border-color, rgba(0, 0, 0, 0.06))',
                   display: 'grid',
-                  gridTemplateColumns: isComparisonMode ? 'repeat(auto-fit, minmax(240px, 1fr))' : '1fr',
+                  gridTemplateColumns: isComparisonMode ? 'repeat(auto-fit, minmax(260px, 1fr))' : '1fr',
                   gap: '0.75rem',
+                  paddingTop: '0.25rem',
                 }}
               >
                 {/* Period A */}
-                <div
-                  style={{
-                    background: isComparisonMode ? 'rgba(6, 182, 212, 0.04)' : 'transparent',
-                    padding: isComparisonMode ? '0.625rem' : '0',
-                    borderRadius: '8px',
-                    border: isComparisonMode ? '1px dashed rgba(6, 182, 212, 0.3)' : 'none',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--text-primary, #0F172A)' }}>
-                      {isComparisonMode ? 'Periodo A (Referencia)' : 'Rango Personalizado'}
-                    </span>
-                    <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary, #94A3B8)', fontVariantNumeric: 'tabular-nums' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 2px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      {isComparisonMode && (
+                        <span
+                          style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: '50%',
+                            background: 'var(--tool-reports, #06B6D4)',
+                            display: 'inline-block',
+                          }}
+                        />
+                      )}
+                      <span style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--text-primary, #0F172A)' }}>
+                        {isComparisonMode ? 'Periodo A (Referencia)' : 'Rango Personalizado'}
+                      </span>
+                    </div>
+                    <span className="reports-day-badge">
                       {getRangeDays(dateFromA, dateToA)} días
                     </span>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <input
-                      type="date"
-                      aria-label="Periodo A Desde"
-                      value={dateFromA}
-                      onChange={(e) => {
-                        setDateFromA(e.target.value);
-                        setActivePreset('custom');
-                      }}
-                      style={{
-                        flex: 1,
-                        padding: '5px 8px',
-                        borderRadius: '6px',
-                        border: '1px solid var(--border-color, rgba(0, 0, 0, 0.12))',
-                        fontSize: '0.8rem',
-                        background: 'var(--surface-color, #FFFFFF)',
-                        color: 'var(--text-primary, #0F172A)',
-                        fontVariantNumeric: 'tabular-nums',
-                      }}
-                    />
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary, #94A3B8)' }}>al</span>
-                    <input
-                      type="date"
-                      aria-label="Periodo A Hasta"
-                      value={dateToA}
-                      onChange={(e) => {
-                        setDateToA(e.target.value);
-                        setActivePreset('custom');
-                      }}
-                      style={{
-                        flex: 1,
-                        padding: '5px 8px',
-                        borderRadius: '6px',
-                        border: '1px solid var(--border-color, rgba(0, 0, 0, 0.12))',
-                        fontSize: '0.8rem',
-                        background: 'var(--surface-color, #FFFFFF)',
-                        color: 'var(--text-primary, #0F172A)',
-                        fontVariantNumeric: 'tabular-nums',
-                      }}
-                    />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <div className="reports-date-input-chip">
+                      <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-tertiary, #94A3B8)' }}>
+                        Desde
+                      </span>
+                      <input
+                        type="date"
+                        aria-label="Periodo A Desde"
+                        value={dateFromA}
+                        onChange={(e) => {
+                          setDateFromA(e.target.value);
+                          setActivePreset('custom');
+                        }}
+                        className="reports-date-input-native"
+                      />
+                    </div>
+                    <div className="reports-date-input-chip">
+                      <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-tertiary, #94A3B8)' }}>
+                        Hasta
+                      </span>
+                      <input
+                        type="date"
+                        aria-label="Periodo A Hasta"
+                        value={dateToA}
+                        onChange={(e) => {
+                          setDateToA(e.target.value);
+                          setActivePreset('custom');
+                        }}
+                        className="reports-date-input-native"
+                      />
+                    </div>
                   </div>
                 </div>
 
                 {/* Period B (When comparison mode is active) */}
                 {isComparisonMode && (
-                  <div
-                    style={{
-                      background: 'rgba(99, 102, 241, 0.04)',
-                      padding: '0.625rem',
-                      borderRadius: '8px',
-                      border: '1px dashed rgba(99, 102, 241, 0.3)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                      <span style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--text-primary, #0F172A)' }}>
-                        Periodo B (Comparación)
-                      </span>
-                      <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary, #94A3B8)', fontVariantNumeric: 'tabular-nums' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 2px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span
+                          style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: '50%',
+                            background: 'var(--tool-budgets, #6366F1)',
+                            display: 'inline-block',
+                          }}
+                        />
+                        <span style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--text-primary, #0F172A)' }}>
+                          Periodo B (Comparación)
+                        </span>
+                      </div>
+                      <span className="reports-day-badge">
                         {getRangeDays(dateFromB, dateToB)} días
                       </span>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <input
-                        type="date"
-                        aria-label="Periodo B Desde"
-                        value={dateFromB}
-                        onChange={(e) => {
-                          setDateFromB(e.target.value);
-                          setActivePreset('custom');
-                        }}
-                        style={{
-                          flex: 1,
-                          padding: '5px 8px',
-                          borderRadius: '6px',
-                          border: '1px solid var(--border-color, rgba(0, 0, 0, 0.12))',
-                          fontSize: '0.8rem',
-                          background: 'var(--surface-color, #FFFFFF)',
-                          color: 'var(--text-primary, #0F172A)',
-                          fontVariantNumeric: 'tabular-nums',
-                        }}
-                      />
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary, #94A3B8)' }}>al</span>
-                      <input
-                        type="date"
-                        aria-label="Periodo B Hasta"
-                        value={dateToB}
-                        onChange={(e) => {
-                          setDateToB(e.target.value);
-                          setActivePreset('custom');
-                        }}
-                        style={{
-                          flex: 1,
-                          padding: '5px 8px',
-                          borderRadius: '6px',
-                          border: '1px solid var(--border-color, rgba(0, 0, 0, 0.12))',
-                          fontSize: '0.8rem',
-                          background: 'var(--surface-color, #FFFFFF)',
-                          color: 'var(--text-primary, #0F172A)',
-                          fontVariantNumeric: 'tabular-nums',
-                        }}
-                      />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <div className="reports-date-input-chip">
+                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-tertiary, #94A3B8)' }}>
+                          Desde
+                        </span>
+                        <input
+                          type="date"
+                          aria-label="Periodo B Desde"
+                          value={dateFromB}
+                          onChange={(e) => {
+                            setDateFromB(e.target.value);
+                            setActivePreset('custom');
+                          }}
+                          className="reports-date-input-native"
+                        />
+                      </div>
+                      <div className="reports-date-input-chip">
+                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-tertiary, #94A3B8)' }}>
+                          Hasta
+                        </span>
+                        <input
+                          type="date"
+                          aria-label="Periodo B Hasta"
+                          value={dateToB}
+                          onChange={(e) => {
+                            setDateToB(e.target.value);
+                            setActivePreset('custom');
+                          }}
+                          className="reports-date-input-native"
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1201,38 +1059,13 @@ export const ReportsHub: React.FC = () => {
 
           {/* Error Banner */}
           {analysisError && (
-            <div
-              style={{
-                background: 'rgba(239, 68, 68, 0.08)',
-                border: '1px solid rgba(239, 68, 68, 0.3)',
-                borderRadius: '12px',
-                padding: '0.875rem 1rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.75rem',
-                color: '#B91C1C',
-                fontSize: '0.85rem',
-              }}
-            >
+            <div className="reports-error-banner" role="alert">
               <AlertTriangle size={18} style={{ flexShrink: 0 }} />
               <span style={{ flex: 1 }}>{analysisError}</span>
               <button
                 type="button"
                 onClick={fetchAnalysis}
-                style={{
-                  padding: '4px 8px',
-                  borderRadius: '6px',
-                  border: '1px solid #B91C1C',
-                  background: 'transparent',
-                  color: '#B91C1C',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  transition: 'background-color 150ms ease, transform 150ms ease',
-                }}
-                onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.96)')}
-                onMouseUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
-                onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+                className="reports-retry-btn"
               >
                 Reintentar
               </button>
@@ -1241,19 +1074,9 @@ export const ReportsHub: React.FC = () => {
 
           {/* Analytical Integrity Warning Banner */}
           {isComparisonMode && analysisData?.is_asymmetric && (
-            <div
-              style={{
-                background: '#FEF3C7',
-                border: '1px solid #F59E0B',
-                borderRadius: '12px',
-                padding: '0.875rem 1rem',
-                display: 'flex',
-                alignItems: 'flex-start',
-                gap: '0.75rem',
-              }}
-            >
-              <AlertTriangle size={20} color="#D97706" style={{ flexShrink: 0, marginTop: '2px' }} />
-              <div style={{ fontSize: '0.85rem', color: '#92400E', lineHeight: 1.45 }}>
+            <div className="reports-warning-banner" role="status">
+              <AlertTriangle size={20} color="var(--warning-color, #F59E0B)" style={{ flexShrink: 0, marginTop: '2px' }} />
+              <div className="reports-warning-banner-text">
                 <strong>Aviso de integridad:</strong> Estás comparando un periodo de{' '}
                 <strong>{analysisData.period_a?.days_in_range || getRangeDays(dateFromA, dateToA)} días</strong> contra uno de{' '}
                 <strong>{analysisData.period_b?.days_in_range || getRangeDays(dateFromB, dateToB)} días</strong>. Además del total
@@ -1262,408 +1085,200 @@ export const ReportsHub: React.FC = () => {
             </div>
           )}
 
-          {/* Loading Indicator */}
-          {loadingAnalysis && (
+          {/* Initial Loading Skeleton */}
+          {loadingAnalysis && !analysisData && (
+            <ReportsSkeleton />
+          )}
+
+          {/* Empty State when no data is returned and not loading */}
+          {!loadingAnalysis && !analysisData && !analysisError && (
+            <EmptyState
+              icon={<BarChart3 size={28} />}
+              title="Sin datos disponibles"
+              description="No encontramos registros para el rango de fechas seleccionado."
+              actionColor="var(--tool-reports, #06B6D4)"
+            />
+          )}
+
+          {/* Main Content: Keep previous data visible with reduced opacity while reloading */}
+          {analysisData && (
             <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-                padding: '2rem',
-                color: 'var(--text-secondary, #64748B)',
-                fontSize: '0.9rem',
-              }}
+              className="reports-content-container"
+              data-loading={loadingAnalysis}
+              aria-busy={loadingAnalysis}
             >
-              <Loader2 size={20} className="animate-spin" />
-              <span>Cargando análisis financiero...</span>
-            </div>
-          )}
+              {/* Comparative KPI Cards Grid */}
+              <div className="reports-kpi-grid">
+                {/* Card 1: Ingresos Totales */}
+                <div className="reports-kpi-card reports-enter" style={{ '--i': 0 } as React.CSSProperties}>
+                  <div className="reports-kpi-top">
+                    <span className="reports-kpi-label">Ingresos</span>
+                    <ArrowUpRight size={15} color="var(--income-color, #10B981)" />
+                  </div>
+                  <div className="reports-kpi-value">
+                    {formatCurrency(incomeA, effectiveCurrency)}
+                  </div>
+                  {isComparisonMode ? (
+                    <>
+                      <div className="reports-kpi-compare-text">
+                        vs. {formatCurrency(incomeB, effectiveCurrency)}
+                      </div>
+                      <div style={{ marginTop: '3px' }}>
+                        {renderDeltaBadge(deltaIncome.pct, deltaDailyAvg.pct, false)}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="reports-kpi-subtext">
+                      {analysisData.period_a.days_in_range} días en periodo
+                    </div>
+                  )}
+                </div>
 
-          {/* Comparative KPI Cards Grid (Strict 2x2 on mobile, 4 columns on desktop) */}
-          {!loadingAnalysis && analysisData && (
-            <div className="reports-kpi-grid">
-              {/* Card 1: Ingresos Totales */}
-              <div
-                style={{
-                  background: 'var(--surface-color, #FFFFFF)',
-                  borderRadius: '14px',
-                  padding: '0.85rem',
-                  border: '1px solid var(--border-color, rgba(0, 0, 0, 0.08))',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '4px',
-                  minWidth: 0,
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span
-                    style={{
-                      fontSize: '0.72rem',
-                      fontWeight: 700,
-                      color: 'var(--text-tertiary, #94A3B8)',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.04em',
-                    }}
-                  >
-                    Ingresos
-                  </span>
-                  <ArrowUpRight size={15} color="#10B981" />
-                </div>
-                <div
-                  style={{
-                    fontSize: '1.25rem',
-                    fontWeight: 800,
-                    color: 'var(--text-primary, #0F172A)',
-                    letterSpacing: '-0.02em',
-                    fontVariantNumeric: 'tabular-nums',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {formatCurrency(incomeA, reportCurrency)}
-                </div>
-                {isComparisonMode ? (
-                  <>
-                    <div
-                      style={{
-                        fontSize: '0.72rem',
-                        color: 'var(--text-tertiary, #94A3B8)',
-                        fontVariantNumeric: 'tabular-nums',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      vs. {formatCurrency(incomeB, reportCurrency)}
+                {/* Card 2: Gastos Totales */}
+                <div className="reports-kpi-card reports-enter" style={{ '--i': 1 } as React.CSSProperties}>
+                  <div className="reports-kpi-top">
+                    <span className="reports-kpi-label">Gastos</span>
+                    <ArrowDownRight size={15} color="var(--expense-color, #EF4444)" />
+                  </div>
+                  <div className="reports-kpi-value">
+                    {formatCurrency(expenseA, effectiveCurrency)}
+                  </div>
+                  {isComparisonMode ? (
+                    <>
+                      <div className="reports-kpi-compare-text">
+                        vs. {formatCurrency(expenseB, effectiveCurrency)}
+                      </div>
+                      <div style={{ marginTop: '3px' }}>
+                        {renderDeltaBadge(deltaExpense.pct, deltaDailyAvg.pct, true)}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="reports-kpi-subtext">
+                      Promedio: {formatCurrency(dailyAvgA, effectiveCurrency)}/día
                     </div>
-                    <div style={{ marginTop: '3px' }}>
-                      {renderDeltaBadge(deltaIncome.pct, deltaDailyAvg.pct, false)}
+                  )}
+                </div>
+
+                {/* Card 3: Balance Neto */}
+                <div className="reports-kpi-card reports-enter" style={{ '--i': 2 } as React.CSSProperties}>
+                  <div className="reports-kpi-top">
+                    <span className="reports-kpi-label">Balance Neto</span>
+                    <Sparkles size={15} color="var(--tool-reports, #06B6D4)" />
+                  </div>
+                  <div className={`reports-kpi-value ${balanceA >= 0 ? 'reports-kpi-value--positive' : 'reports-kpi-value--negative'}`}>
+                    {formatCurrency(balanceA, effectiveCurrency)}
+                  </div>
+                  {isComparisonMode ? (
+                    <>
+                      <div className="reports-kpi-compare-text">
+                        vs. {formatCurrency(balanceB, effectiveCurrency)}
+                      </div>
+                      <div style={{ marginTop: '3px' }}>
+                        {renderDeltaBadge(deltaBalance.pct, deltaDailyAvg.pct, false)}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="reports-kpi-subtext">
+                      {balanceA >= 0 ? 'Superávit del periodo' : 'Déficit del periodo'}
                     </div>
-                  </>
-                ) : (
-                  <div
-                    style={{
-                      fontSize: '0.72rem',
-                      color: 'var(--text-tertiary, #94A3B8)',
-                      marginTop: 'auto',
-                      fontVariantNumeric: 'tabular-nums',
-                    }}
-                  >
-                    {analysisData.period_a.days_in_range} días en periodo
+                  )}
+                </div>
+
+                {/* Card 4: Promedio Diario */}
+                <div className="reports-kpi-card reports-enter" style={{ '--i': 3 } as React.CSSProperties}>
+                  <div className="reports-kpi-top">
+                    <span className="reports-kpi-label">Promedio Diario</span>
+                    <BarChart3 size={15} color="var(--tool-reports, #06B6D4)" />
+                  </div>
+                  <div className="reports-kpi-value">
+                    {formatCurrency(dailyAvgA, effectiveCurrency)}/d
+                  </div>
+                  {isComparisonMode ? (
+                    <>
+                      <div className="reports-kpi-compare-text">
+                        vs. {formatCurrency(dailyAvgB, effectiveCurrency)}/d
+                      </div>
+                      <div style={{ marginTop: '3px' }}>
+                        {renderDeltaBadge(deltaDailyAvg.pct, null, true)}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="reports-kpi-subtext">
+                      Gasto medio estimado
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* SVG Charts Section */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                {/* Chart 1: Donut Distribution */}
+                <div className="reports-enter" style={{ '--i': 4 } as React.CSSProperties}>
+                  <CategoryDonutChart
+                    ref={donutChartRef}
+                    categories={donutCategories}
+                    total={expenseA}
+                    currency={effectiveCurrency}
+                    transactions={expensesA}
+                    selectedCategory={selectedCategory}
+                    onSelectCategory={handleSelectCategory}
+                    title="Distribución de Gastos por Categoría (Periodo A)"
+                  />
+                </div>
+
+                {/* Chart 2: Cashflow Trend */}
+                <div className="reports-enter" style={{ '--i': 5 } as React.CSSProperties}>
+                  <CashflowTrendChart
+                    ref={trendChartRef}
+                    series={analysisData.series_a || []}
+                    currency={effectiveCurrency}
+                    title="Flujo de Caja: Ingresos vs. Gastos (Periodo A)"
+                  />
+                </div>
+
+                {/* Chart 3: Period Comparison Bar Chart (Only in comparison mode) */}
+                {isComparisonMode && (
+                  <div className="reports-enter" style={{ '--i': 6 } as React.CSSProperties}>
+                    <PeriodComparisonBarChart
+                      ref={compChartRef}
+                      periodA={periodAKpi}
+                      periodB={periodBKpi}
+                      categoryComparison={analysisData.category_comparison || []}
+                      currency={effectiveCurrency}
+                      title="Comparativa Visual: Periodo A vs. Periodo B"
+                    />
                   </div>
                 )}
-              </div>
 
-              {/* Card 2: Gastos Totales */}
-              <div
-                style={{
-                  background: 'var(--surface-color, #FFFFFF)',
-                  borderRadius: '14px',
-                  padding: '0.85rem',
-                  border: '1px solid var(--border-color, rgba(0, 0, 0, 0.08))',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '4px',
-                  minWidth: 0,
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span
-                    style={{
-                      fontSize: '0.72rem',
-                      fontWeight: 700,
-                      color: 'var(--text-tertiary, #94A3B8)',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.04em',
-                    }}
-                  >
-                    Gastos
-                  </span>
-                  <ArrowDownRight size={15} color="#EF4444" />
-                </div>
-                <div
-                  style={{
-                    fontSize: '1.25rem',
-                    fontWeight: 800,
-                    color: 'var(--text-primary, #0F172A)',
-                    letterSpacing: '-0.02em',
-                    fontVariantNumeric: 'tabular-nums',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {formatCurrency(expenseA, reportCurrency)}
-                </div>
-                {isComparisonMode ? (
-                  <>
-                    <div
-                      style={{
-                        fontSize: '0.72rem',
-                        color: 'var(--text-tertiary, #94A3B8)',
-                        fontVariantNumeric: 'tabular-nums',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      vs. {formatCurrency(expenseB, reportCurrency)}
+                {/* Bottom CTA Card */}
+                <div className="reports-cta-card reports-enter" style={{ '--i': isComparisonMode ? 7 : 6 } as React.CSSProperties}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                    <div className="reports-cta-icon">
+                      <FileSpreadsheet size={18} />
                     </div>
-                    <div style={{ marginTop: '3px' }}>
-                      {renderDeltaBadge(deltaExpense.pct, deltaDailyAvg.pct, true)}
+                    <div>
+                      <div style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                        Exportar este periodo en PDF/Excel
+                      </div>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                        Configura columnas, desglose por categorías y formato personalizado.
+                      </div>
                     </div>
-                  </>
-                ) : (
-                  <div
-                    style={{
-                      fontSize: '0.72rem',
-                      color: 'var(--text-tertiary, #94A3B8)',
-                      marginTop: 'auto',
-                      fontVariantNumeric: 'tabular-nums',
-                    }}
-                  >
-                    Promedio: {formatCurrency(dailyAvgA, reportCurrency)}/día
                   </div>
-                )}
-              </div>
-
-              {/* Card 3: Balance Neto */}
-              <div
-                style={{
-                  background: 'var(--surface-color, #FFFFFF)',
-                  borderRadius: '14px',
-                  padding: '0.85rem',
-                  border: '1px solid var(--border-color, rgba(0, 0, 0, 0.08))',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '4px',
-                  minWidth: 0,
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span
-                    style={{
-                      fontSize: '0.72rem',
-                      fontWeight: 700,
-                      color: 'var(--text-tertiary, #94A3B8)',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.04em',
-                    }}
+                  <button
+                    type="button"
+                    onClick={handleExportThisAnalysis}
+                    className="reports-cta-btn"
                   >
-                    Balance Neto
-                  </span>
-                  <Sparkles size={15} color="var(--tool-reports, #06B6D4)" />
+                    <span>Configurar Exportación</span>
+                    <ArrowUpRight size={15} />
+                  </button>
                 </div>
-                <div
-                  style={{
-                    fontSize: '1.25rem',
-                    fontWeight: 800,
-                    color: balanceA >= 0 ? '#059669' : '#DC2626',
-                    letterSpacing: '-0.02em',
-                    fontVariantNumeric: 'tabular-nums',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {formatCurrency(balanceA, reportCurrency)}
-                </div>
-                {isComparisonMode ? (
-                  <>
-                    <div
-                      style={{
-                        fontSize: '0.72rem',
-                        color: 'var(--text-tertiary, #94A3B8)',
-                        fontVariantNumeric: 'tabular-nums',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      vs. {formatCurrency(balanceB, reportCurrency)}
-                    </div>
-                    <div style={{ marginTop: '3px' }}>
-                      {renderDeltaBadge(deltaBalance.pct, deltaDailyAvg.pct, false)}
-                    </div>
-                  </>
-                ) : (
-                  <div
-                    style={{
-                      fontSize: '0.72rem',
-                      color: 'var(--text-tertiary, #94A3B8)',
-                      marginTop: 'auto',
-                    }}
-                  >
-                    {balanceA >= 0 ? 'Superávit del periodo' : 'Déficit del periodo'}
-                  </div>
-                )}
               </div>
-
-              {/* Card 4: Promedio Diario */}
-              <div
-                style={{
-                  background: 'var(--surface-color, #FFFFFF)',
-                  borderRadius: '14px',
-                  padding: '0.85rem',
-                  border: '1px solid var(--border-color, rgba(0, 0, 0, 0.08))',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '4px',
-                  minWidth: 0,
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span
-                    style={{
-                      fontSize: '0.72rem',
-                      fontWeight: 700,
-                      color: 'var(--text-tertiary, #94A3B8)',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.04em',
-                    }}
-                  >
-                    Promedio Diario
-                  </span>
-                  <BarChart3 size={15} color="var(--tool-reports, #06B6D4)" />
-                </div>
-                <div
-                  style={{
-                    fontSize: '1.25rem',
-                    fontWeight: 800,
-                    color: 'var(--text-primary, #0F172A)',
-                    letterSpacing: '-0.02em',
-                    fontVariantNumeric: 'tabular-nums',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {formatCurrency(dailyAvgA, reportCurrency)}/d
-                </div>
-                {isComparisonMode ? (
-                  <>
-                    <div
-                      style={{
-                        fontSize: '0.72rem',
-                        color: 'var(--text-tertiary, #94A3B8)',
-                        fontVariantNumeric: 'tabular-nums',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      vs. {formatCurrency(dailyAvgB, reportCurrency)}/d
-                    </div>
-                    <div style={{ marginTop: '3px' }}>
-                      {renderDeltaBadge(deltaDailyAvg.pct, null, true)}
-                    </div>
-                  </>
-                ) : (
-                  <div
-                    style={{
-                      fontSize: '0.72rem',
-                      color: 'var(--text-tertiary, #94A3B8)',
-                      marginTop: 'auto',
-                    }}
-                  >
-                    Gasto medio estimado
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Action CTA: "Exportar este análisis" with Studio customization */}
-          {!loadingAnalysis && analysisData && (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                flexWrap: 'wrap',
-                gap: '8px',
-                background: 'var(--tool-reports-bg, rgba(6, 182, 212, 0.08))',
-                border: '1px solid var(--tool-reports, rgba(6, 182, 212, 0.3))',
-                borderRadius: '12px',
-                padding: '0.75rem 1rem',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Sparkles size={18} color="var(--tool-reports, #06B6D4)" />
-                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary, #0F172A)' }}>
-                  ¿Deseas enviar este reporte por correo o personalizar filtros?
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={handleExportThisAnalysis}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '6px 14px',
-                  borderRadius: '8px',
-                  border: 'none',
-                  background: 'var(--tool-reports, #06B6D4)',
-                  color: '#FFFFFF',
-                  fontSize: '0.82rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  boxShadow: '0 2px 4px rgba(6, 182, 212, 0.25)',
-                  transition: 'background-color 150ms ease, transform 150ms ease',
-                }}
-                onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.96)')}
-                onMouseUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
-                onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
-              >
-                <FileSpreadsheet size={14} />
-                <span>Abrir en Estudio de Exportación</span>
-              </button>
-            </div>
-          )}
-
-          {/* SVG Charts Section */}
-          {!loadingAnalysis && analysisData && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-              {/* Chart 1: Donut Distribution */}
-              <CategoryDonutChart
-                ref={donutChartRef}
-                categories={donutCategories}
-                total={expenseA}
-                currency={reportCurrency}
-                transactions={expensesA}
-                title="Distribución de Gastos por Categoría (Periodo A)"
-              />
-
-              {/* Chart 2: Cashflow Trend */}
-              <CashflowTrendChart
-                ref={trendChartRef}
-                series={analysisData.series_a || []}
-                currency={reportCurrency}
-                title="Flujo de Caja: Ingresos vs. Gastos (Periodo A)"
-              />
-
-              {/* Chart 3: Period Comparison Bar Chart (Only in comparison mode) */}
-              {isComparisonMode && (
-                <PeriodComparisonBarChart
-                  ref={compChartRef}
-                  periodA={periodAKpi}
-                  periodB={periodBKpi}
-                  categoryComparison={analysisData.category_comparison || []}
-                  currency={reportCurrency}
-                  title="Comparativa Visual: Periodo A vs. Periodo B"
-                />
-              )}
             </div>
           )}
         </section>
-      )}
+      </div>
 
       {/* =================================================================== */}
       {/* TAB 2: CONFIGURADOR DE EXPORTACIÓN (ExportStudioPanel)              */}
@@ -1671,7 +1286,9 @@ export const ReportsHub: React.FC = () => {
       {activeTab === 'export' && (
         <ExportStudioPanel
           initialConfig={exportConfig}
-          onConfigChange={setExportConfig}
+          onConfigChange={handleExportConfigChange}
+          defaultCurrency={mainCurrency}
+          defaultEmail={user?.email}
           getSvgElements={() => {
             const svgs: SVGSVGElement[] = [];
             if (donutChartRef.current) svgs.push(donutChartRef.current);
@@ -1679,9 +1296,6 @@ export const ReportsHub: React.FC = () => {
             if (isComparisonMode && compChartRef.current) svgs.push(compChartRef.current);
             return svgs;
           }}
-          defaultEmail={user?.email}
-          reportCurrency={reportCurrency}
-          onReportCurrencyChange={handleCurrencyChange}
         />
       )}
     </div>

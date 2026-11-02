@@ -139,7 +139,8 @@ async def test_push(
 async def execute_scheduled_notifications(
     db: AsyncSession,
     window: str,
-    now_vet: Optional[datetime.datetime] = None
+    now_vet: Optional[datetime.datetime] = None,
+    dry_run: bool = False
 ) -> dict:
     """
     Ejecuta el ciclo de notificaciones programadas (morning o evening)
@@ -510,58 +511,69 @@ async def execute_scheduled_notifications(
                         )
 
         # Purga de retención de 30 días (q16)
-        retention_limit = local_now - datetime.timedelta(days=30)
-        await db.execute(
-            delete(models.Notification).where(models.Notification.created_at < retention_limit)
-        )
-
-        # Commit de las filas en Bandeja ANTES del envío Push
-        await db.commit()
+        if not dry_run:
+            retention_limit = local_now - datetime.timedelta(days=30)
+            await db.execute(
+                delete(models.Notification).where(models.Notification.created_at < retention_limit)
+            )
+            # Commit de las filas en Bandeja ANTES del envío Push
+            await db.commit()
+        else:
+            await db.rollback()
 
         # Despacho del Push Consolidado por Usuario (q2, q14)
         sent_count = 0
         failed_count = 0
         tokens_to_delete = []
 
-        for user_id, items in pending_by_user.items():
-            if not items:
-                continue
-            if len(items) == 1:
-                push_title = items[0]["title"]
-                push_body = items[0]["body"]
-                push_url = items[0]["url"]
-            else:
-                if window == "morning":
-                    push_title = f"Tienes {len(items)} recordatorios para hoy"
+        if not dry_run:
+            for user_id, items in pending_by_user.items():
+                if not items:
+                    continue
+                if len(items) == 1:
+                    push_title = items[0]["title"]
+                    push_body = items[0]["body"]
+                    push_url = items[0]["url"]
                 else:
-                    push_title = f"Resumen de la noche: {len(items)} pendientes"
-                push_body = " • ".join(i["body"] for i in items[:3]) + (f" (+{len(items) - 3} más)" if len(items) > 3 else "")
-                push_url = "/?notifications=open"
+                    if window == "morning":
+                        push_title = f"Tienes {len(items)} recordatorios para hoy"
+                    else:
+                        push_title = f"Resumen de la noche: {len(items)} pendientes"
+                    push_body = " • ".join(i["body"] for i in items[:3]) + (f" (+{len(items) - 3} más)" if len(items) > 3 else "")
+                    push_url = "/?notifications=open"
 
-            sub_stmt = select(models.PushSubscription).where(models.PushSubscription.user_id == user_id)
-            subs = (await db.execute(sub_stmt)).scalars().all()
-            for sub in subs:
-                res = await asyncio.to_thread(
-                    send_push_notification_to_token, sub.fcm_token, push_title, push_body, push_url
+                sub_stmt = select(models.PushSubscription).where(models.PushSubscription.user_id == user_id)
+                subs = (await db.execute(sub_stmt)).scalars().all()
+                for sub in subs:
+                    res = await asyncio.to_thread(
+                        send_push_notification_to_token, sub.fcm_token, push_title, push_body, push_url
+                    )
+                    success = res[0] if isinstance(res, tuple) else bool(res)
+                    is_unregistered = res[1] if isinstance(res, tuple) and len(res) > 1 else (res == "UNREGISTERED")
+                    if success:
+                        sent_count += 1
+                    else:
+                        failed_count += 1
+                        if is_unregistered:
+                            tokens_to_delete.append(sub.fcm_token)
+
+            if tokens_to_delete:
+                del_stmt = delete(models.PushSubscription).where(
+                    models.PushSubscription.fcm_token.in_(tokens_to_delete)
                 )
-                success = res[0] if isinstance(res, tuple) else bool(res)
-                is_unregistered = res[1] if isinstance(res, tuple) and len(res) > 1 else (res == "UNREGISTERED")
-                if success:
-                    sent_count += 1
-                else:
-                    failed_count += 1
-                    if is_unregistered:
-                        tokens_to_delete.append(sub.fcm_token)
-
-        if tokens_to_delete:
-            del_stmt = delete(models.PushSubscription).where(
-                models.PushSubscription.fcm_token.in_(tokens_to_delete)
-            )
-            await db.execute(del_stmt)
-            await db.commit()
+                await db.execute(del_stmt)
+                await db.commit()
+        else:
+            # En modo dry_run, simulamos el conteo de push sin enviar a la red ni alterar DB
+            for user_id, items in pending_by_user.items():
+                if not items:
+                    continue
+                sub_stmt = select(models.PushSubscription).where(models.PushSubscription.user_id == user_id)
+                subs = (await db.execute(sub_stmt)).scalars().all()
+                sent_count += len(subs)
 
         return {
-            "status": "success",
+            "status": "dry_run" if dry_run else "success",
             "window": window,
             "items_queued": sum(len(items) for items in pending_by_user.values()),
             "users_notified": len(pending_by_user),
@@ -577,6 +589,7 @@ async def trigger_notifications(
     token: Optional[str] = None,
     authorization: Optional[str] = Header(None),
     window: Optional[str] = None,
+    dry_run: bool = False,
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -607,4 +620,4 @@ async def trigger_notifications(
         return {"status": "awake", "time": local_now.isoformat(), "message": "Ping received. Outside notification window."}
 
     active_window = "morning" if is_morning else "evening"
-    return await execute_scheduled_notifications(db, active_window, now_vet=local_now)
+    return await execute_scheduled_notifications(db, active_window, now_vet=local_now, dry_run=dry_run)

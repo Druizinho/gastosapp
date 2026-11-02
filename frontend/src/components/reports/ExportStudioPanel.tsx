@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   FileText,
   FileSpreadsheet,
@@ -19,7 +19,6 @@ import {
   SlidersHorizontal,
   AlertTriangle,
   Loader2,
-  Sparkles,
   Send,
   Eye,
 } from 'lucide-react';
@@ -39,6 +38,8 @@ import type {
 
 import { useToast } from '../ui/Toast';
 import { useAuth } from '../../context/AuthContext';
+import { SegmentedTabs } from '../ui/SegmentedTabs';
+import { Skeleton } from '../ui/Skeleton';
 import { TOOL_COLORS } from '../../utils/toolColors';
 import { ORDERED_CURRENCIES } from '../../utils/currencySummary';
 import {
@@ -52,6 +53,7 @@ export interface ExportStudioPanelProps {
   onConfigChange?: (config: ExportConfig) => void;
   getSvgElements?: () => SVGSVGElement[];
   defaultEmail?: string;
+  defaultCurrency?: MainCurrencyPreference;
   reportCurrency?: MainCurrencyPreference;
   onReportCurrencyChange?: (currency: MainCurrencyPreference) => void;
   cachedDebts?: Debt[];
@@ -67,8 +69,9 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
   onConfigChange,
   getSvgElements,
   defaultEmail,
+  defaultCurrency,
   reportCurrency,
-  onReportCurrencyChange,
+  onReportCurrencyChange: _onReportCurrencyChange,
   cachedDebts,
   cachedSavings,
   cachedBudget,
@@ -81,7 +84,7 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
 
   // Internal configuration state
   const [config, setConfig] = useState<ExportConfig>(() => {
-    const base = getDefaultExportConfig(reportCurrency || 'USD');
+    const base = getDefaultExportConfig(defaultCurrency || reportCurrency || 'USD');
     return { ...base, ...initialConfig };
   });
 
@@ -97,6 +100,26 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
   // Reference for animation handling
   const prevSourceRef = useRef(config.source);
 
+  // Memoized entities cache object to prevent re-renders / re-fetching loop
+  const memoizedEntities = useMemo(
+    () => ({
+      debts: cachedDebts,
+      savings: cachedSavings,
+      budgetData: cachedBudget,
+      fixedExpenses: cachedFixedExpenses,
+      estimatedIncomes: cachedEstimatedIncomes,
+    }),
+    [cachedDebts, cachedSavings, cachedBudget, cachedFixedExpenses, cachedEstimatedIncomes]
+  );
+
+  const handleExportSuccess = useCallback((msg: string) => {
+    toast.success(msg);
+  }, [toast]);
+
+  const handleExportError = useCallback((err: string) => {
+    toast.error(err);
+  }, [toast]);
+
   // Hook instance for centralized report export
   const {
     exportDocument,
@@ -110,28 +133,11 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
     loadEntitiesForSource,
   } = useReportExport({
     config,
-    entities: {
-      debts: cachedDebts,
-      savings: cachedSavings,
-      budgetData: cachedBudget,
-      fixedExpenses: cachedFixedExpenses,
-      estimatedIncomes: cachedEstimatedIncomes,
-    },
+    entities: memoizedEntities,
     getSvgElements,
-    onSuccess: (msg) => toast.success(msg),
-    onError: (err) => toast.error(err),
+    onSuccess: handleExportSuccess,
+    onError: handleExportError,
   });
-
-  // Sync config when reportCurrency changes externally
-  useEffect(() => {
-    if (reportCurrency && reportCurrency !== config.currency) {
-      setConfig((prev) => {
-        const updated = { ...prev, currency: reportCurrency };
-        onConfigChange?.(updated);
-        return updated;
-      });
-    }
-  }, [reportCurrency, onConfigChange, config.currency]);
 
   // Sync initialConfig changes if provided
   useEffect(() => {
@@ -151,44 +157,16 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
 
   // Update helper
   const updateConfig = (patch: Partial<ExportConfig>) => {
-    setConfig((prev) => {
-      const next = { ...prev, ...patch };
-      if (patch.currency && patch.currency !== reportCurrency) {
-        onReportCurrencyChange?.(patch.currency);
-      }
-      onConfigChange?.(next);
-      return next;
-    });
+    const next = { ...config, ...patch };
+    setConfig(next);
+    onConfigChange?.(next);
   };
 
   // ---------------------------------------------------------------------------
-  // Quick Presets Application
+  // Smart Format Defaults (automatically adjusts toggles based on selected format)
   // ---------------------------------------------------------------------------
-  const isExecutivePdfPreset =
-    config.format === 'pdf' &&
-    config.includeHeaderCard &&
-    config.includeCharts &&
-    config.includeCategories &&
-    !config.includeTransactions;
-
-  const isFullExcelPreset =
-    config.format === 'xlsx' &&
-    config.includeHeaderCard &&
-    !config.includeCharts &&
-    config.includeCategories &&
-    config.includeTransactions &&
-    config.includeOriginalCurrency;
-
-  const isPlainCsvPreset =
-    config.format === 'csv' &&
-    !config.includeHeaderCard &&
-    !config.includeCharts &&
-    !config.includeCategories &&
-    config.includeTransactions &&
-    config.includeOriginalCurrency;
-
-  const applyPreset = (preset: 'executive' | 'full_excel' | 'plain_csv') => {
-    if (preset === 'executive') {
+  const handleFormatChange = (fmt: ExportFormatType) => {
+    if (fmt === 'pdf') {
       updateConfig({
         format: 'pdf',
         includeHeaderCard: true,
@@ -197,8 +175,7 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
         includeTransactions: false,
         includeOriginalCurrency: false,
       });
-      toast.info('Plantilla activada: Reporte Ejecutivo en PDF con gráficos y KPIs');
-    } else if (preset === 'full_excel') {
+    } else if (fmt === 'xlsx') {
       updateConfig({
         format: 'xlsx',
         includeHeaderCard: true,
@@ -207,8 +184,7 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
         includeTransactions: true,
         includeOriginalCurrency: true,
       });
-      toast.info('Plantilla activada: Contabilidad Completa Multi-hoja en Excel');
-    } else if (preset === 'plain_csv') {
+    } else if (fmt === 'csv') {
       updateConfig({
         format: 'csv',
         includeHeaderCard: false,
@@ -217,7 +193,6 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
         includeTransactions: true,
         includeOriginalCurrency: true,
       });
-      toast.info('Plantilla activada: Datos Planos en CSV para análisis y hojas de cálculo');
     }
   };
 
@@ -258,7 +233,7 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
     },
     {
       id: 'debts',
-      label: 'Deudas y Préstamos',
+      label: 'Deudas',
       sub: 'Por pagar, por cobrar y estados',
       icon: <Receipt size={18} />,
       accent: TOOL_COLORS.debts.solid,
@@ -311,17 +286,16 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
   const debtsList = entities.debts || [];
   const activeDebtFilter = config.debtFilterType || 'all';
   const filteredDebts = useMemo(() => {
-    return debtsList.filter((d) => {
+    return (entities.debts || []).filter((d) => {
       if (activeDebtFilter === 'owed') return d.type === 'owed';
       if (activeDebtFilter === 'receivable') return d.type === 'receivable';
       return true;
     });
-  }, [debtsList, activeDebtFilter]);
+  }, [entities.debts, activeDebtFilter]);
 
   // Pure savings & projects
-  const allGoals = entities.savings || [];
-  const pureSavings = useMemo(() => allGoals.filter((g) => g.type !== 'project'), [allGoals]);
-  const projectsList = useMemo(() => allGoals.filter((g) => g.type === 'project'), [allGoals]);
+  const pureSavings = useMemo(() => (entities.savings || []).filter((g) => g.type !== 'project' && !(g as any).is_project), [entities.savings]);
+  const projectsList = useMemo(() => (entities.savings || []).filter((g) => g.type === 'project' || (g as any).is_project), [entities.savings]);
   const budgetData = entities.budgetData;
 
   // Format Action Button Label
@@ -329,14 +303,6 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
 
   // Symmetric shortcuts for dates
   const shortcuts = useMemo(() => getSymmetricShortcuts(), []);
-
-  // Shared button press handlers for clean 0.96 scale
-  const pressDown = (e: React.MouseEvent<HTMLElement>) => {
-    if (!isExporting) e.currentTarget.style.transform = 'scale(0.96)';
-  };
-  const pressUp = (e: React.MouseEvent<HTMLElement>) => {
-    e.currentTarget.style.transform = 'scale(1)';
-  };
 
   return (
     <div
@@ -350,214 +316,23 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
         margin: '0 auto',
       }}
     >
-      {/* ===================================================================== */}
-      {/* TOP QUICK PRESETS (3 CARDS)                                           */}
-      {/* ===================================================================== */}
-      <section aria-label="Plantillas Rápidas">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.65rem' }}>
-          <Sparkles size={16} color="var(--tool-reports, #06B6D4)" />
-          <h2 style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-secondary, #64748B)', margin: 0, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Plantillas Rápidas
-          </h2>
-        </div>
-
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-            gap: '0.75rem',
-          }}
-        >
-          {/* Preset 1: Executive PDF */}
-          <button
-            type="button"
-            onClick={() => applyPreset('executive')}
-            onMouseDown={pressDown}
-            onMouseUp={pressUp}
-            onMouseLeave={pressUp}
-            style={{
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: '12px',
-              padding: '12px 14px',
-              borderRadius: '14px',
-              border: isExecutivePdfPreset
-                ? '2px solid #EF4444'
-                : '1px solid var(--border-color, rgba(0,0,0,0.08))',
-              background: isExecutivePdfPreset ? 'rgba(239, 68, 68, 0.06)' : 'var(--surface-color, #FFFFFF)',
-              boxShadow: isExecutivePdfPreset ? '0 2px 8px rgba(239, 68, 68, 0.15)' : '0 1px 3px rgba(0,0,0,0.03)',
-              textAlign: 'left',
-              cursor: 'pointer',
-              transition: 'transform 140ms cubic-bezier(0.16, 1, 0.3, 1), border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease',
-            }}
-          >
-            <div
-              style={{
-                width: '38px',
-                height: '38px',
-                borderRadius: '10px',
-                background: 'rgba(239, 68, 68, 0.12)',
-                color: '#EF4444',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
-              <FileText size={20} />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px' }}>
-                <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary, #0F172A)' }}>
-                  Reporte Ejecutivo
-                </span>
-                <span
-                  style={{
-                    fontSize: '0.65rem',
-                    fontWeight: 700,
-                    padding: '2px 6px',
-                    borderRadius: '6px',
-                    background: '#EF4444',
-                    color: '#FFFFFF',
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
-                >
-                  PDF
-                </span>
-              </div>
-              <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary, #64748B)', marginTop: '3px', lineHeight: 1.35 }}>
-                KPIs visuales, gráficos vectoriales incrustados y balance por categoría.
-              </div>
-            </div>
-          </button>
-
-          {/* Preset 2: Full Excel */}
-          <button
-            type="button"
-            onClick={() => applyPreset('full_excel')}
-            onMouseDown={pressDown}
-            onMouseUp={pressUp}
-            onMouseLeave={pressUp}
-            style={{
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: '12px',
-              padding: '12px 14px',
-              borderRadius: '14px',
-              border: isFullExcelPreset
-                ? '2px solid #10B981'
-                : '1px solid var(--border-color, rgba(0,0,0,0.08))',
-              background: isFullExcelPreset ? 'rgba(16, 185, 129, 0.06)' : 'var(--surface-color, #FFFFFF)',
-              boxShadow: isFullExcelPreset ? '0 2px 8px rgba(16, 185, 129, 0.15)' : '0 1px 3px rgba(0,0,0,0.03)',
-              textAlign: 'left',
-              cursor: 'pointer',
-              transition: 'transform 140ms cubic-bezier(0.16, 1, 0.3, 1), border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease',
-            }}
-          >
-            <div
-              style={{
-                width: '38px',
-                height: '38px',
-                borderRadius: '10px',
-                background: 'rgba(16, 185, 129, 0.12)',
-                color: '#10B981',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
-              <FileSpreadsheet size={20} />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px' }}>
-                <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary, #0F172A)' }}>
-                  Contabilidad Completa
-                </span>
-                <span
-                  style={{
-                    fontSize: '0.65rem',
-                    fontWeight: 700,
-                    padding: '2px 6px',
-                    borderRadius: '6px',
-                    background: '#10B981',
-                    color: '#FFFFFF',
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
-                >
-                  EXCEL
-                </span>
-              </div>
-              <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary, #64748B)', marginTop: '3px', lineHeight: 1.35 }}>
-                Multi-hoja con desglose, transacciones con tasas y fórmulas listas.
-              </div>
-            </div>
-          </button>
-
-          {/* Preset 3: Plain CSV */}
-          <button
-            type="button"
-            onClick={() => applyPreset('plain_csv')}
-            onMouseDown={pressDown}
-            onMouseUp={pressUp}
-            onMouseLeave={pressUp}
-            style={{
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: '12px',
-              padding: '12px 14px',
-              borderRadius: '14px',
-              border: isPlainCsvPreset
-                ? '2px solid #3B82F6'
-                : '1px solid var(--border-color, rgba(0,0,0,0.08))',
-              background: isPlainCsvPreset ? 'rgba(59, 130, 246, 0.06)' : 'var(--surface-color, #FFFFFF)',
-              boxShadow: isPlainCsvPreset ? '0 2px 8px rgba(59, 130, 246, 0.15)' : '0 1px 3px rgba(0,0,0,0.03)',
-              textAlign: 'left',
-              cursor: 'pointer',
-              transition: 'transform 140ms cubic-bezier(0.16, 1, 0.3, 1), border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease',
-            }}
-          >
-            <div
-              style={{
-                width: '38px',
-                height: '38px',
-                borderRadius: '10px',
-                background: 'rgba(59, 130, 246, 0.12)',
-                color: '#3B82F6',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
-              <Layers size={20} />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px' }}>
-                <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary, #0F172A)' }}>
-                  Datos Planos
-                </span>
-                <span
-                  style={{
-                    fontSize: '0.65rem',
-                    fontWeight: 700,
-                    padding: '2px 6px',
-                    borderRadius: '6px',
-                    background: '#3B82F6',
-                    color: '#FFFFFF',
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
-                >
-                  CSV
-                </span>
-              </div>
-              <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary, #64748B)', marginTop: '3px', lineHeight: 1.35 }}>
-                Tabla limpia con BOM UTF-8 para apertura inmediata en Excel/Sheets.
-              </div>
-            </div>
-          </button>
-        </div>
-      </section>
+      <style>{`
+        .export-studio-interactive {
+          transition: transform 150ms ease-out, background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+          user-select: none;
+        }
+        .export-studio-interactive:active:not(:disabled) {
+          transform: scale(0.96);
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .export-studio-interactive {
+            transition: none !important;
+          }
+          .export-studio-interactive:active:not(:disabled) {
+            transform: none !important;
+          }
+        }
+      `}</style>
 
       {/* ===================================================================== */}
       {/* SOURCE SELECTOR (2x4 MATRIX)                                          */}
@@ -594,12 +369,6 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
               Origen de Datos
             </h3>
           </div>
-          {loadingEntities && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.74rem', color: 'var(--text-tertiary, #94A3B8)' }}>
-              <Loader2 size={13} className="animate-spin" />
-              <span>Sincronizando...</span>
-            </div>
-          )}
         </div>
 
         {/* 2x4 Grid */}
@@ -616,10 +385,8 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
               <button
                 key={src.id}
                 type="button"
+                className="export-studio-interactive"
                 onClick={() => updateConfig({ source: src.id })}
-                onMouseDown={pressDown}
-                onMouseUp={pressUp}
-                onMouseLeave={pressUp}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -629,11 +396,10 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
                   border: isSelected
                     ? `2px solid ${src.accent}`
                     : '1px solid var(--border-color, rgba(0, 0, 0, 0.08))',
-                  background: isSelected ? src.bgAccent : 'var(--bg-secondary, #F8FAFC)',
+                  background: isSelected ? src.bgAccent : 'var(--surface-muted, #F8FAFC)',
                   color: isSelected ? 'var(--text-primary, #0F172A)' : 'var(--text-secondary, #64748B)',
                   cursor: 'pointer',
                   textAlign: 'left',
-                  transition: 'transform 140ms cubic-bezier(0.16, 1, 0.3, 1), background-color 150ms ease, border-color 150ms ease',
                 }}
               >
                 <div
@@ -668,119 +434,247 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
         <div
           style={{
             marginTop: '12px',
-            background: 'var(--bg-secondary, #F8FAFC)',
+            background: 'var(--surface-muted, #F8FAFC)',
             borderRadius: '16px',
             padding: '12px',
             border: '1px solid var(--border-color, rgba(0, 0, 0, 0.06))',
           }}
         >
-          {/* DEBTS SUB-SELECTOR */}
-          {config.source === 'debts' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
-                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary, #0F172A)' }}>
-                  Filtrar Cartera de Deudas:
-                </span>
-                <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary, #94A3B8)', fontVariantNumeric: 'tabular-nums' }}>
-                  {filteredDebts.length} encontradas
-                </span>
-              </div>
+          {loadingEntities ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '6px 2px' }}>
+              <Skeleton height="14px" width="35%" borderRadius="4px" />
+              <Skeleton height="40px" width="100%" borderRadius="10px" />
+            </div>
+          ) : (
+            <>
+              {/* DEBTS SUB-SELECTOR */}
+              {config.source === 'debts' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary, #0F172A)' }}>
+                      Filtrar Cartera de Deudas:
+                    </span>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary, #94A3B8)', fontVariantNumeric: 'tabular-nums' }}>
+                      {filteredDebts.length} encontradas
+                    </span>
+                  </div>
 
-              {/* Segmented Pills */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                {[
-                  { id: 'all', label: 'Todas las deudas', count: debtsList.length, color: 'var(--tool-debts, #8B5CF6)', bg: 'rgba(139, 92, 246, 0.12)' },
-                  { id: 'receivable', label: 'Por cobrar', count: debtsList.filter((d) => d.type === 'receivable').length, color: '#10B981', bg: 'rgba(16, 185, 129, 0.12)' },
-                  { id: 'owed', label: 'Por pagar', count: debtsList.filter((d) => d.type === 'owed').length, color: '#EF4444', bg: 'rgba(239, 68, 68, 0.12)' },
-                ].map((seg) => {
-                  const isActive = activeDebtFilter === seg.id;
-                  return (
-                    <button
-                      key={seg.id}
-                      type="button"
-                      onClick={() => {
-                        updateConfig({
-                          debtFilterType: seg.id as 'all' | 'owed' | 'receivable',
-                          selectedDebtId: 'all',
-                        });
-                      }}
-                      onMouseDown={pressDown}
-                      onMouseUp={pressUp}
-                      onMouseLeave={pressUp}
+                  {/* Segmented Tabs for debts */}
+                  <SegmentedTabs<'all' | 'owed' | 'receivable'>
+                    tabs={[
+                      { id: 'all', label: 'Todas las deudas', shortLabel: 'Todas', count: debtsList.length },
+                      { id: 'receivable', label: 'Por cobrar', shortLabel: 'Cobrar', count: debtsList.filter((d) => d.type === 'receivable').length, badgeColor: 'var(--success-color, #10B981)' },
+                      { id: 'owed', label: 'Por pagar', shortLabel: 'Pagar', count: debtsList.filter((d) => d.type === 'owed').length, badgeColor: 'var(--danger-color, #EF4444)' },
+                    ]}
+                    activeTab={activeDebtFilter}
+                    onChange={(segId) => {
+                      updateConfig({
+                        debtFilterType: segId,
+                        selectedDebtId: 'all',
+                      });
+                    }}
+                    activeColor="var(--tool-debts, #8B5CF6)"
+                  />
+
+                  {/* Debts Dropdown */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <select
+                      aria-label="Seleccionar alcance de deudas"
+                      value={config.selectedDebtId}
+                      onChange={(e) => updateConfig({ selectedDebtId: e.target.value })}
                       style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '6px 12px',
+                        width: '100%',
+                        maxWidth: '520px',
+                        padding: '8px 12px',
                         borderRadius: '8px',
-                        border: isActive ? `1.5px solid ${seg.color}` : '1px solid var(--border-color, rgba(0, 0, 0, 0.1))',
-                        background: isActive ? seg.bg : 'var(--surface-color, #FFFFFF)',
-                        color: isActive ? seg.color : 'var(--text-secondary, #64748B)',
-                        fontSize: '0.78rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        transition: 'transform 140ms cubic-bezier(0.16, 1, 0.3, 1), background-color 150ms ease',
+                        border: '1px solid var(--border-color, rgba(0, 0, 0, 0.15))',
+                        fontSize: '0.82rem',
+                        background: 'var(--surface-color, #FFFFFF)',
+                        color: 'var(--text-primary, #0F172A)',
+                        fontVariantNumeric: 'tabular-nums',
                       }}
                     >
-                      <span>{seg.label}</span>
-                      <span
+                      <option value="all">
+                        Todas las deudas de este grupo ({filteredDebts.length})
+                      </option>
+                      {filteredDebts.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.counterpart} — {d.concept || 'Deuda'} ({d.currency} {Number(d.total_amount).toLocaleString()}) {d.is_settled ? '[Saldada]' : '[Activa]'}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {/* BUDGETS SUB-SELECTOR */}
+              {config.source === 'budgets' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-secondary, #64748B)', marginBottom: '4px' }}>
+                        Mes del Presupuesto:
+                      </label>
+                      <input
+                        type="month"
+                        aria-label="Mes del Presupuesto"
+                        value={config.monthYear}
+                        onChange={(e) => updateConfig({ monthYear: e.target.value })}
                         style={{
-                          fontSize: '0.7rem',
-                          padding: '1px 5px',
-                          borderRadius: '5px',
-                          background: isActive ? 'rgba(0,0,0,0.06)' : 'rgba(0,0,0,0.04)',
+                          padding: '6px 10px',
+                          borderRadius: '8px',
+                          border: '1px solid var(--border-color, rgba(0, 0, 0, 0.15))',
+                          fontSize: '0.82rem',
+                          background: 'var(--surface-color, #FFFFFF)',
+                          color: 'var(--text-primary, #0F172A)',
                           fontVariantNumeric: 'tabular-nums',
                         }}
+                      />
+                    </div>
+
+                    <div style={{ flex: 1, minWidth: '240px' }}>
+                      <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-secondary, #64748B)', marginBottom: '4px' }}>
+                        Alcance del Documento:
+                      </label>
+                      <select
+                        aria-label="Alcance del Presupuesto"
+                        value={config.selectedBudgetId}
+                        onChange={(e) => updateConfig({ selectedBudgetId: e.target.value })}
+                        style={{
+                          width: '100%',
+                          padding: '7px 10px',
+                          borderRadius: '8px',
+                          border: '1px solid var(--border-color, rgba(0, 0, 0, 0.15))',
+                          fontSize: '0.82rem',
+                          background: 'var(--surface-color, #FFFFFF)',
+                          color: 'var(--text-primary, #0F172A)',
+                        }}
                       >
-                        {seg.count}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
+                        <option value="all">Plan Maestro + Todos los Subpresupuestos</option>
+                        <option value="primary_only">Solo el Plan Maestro</option>
+                        {budgetData?.budgets && budgetData.budgets.length > 0 && (
+                          <optgroup label="Subpresupuestos">
+                            {budgetData.budgets.map((b) => (
+                              <option key={b.id} value={b.id}>
+                                {b.name} {b.is_shared ? `(Compartido - ${b.shared_partner_name || 'Pana'})` : ''}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                        {budgetData?.category_limits && budgetData.category_limits.length > 0 && (
+                          <optgroup label="Categorías Límite">
+                            {budgetData.category_limits.map((c: BudgetCategorySummaryOut) => (
+                              <option key={c.category_name} value={c.category_name}>
+                                Categoría: {c.category_name}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
 
-              {/* Debts Dropdown */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <select
-                  aria-label="Seleccionar alcance de deudas"
-                  value={config.selectedDebtId}
-                  onChange={(e) => updateConfig({ selectedDebtId: e.target.value })}
-                  style={{
-                    width: '100%',
-                    maxWidth: '520px',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--border-color, rgba(0, 0, 0, 0.15))',
-                    fontSize: '0.82rem',
-                    background: 'var(--surface-color, #FFFFFF)',
-                    color: 'var(--text-primary, #0F172A)',
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
-                >
-                  <option value="all">
-                    Todas las deudas de este grupo ({filteredDebts.length})
-                  </option>
-                  {filteredDebts.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.counterpart} — {d.concept || 'Deuda'} ({d.currency} {Number(d.total_amount).toLocaleString()}) {d.is_settled ? '[Saldada]' : '[Activa]'}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          )}
+              {/* SAVINGS SUB-SELECTOR */}
+              {config.source === 'savings' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary, #0F172A)' }}>
+                    Metas de Ahorro a Exportar:
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <select
+                      aria-label="Seleccionar meta de ahorro"
+                      value={config.selectedSavingId}
+                      onChange={(e) => updateConfig({ selectedSavingId: e.target.value })}
+                      style={{
+                        width: '100%',
+                        maxWidth: '480px',
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                        border: '1px solid var(--border-color, rgba(0, 0, 0, 0.15))',
+                        fontSize: '0.82rem',
+                        background: 'var(--surface-color, #FFFFFF)',
+                        color: 'var(--text-primary, #0F172A)',
+                        fontVariantNumeric: 'tabular-nums',
+                      }}
+                    >
+                      <option value="all">Todas las metas de ahorro ({pureSavings.length})</option>
+                      {pureSavings.map((g) => {
+                        const savedAmount = (g.deposits || []).reduce(
+                          (acc, d) => acc + (d.transaction_type === 'withdrawal' ? -Number(d.amount || 0) : Number(d.amount || 0)),
+                          0
+                        );
+                        const hasTarget = Boolean(g.target_amount && Number(g.target_amount) > 0);
+                        const statusLabel = g.is_completed ? 'Concluido' : 'En curso';
+                        const text = hasTarget
+                          ? `${g.name} — Ahorrado: ${g.currency} ${savedAmount.toLocaleString()} / Meta: ${Number(g.target_amount).toLocaleString()} (${statusLabel})`
+                          : `${g.name} — Total ahorrado: ${g.currency} ${savedAmount.toLocaleString()} (${statusLabel})`;
+                        return (
+                          <option key={g.id} value={g.id}>
+                            {text}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                </div>
+              )}
 
-          {/* BUDGETS SUB-SELECTOR */}
-          {config.source === 'budgets' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              {/* PROJECTS SUB-SELECTOR */}
+              {config.source === 'projects' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary, #0F172A)' }}>
+                    Proyectos a Exportar:
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <select
+                      aria-label="Seleccionar proyecto"
+                      value={config.selectedProjectId || 'all'}
+                      onChange={(e) => updateConfig({ selectedProjectId: e.target.value })}
+                      style={{
+                        width: '100%',
+                        maxWidth: '480px',
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                        border: '1px solid var(--border-color, rgba(0, 0, 0, 0.15))',
+                        fontSize: '0.82rem',
+                        background: 'var(--surface-color, #FFFFFF)',
+                        color: 'var(--text-primary, #0F172A)',
+                        fontVariantNumeric: 'tabular-nums',
+                      }}
+                    >
+                      <option value="all">Todos los proyectos ({projectsList.length})</option>
+                      {projectsList.map((p) => {
+                        const executedAmount = (p.deposits || []).reduce(
+                          (acc, d) => acc + (d.transaction_type === 'withdrawal' ? -Number(d.amount || 0) : Number(d.amount || 0)),
+                          0
+                        );
+                        const hasTarget = Boolean(p.target_amount && Number(p.target_amount) > 0);
+                        const statusLabel = p.is_completed ? 'Concluido' : 'En curso';
+                        const text = hasTarget
+                          ? `${p.name} — Ejecutado: ${p.currency} ${executedAmount.toLocaleString()} / Meta: ${Number(p.target_amount).toLocaleString()} (${statusLabel})`
+                          : `${p.name} — Total ejecutado: ${p.currency} ${executedAmount.toLocaleString()} (${statusLabel})`;
+                        return (
+                          <option key={p.id} value={p.id}>
+                            {text}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {/* FIXED EXPENSES SUB-SELECTOR */}
+              {config.source === 'fixed_expenses' && (
                 <div>
                   <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-secondary, #64748B)', marginBottom: '4px' }}>
-                    Mes del Presupuesto:
+                    Mes de Gastos Fijos:
                   </label>
                   <input
                     type="month"
-                    aria-label="Mes del Presupuesto"
+                    aria-label="Mes de Gastos Fijos"
                     value={config.monthYear}
                     onChange={(e) => updateConfig({ monthYear: e.target.value })}
                     style={{
@@ -794,387 +688,250 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
                     }}
                   />
                 </div>
+              )}
 
-                <div style={{ flex: 1, minWidth: '240px' }}>
+              {/* ESTIMATED INCOMES SUB-SELECTOR */}
+              {config.source === 'estimated_incomes' && (
+                <div>
                   <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-secondary, #64748B)', marginBottom: '4px' }}>
-                    Alcance del Documento:
+                    Mes de Ingresos Mensuales:
                   </label>
-                  <select
-                    aria-label="Alcance del Presupuesto"
-                    value={config.selectedBudgetId}
-                    onChange={(e) => updateConfig({ selectedBudgetId: e.target.value })}
+                  <input
+                    type="month"
+                    aria-label="Mes de Ingresos Mensuales"
+                    value={config.monthYear}
+                    onChange={(e) => updateConfig({ monthYear: e.target.value })}
                     style={{
-                      width: '100%',
-                      padding: '7px 10px',
+                      padding: '6px 10px',
                       borderRadius: '8px',
                       border: '1px solid var(--border-color, rgba(0, 0, 0, 0.15))',
                       fontSize: '0.82rem',
                       background: 'var(--surface-color, #FFFFFF)',
                       color: 'var(--text-primary, #0F172A)',
+                      fontVariantNumeric: 'tabular-nums',
                     }}
-                  >
-                    <option value="all">Plan Maestro + Todos los Subpresupuestos</option>
-                    <option value="primary_only">Solo el Plan Maestro</option>
-                    {budgetData?.budgets && budgetData.budgets.length > 0 && (
-                      <optgroup label="Subpresupuestos">
-                        {budgetData.budgets.map((b) => (
-                          <option key={b.id} value={b.id}>
-                            {b.name} {b.is_shared ? `(Compartido - ${b.shared_partner_name || 'Pana'})` : ''}
-                          </option>
-                        ))}
-                      </optgroup>
-                    )}
-                    {budgetData?.category_limits && budgetData.category_limits.length > 0 && (
-                      <optgroup label="Categorías Límite">
-                        {budgetData.category_limits.map((c: BudgetCategorySummaryOut) => (
-                          <option key={c.category_name} value={c.category_name}>
-                            Categoría: {c.category_name}
-                          </option>
-                        ))}
-                      </optgroup>
-                    )}
-                  </select>
+                  />
                 </div>
-              </div>
-            </div>
-          )}
+              )}
 
-          {/* SAVINGS SUB-SELECTOR */}
-          {config.source === 'savings' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary, #0F172A)' }}>
-                Metas de Ahorro a Exportar:
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <select
-                  aria-label="Seleccionar meta de ahorro"
-                  value={config.selectedSavingId}
-                  onChange={(e) => updateConfig({ selectedSavingId: e.target.value })}
-                  style={{
-                    width: '100%',
-                    maxWidth: '480px',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--border-color, rgba(0, 0, 0, 0.15))',
-                    fontSize: '0.82rem',
-                    background: 'var(--surface-color, #FFFFFF)',
-                    color: 'var(--text-primary, #0F172A)',
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
-                >
-                  <option value="all">Todas las metas de ahorro ({pureSavings.length})</option>
-                  {pureSavings.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.name} — Meta: {g.currency} {Number(g.target_amount || 0).toLocaleString()} {g.is_completed ? '[Completada]' : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          )}
-
-          {/* PROJECTS SUB-SELECTOR */}
-          {config.source === 'projects' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary, #0F172A)' }}>
-                Proyectos a Exportar:
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <select
-                  aria-label="Seleccionar proyecto"
-                  value={config.selectedProjectId || 'all'}
-                  onChange={(e) => updateConfig({ selectedProjectId: e.target.value })}
-                  style={{
-                    width: '100%',
-                    maxWidth: '480px',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--border-color, rgba(0, 0, 0, 0.15))',
-                    fontSize: '0.82rem',
-                    background: 'var(--surface-color, #FFFFFF)',
-                    color: 'var(--text-primary, #0F172A)',
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
-                >
-                  <option value="all">Todos los proyectos ({projectsList.length})</option>
-                  {projectsList.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} — Presupuesto: {p.currency} {Number(p.target_amount || 0).toLocaleString()} ({p.is_completed ? 'Concluido' : 'En ejecución'})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          )}
-
-          {/* FIXED EXPENSES SUB-SELECTOR */}
-          {config.source === 'fixed_expenses' && (
-            <div>
-              <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-secondary, #64748B)', marginBottom: '4px' }}>
-                Mes de Gastos Fijos:
-              </label>
-              <input
-                type="month"
-                aria-label="Mes de Gastos Fijos"
-                value={config.monthYear}
-                onChange={(e) => updateConfig({ monthYear: e.target.value })}
-                style={{
-                  padding: '6px 10px',
-                  borderRadius: '8px',
-                  border: '1px solid var(--border-color, rgba(0, 0, 0, 0.15))',
-                  fontSize: '0.82rem',
-                  background: 'var(--surface-color, #FFFFFF)',
-                  color: 'var(--text-primary, #0F172A)',
-                  fontVariantNumeric: 'tabular-nums',
-                }}
-              />
-            </div>
-          )}
-
-          {/* ESTIMATED INCOMES SUB-SELECTOR */}
-          {config.source === 'estimated_incomes' && (
-            <div>
-              <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-secondary, #64748B)', marginBottom: '4px' }}>
-                Mes de Ingresos Mensuales:
-              </label>
-              <input
-                type="month"
-                aria-label="Mes de Ingresos Mensuales"
-                value={config.monthYear}
-                onChange={(e) => updateConfig({ monthYear: e.target.value })}
-                style={{
-                  padding: '6px 10px',
-                  borderRadius: '8px',
-                  border: '1px solid var(--border-color, rgba(0, 0, 0, 0.15))',
-                  fontSize: '0.82rem',
-                  background: 'var(--surface-color, #FFFFFF)',
-                  color: 'var(--text-primary, #0F172A)',
-                  fontVariantNumeric: 'tabular-nums',
-                }}
-              />
-            </div>
-          )}
-
-          {/* SUMMARY & COMPARISON DATE PICKERS */}
-          {(config.source === 'summary' || config.source === 'comparison') && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
-                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary, #0F172A)' }}>
-                  {config.source === 'comparison' ? 'Periodo A (Base):' : 'Rango de Fechas del Reporte:'}
-                </span>
-                {/* Shortcuts */}
-                <div style={{ display: 'flex', gap: '4px' }}>
-                  <button
-                    type="button"
-                    onClick={() => updateConfig({ dateFromA: shortcuts.monthVsLastMonth.dateFromA, dateToA: shortcuts.monthVsLastMonth.dateToA })}
-                    style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '5px', border: '1px solid rgba(0,0,0,0.1)', background: '#FFFFFF', cursor: 'pointer' }}
-                  >
-                    Este mes
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => updateConfig({ dateFromA: shortcuts.monthVsLastMonth.dateFromB, dateToA: shortcuts.monthVsLastMonth.dateToB })}
-                    style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '5px', border: '1px solid rgba(0,0,0,0.1)', background: '#FFFFFF', cursor: 'pointer' }}
-                  >
-                    Mes anterior
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => updateConfig({ dateFromA: shortcuts.yearVsLastYear.dateFromA, dateToA: shortcuts.yearVsLastYear.dateToA })}
-                    style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '5px', border: '1px solid rgba(0,0,0,0.1)', background: '#FFFFFF', cursor: 'pointer' }}
-                  >
-                    Este año
-                  </button>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                <input
-                  type="date"
-                  aria-label="Fecha Desde"
-                  value={config.dateFromA}
-                  onChange={(e) => updateConfig({ dateFromA: e.target.value })}
-                  style={{
-                    padding: '6px 10px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--border-color, rgba(0, 0, 0, 0.15))',
-                    fontSize: '0.82rem',
-                    background: 'var(--surface-color, #FFFFFF)',
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
-                />
-                <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary, #94A3B8)' }}>al</span>
-                <input
-                  type="date"
-                  aria-label="Fecha Hasta"
-                  value={config.dateToA}
-                  onChange={(e) => updateConfig({ dateToA: e.target.value })}
-                  style={{
-                    padding: '6px 10px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--border-color, rgba(0, 0, 0, 0.15))',
-                    fontSize: '0.82rem',
-                    background: 'var(--surface-color, #FFFFFF)',
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
-                />
-              </div>
-
-              {/* Comparison Period B */}
-              {config.source === 'comparison' && (
-                <div style={{ marginTop: '6px', paddingTop: '8px', borderTop: '1px dashed var(--border-color, rgba(0,0,0,0.1))' }}>
-                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary, #64748B)', marginBottom: '4px' }}>
-                    Periodo B (Comparativo):
+              {/* SUMMARY & COMPARISON DATE PICKERS */}
+              {(config.source === 'summary' || config.source === 'comparison') && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary, #0F172A)' }}>
+                      {config.source === 'comparison' ? 'Periodo A (Base):' : 'Rango de Fechas del Reporte:'}
+                    </span>
+                    {/* Shortcuts */}
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <button
+                        type="button"
+                        className="export-studio-interactive"
+                        onClick={() => updateConfig({ dateFromA: shortcuts.monthVsLastMonth.dateFromA, dateToA: shortcuts.monthVsLastMonth.dateToA })}
+                        style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '5px', border: '1px solid var(--border-color, rgba(0,0,0,0.1))', background: 'var(--surface-color, #FFFFFF)', color: 'var(--text-secondary, #64748B)', cursor: 'pointer' }}
+                      >
+                        Este mes
+                      </button>
+                      <button
+                        type="button"
+                        className="export-studio-interactive"
+                        onClick={() => updateConfig({ dateFromA: shortcuts.monthVsLastMonth.dateFromB, dateToA: shortcuts.monthVsLastMonth.dateToB })}
+                        style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '5px', border: '1px solid var(--border-color, rgba(0,0,0,0.1))', background: 'var(--surface-color, #FFFFFF)', color: 'var(--text-secondary, #64748B)', cursor: 'pointer' }}
+                      >
+                        Mes anterior
+                      </button>
+                      <button
+                        type="button"
+                        className="export-studio-interactive"
+                        onClick={() => updateConfig({ dateFromA: shortcuts.yearVsLastYear.dateFromA, dateToA: shortcuts.yearVsLastYear.dateToA })}
+                        style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '5px', border: '1px solid var(--border-color, rgba(0,0,0,0.1))', background: 'var(--surface-color, #FFFFFF)', color: 'var(--text-secondary, #64748B)', cursor: 'pointer' }}
+                      >
+                        Este año
+                      </button>
+                    </div>
                   </div>
+
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                     <input
                       type="date"
-                      aria-label="Periodo B Desde"
-                      value={config.dateFromB || ''}
-                      onChange={(e) => updateConfig({ dateFromB: e.target.value })}
+                      aria-label="Fecha Desde"
+                      value={config.dateFromA}
+                      onChange={(e) => updateConfig({ dateFromA: e.target.value })}
                       style={{
                         padding: '6px 10px',
                         borderRadius: '8px',
                         border: '1px solid var(--border-color, rgba(0, 0, 0, 0.15))',
                         fontSize: '0.82rem',
                         background: 'var(--surface-color, #FFFFFF)',
+                        color: 'var(--text-primary, #0F172A)',
                         fontVariantNumeric: 'tabular-nums',
                       }}
                     />
                     <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary, #94A3B8)' }}>al</span>
                     <input
                       type="date"
-                      aria-label="Periodo B Hasta"
-                      value={config.dateToB || ''}
-                      onChange={(e) => updateConfig({ dateToB: e.target.value })}
+                      aria-label="Fecha Hasta"
+                      value={config.dateToA}
+                      onChange={(e) => updateConfig({ dateToA: e.target.value })}
                       style={{
                         padding: '6px 10px',
                         borderRadius: '8px',
                         border: '1px solid var(--border-color, rgba(0, 0, 0, 0.15))',
                         fontSize: '0.82rem',
                         background: 'var(--surface-color, #FFFFFF)',
+                        color: 'var(--text-primary, #0F172A)',
                         fontVariantNumeric: 'tabular-nums',
                       }}
                     />
                   </div>
+
+                  {/* Comparison Period B */}
+                  {config.source === 'comparison' && (
+                    <div style={{ marginTop: '6px', paddingTop: '8px', borderTop: '1px dashed var(--border-color, rgba(0,0,0,0.1))' }}>
+                      <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary, #64748B)', marginBottom: '4px' }}>
+                        Periodo B (Comparativo):
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <input
+                          type="date"
+                          aria-label="Periodo B Desde"
+                          value={config.dateFromB || ''}
+                          onChange={(e) => updateConfig({ dateFromB: e.target.value })}
+                          style={{
+                            padding: '6px 10px',
+                            borderRadius: '8px',
+                            border: '1px solid var(--border-color, rgba(0, 0, 0, 0.15))',
+                            fontSize: '0.82rem',
+                            background: 'var(--surface-color, #FFFFFF)',
+                            color: 'var(--text-primary, #0F172A)',
+                            fontVariantNumeric: 'tabular-nums',
+                          }}
+                        />
+                        <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary, #94A3B8)' }}>al</span>
+                        <input
+                          type="date"
+                          aria-label="Periodo B Hasta"
+                          value={config.dateToB || ''}
+                          onChange={(e) => updateConfig({ dateToB: e.target.value })}
+                          style={{
+                            padding: '6px 10px',
+                            borderRadius: '8px',
+                            border: '1px solid var(--border-color, rgba(0, 0, 0, 0.15))',
+                            fontSize: '0.82rem',
+                            background: 'var(--surface-color, #FFFFFF)',
+                            color: 'var(--text-primary, #0F172A)',
+                            fontVariantNumeric: 'tabular-nums',
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
+            </>
           )}
         </div>
       </section>
 
       {/* ===================================================================== */}
-      {/* CONSOLIDATION CURRENCY & COLLAPSIBLE SECTION CUSTOMIZER               */}
+      {/* SECTION 2: FORMATO Y MONEDA DEL REPORTE                               */}
+      {/* Concentric radius: outer = 22px, padding = 14px, inner = 14px/8px     */}
       {/* ===================================================================== */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.75rem' }}>
-        {/* Currency Switcher */}
-        <section
-          style={{
-            background: 'var(--surface-color, #FFFFFF)',
-            borderRadius: '18px',
-            padding: '12px 14px',
-            border: '1px solid var(--border-color, rgba(0, 0, 0, 0.08))',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center',
-            gap: '8px',
-          }}
-        >
-          <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary, #64748B)' }}>
-            Moneda de Consolidación:
+      <section
+        style={{
+          background: 'var(--surface-color, #FFFFFF)',
+          borderRadius: '22px',
+          padding: '14px',
+          border: '1px solid var(--border-color, rgba(0, 0, 0, 0.08))',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div
+            style={{
+              width: '24px',
+              height: '24px',
+              borderRadius: '6px',
+              background: 'var(--tool-reports, #06B6D4)',
+              color: '#FFFFFF',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '0.75rem',
+              fontWeight: 800,
+            }}
+          >
+            2
           </div>
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            {ORDERED_CURRENCIES.map((cur) => {
-              const isSelected = config.currency === cur;
-              return (
-                <button
-                  key={cur}
-                  type="button"
-                  onClick={() => updateConfig({ currency: cur })}
-                  onMouseDown={pressDown}
-                  onMouseUp={pressUp}
-                  onMouseLeave={pressUp}
-                  style={{
-                    flex: 1,
-                    padding: '7px 10px',
-                    borderRadius: '8px',
-                    border: isSelected
-                      ? '2px solid var(--tool-reports, #06B6D4)'
-                      : '1px solid var(--border-color, rgba(0,0,0,0.1))',
-                    background: isSelected ? 'var(--tool-reports-bg, rgba(6, 182, 212, 0.12))' : 'var(--surface-color, #FFFFFF)',
-                    color: isSelected ? 'var(--tool-reports, #06B6D4)' : 'var(--text-secondary, #64748B)',
-                    fontSize: '0.82rem',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    transition: 'transform 140ms cubic-bezier(0.16, 1, 0.3, 1), background-color 150ms ease',
-                  }}
-                >
-                  {cur}
-                </button>
-              );
-            })}
-          </div>
-        </section>
+          <h3 style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--text-primary, #0F172A)', margin: 0 }}>
+            Formato y Moneda del Reporte
+          </h3>
+        </div>
 
-        {/* Format Selector */}
-        <section
+        <div
           style={{
-            background: 'var(--surface-color, #FFFFFF)',
-            borderRadius: '18px',
-            padding: '12px 14px',
-            border: '1px solid var(--border-color, rgba(0, 0, 0, 0.08))',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center',
-            gap: '8px',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: '12px',
+            marginTop: '12px',
           }}
         >
-          <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary, #64748B)' }}>
-            Formato de Salida:
+          {/* Subsection A: Formato de Salida */}
+          <div
+            style={{
+              background: 'var(--surface-muted, #F8FAFC)',
+              borderRadius: '14px',
+              padding: '12px',
+              border: '1px solid var(--border-color, rgba(0, 0, 0, 0.06))',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px',
+            }}
+          >
+            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary, #64748B)' }}>
+              Formato de Archivo:
+            </div>
+            <SegmentedTabs<ExportFormatType>
+              tabs={[
+                { id: 'pdf', label: 'PDF', icon: <FileText size={15} /> },
+                { id: 'xlsx', label: 'Excel', icon: <FileSpreadsheet size={15} /> },
+                { id: 'csv', label: 'CSV', icon: <Layers size={15} /> },
+              ]}
+              activeTab={config.format}
+              onChange={handleFormatChange}
+              activeColor={
+                config.format === 'pdf'
+                  ? 'var(--danger-color, #EF4444)'
+                  : config.format === 'xlsx'
+                  ? 'var(--success-color, #10B981)'
+                  : 'var(--info-color, #3B82F6)'
+              }
+            />
           </div>
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            {[
-              { id: 'pdf', label: 'PDF', icon: <FileText size={14} />, color: '#EF4444' },
-              { id: 'xlsx', label: 'Excel', icon: <FileSpreadsheet size={14} />, color: '#10B981' },
-              { id: 'csv', label: 'CSV', icon: <Layers size={14} />, color: '#3B82F6' },
-            ].map((f) => {
-              const isSelected = config.format === f.id;
-              return (
-                <button
-                  key={f.id}
-                  type="button"
-                  onClick={() => updateConfig({ format: f.id as ExportFormatType })}
-                  onMouseDown={pressDown}
-                  onMouseUp={pressUp}
-                  onMouseLeave={pressUp}
-                  style={{
-                    flex: 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '6px',
-                    padding: '7px 10px',
-                    borderRadius: '8px',
-                    border: isSelected
-                      ? `2px solid ${f.color}`
-                      : '1px solid var(--border-color, rgba(0,0,0,0.1))',
-                    background: isSelected ? `${f.color}15` : 'var(--surface-color, #FFFFFF)',
-                    color: isSelected ? f.color : 'var(--text-secondary, #64748B)',
-                    fontSize: '0.82rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    transition: 'transform 140ms cubic-bezier(0.16, 1, 0.3, 1), background-color 150ms ease',
-                  }}
-                >
-                  {f.icon}
-                  <span>{f.label}</span>
-                </button>
-              );
-            })}
+
+          {/* Subsection B: Moneda de Consolidación */}
+          <div
+            style={{
+              background: 'var(--surface-muted, #F8FAFC)',
+              borderRadius: '14px',
+              padding: '12px',
+              border: '1px solid var(--border-color, rgba(0, 0, 0, 0.06))',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px',
+            }}
+          >
+            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary, #64748B)' }}>
+              Moneda del Documento:
+            </div>
+            <SegmentedTabs<MainCurrencyPreference>
+              tabs={ORDERED_CURRENCIES.map((cur) => ({ id: cur, label: cur }))}
+              activeTab={config.currency}
+              onChange={(cur) => updateConfig({ currency: cur })}
+              activeColor="var(--tool-reports, #06B6D4)"
+            />
           </div>
-        </section>
-      </div>
+        </div>
+      </section>
 
       {/* ===================================================================== */}
       {/* COLLAPSIBLE SECTION CUSTOMIZER (<details> ACCORDION)                  */}
@@ -1315,7 +1072,7 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
       {/* ===================================================================== */}
       <section
         style={{
-          background: 'linear-gradient(180deg, var(--surface-color, #FFFFFF) 0%, var(--bg-secondary, #F8FAFC) 100%)',
+          background: 'linear-gradient(180deg, var(--surface-color, #FFFFFF) 0%, var(--surface-muted, #F8FAFC) 100%)',
           borderRadius: '22px',
           padding: '16px',
           border: '1.5px solid var(--border-color, rgba(0, 0, 0, 0.08))',
@@ -1338,7 +1095,7 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
                 fontWeight: 800,
                 padding: '3px 8px',
                 borderRadius: '6px',
-                background: config.format === 'pdf' ? '#EF4444' : config.format === 'xlsx' ? '#10B981' : '#3B82F6',
+                background: config.format === 'pdf' ? 'var(--danger-color, #EF4444)' : config.format === 'xlsx' ? 'var(--success-color, #10B981)' : 'var(--info-color, #3B82F6)',
                 color: '#FFFFFF',
               }}
             >
@@ -1363,7 +1120,7 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
                 fontWeight: 700,
                 padding: '3px 8px',
                 borderRadius: '6px',
-                background: 'rgba(6, 182, 212, 0.12)',
+                background: 'var(--tool-reports-bg, rgba(6, 182, 212, 0.12))',
                 color: 'var(--tool-reports, #06B6D4)',
                 fontVariantNumeric: 'tabular-nums',
               }}
@@ -1373,60 +1130,85 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
           </div>
         </div>
 
-        {/* Title and Subtitle in Blueprint */}
-        <div style={{ marginBottom: '12px' }}>
-          <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-primary, #0F172A)', letterSpacing: '-0.01em' }}>
-            {previewData.title}
+        {/* Title, Subtitle and KPIs in Blueprint */}
+        {loadingEntities ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+            <Skeleton height="20px" width="45%" borderRadius="6px" />
+            <Skeleton height="14px" width="30%" borderRadius="4px" />
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                gap: '8px',
+                marginTop: '6px',
+              }}
+            >
+              <Skeleton height="56px" borderRadius="10px" />
+              <Skeleton height="56px" borderRadius="10px" />
+              <Skeleton height="56px" borderRadius="10px" />
+            </div>
           </div>
-          <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary, #64748B)', marginTop: '2px' }}>
-            {previewData.subtitle}
-          </div>
-        </div>
-
-        {/* 3 Top Preview KPI Tiles */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-            gap: '8px',
-            marginBottom: '12px',
-          }}
-        >
-          {previewData.kpis.map((kpi, idx) => {
-            const isPos = kpi.highlight === 'positive';
-            const isWarn = kpi.highlight === 'warning';
-            return (
-              <div
-                key={kpi.label + idx}
-                style={{
-                  background: 'var(--surface-color, #FFFFFF)',
-                  padding: '10px 12px',
-                  borderRadius: '10px',
-                  border: isWarn
-                    ? '1.5px solid #F59E0B'
-                    : '1px solid var(--border-color, rgba(0, 0, 0, 0.08))',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '2px',
-                }}
-              >
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary, #94A3B8)', fontWeight: 600, textTransform: 'uppercase' }}>
-                  {kpi.label}
-                </span>
-                <span
-                  style={{
-                    fontSize: '0.95rem',
-                    fontWeight: 800,
-                    color: isWarn ? '#D97706' : isPos ? '#10B981' : 'var(--text-primary, #0F172A)',
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
-                >
-                  {kpi.value}
-                </span>
+        ) : (
+          <>
+            <div style={{ marginBottom: '12px' }}>
+              <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-primary, #0F172A)', letterSpacing: '-0.01em' }}>
+                {previewData.title}
               </div>
-            );
-          })}
-        </div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary, #64748B)', marginTop: '2px' }}>
+                {previewData.subtitle}
+              </div>
+            </div>
+
+            {/* 3 Top Preview KPI Tiles */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                gap: '8px',
+                marginBottom: '12px',
+              }}
+            >
+              {previewData.kpis.map((kpi, idx) => {
+                const isPos = kpi.highlight === 'positive';
+                const isWarn = kpi.highlight === 'warning';
+                return (
+                  <div
+                    key={kpi.label + idx}
+                    style={{
+                      background: 'var(--surface-color, #FFFFFF)',
+                      padding: '10px 12px',
+                      borderRadius: '10px',
+                      border: isWarn
+                        ? '1.5px solid var(--warning-color, #F59E0B)'
+                        : '1px solid var(--border-color, rgba(0, 0, 0, 0.08))',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '2px',
+                    }}
+                  >
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary, #94A3B8)', fontWeight: 600, textTransform: 'uppercase' }}>
+                      {kpi.label}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: '0.95rem',
+                        fontWeight: 800,
+                        color: isWarn
+                          ? 'var(--warning-color, #D97706)'
+                          : isPos
+                          ? 'var(--success-color, #10B981)'
+                          : 'var(--text-primary, #0F172A)',
+                        fontVariantNumeric: 'tabular-nums',
+                      }}
+                    >
+                      {kpi.value}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
 
         {/* Inclusions Chips */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
@@ -1447,9 +1229,9 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
                 fontWeight: 700,
                 padding: '2px 8px',
                 borderRadius: '6px',
-                background: chip.active ? 'rgba(16, 185, 129, 0.12)' : 'rgba(0, 0, 0, 0.04)',
-                color: chip.active ? '#10B981' : 'var(--text-tertiary, #94A3B8)',
-                border: chip.active ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid transparent',
+                background: chip.active ? 'var(--income-bg, rgba(16, 185, 129, 0.12))' : 'rgba(0, 0, 0, 0.04)',
+                color: chip.active ? 'var(--success-color, #10B981)' : 'var(--text-tertiary, #94A3B8)',
+                border: chip.active ? '1px solid var(--income-color, rgba(16, 185, 129, 0.3))' : '1px solid transparent',
               }}
             >
               {chip.active ? `✓ ${chip.label}` : `✗ ${chip.label}`}
@@ -1467,9 +1249,9 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
               gap: '8px',
               padding: '10px 12px',
               borderRadius: '8px',
-              background: 'rgba(245, 158, 11, 0.12)',
-              border: '1px solid rgba(245, 158, 11, 0.3)',
-              color: '#B45309',
+              background: 'var(--warning-bg, rgba(245, 158, 11, 0.12))',
+              border: '1px solid var(--warning-color, rgba(245, 158, 11, 0.3))',
+              color: 'var(--warning-color, #B45309)',
               fontSize: '0.78rem',
               fontWeight: 600,
             }}
@@ -1502,11 +1284,9 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
           {/* 1. Primary Download Button */}
           <button
             type="button"
+            className="export-studio-interactive"
             onClick={() => exportDocument({ action: 'download' })}
             disabled={isExporting}
-            onMouseDown={pressDown}
-            onMouseUp={pressUp}
-            onMouseLeave={pressUp}
             style={{
               flex: '2 1 240px',
               display: 'flex',
@@ -1523,7 +1303,6 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
               cursor: isExporting ? 'not-allowed' : 'pointer',
               opacity: isExporting ? 0.7 : 1,
               boxShadow: '0 2px 8px rgba(6, 182, 212, 0.3)',
-              transition: 'transform 140ms cubic-bezier(0.16, 1, 0.3, 1), opacity 150ms ease, box-shadow 150ms ease',
             }}
           >
             {exportActionLoading === 'download' ? (
@@ -1537,11 +1316,9 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
           {/* 2. Secondary Share Button */}
           <button
             type="button"
+            className="export-studio-interactive"
             onClick={() => exportDocument({ action: 'share' })}
             disabled={isExporting}
-            onMouseDown={pressDown}
-            onMouseUp={pressUp}
-            onMouseLeave={pressUp}
             title="Compartir archivo vía menú nativo o descargar"
             style={{
               flex: '1 1 130px',
@@ -1558,7 +1335,6 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
               fontWeight: 700,
               cursor: isExporting ? 'not-allowed' : 'pointer',
               opacity: isExporting ? 0.7 : 1,
-              transition: 'transform 140ms cubic-bezier(0.16, 1, 0.3, 1), background-color 150ms ease',
             }}
           >
             {exportActionLoading === 'share' ? (
@@ -1572,11 +1348,9 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
           {/* 3. Send by Email Toggle Button */}
           <button
             type="button"
+            className="export-studio-interactive"
             onClick={() => setShowEmailInline((prev) => !prev)}
             disabled={isExporting}
-            onMouseDown={pressDown}
-            onMouseUp={pressUp}
-            onMouseLeave={pressUp}
             style={{
               flex: '1 1 160px',
               display: 'flex',
@@ -1593,7 +1367,6 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
               fontSize: '0.88rem',
               fontWeight: 700,
               cursor: isExporting ? 'not-allowed' : 'pointer',
-              transition: 'transform 140ms cubic-bezier(0.16, 1, 0.3, 1), background-color 150ms ease, border-color 150ms ease',
             }}
           >
             <Mail size={16} />
@@ -1605,7 +1378,7 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
         {showEmailInline && (
           <div
             style={{
-              background: 'var(--bg-secondary, #F8FAFC)',
+              background: 'var(--surface-muted, #F8FAFC)',
               borderRadius: '12px',
               padding: '12px',
               border: '1px solid var(--border-color, rgba(0, 0, 0, 0.08))',
@@ -1630,12 +1403,13 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
                   borderRadius: '8px',
                   border: '1px solid var(--border-color, rgba(0, 0, 0, 0.15))',
                   fontSize: '0.85rem',
-                  background: '#FFFFFF',
+                  background: 'var(--surface-color, #FFFFFF)',
                   color: 'var(--text-primary, #0F172A)',
                 }}
               />
               <button
                 type="button"
+                className="export-studio-interactive"
                 onClick={() =>
                   exportDocument({
                     action: 'email',
@@ -1643,9 +1417,6 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
                   })
                 }
                 disabled={isExporting}
-                onMouseDown={pressDown}
-                onMouseUp={pressUp}
-                onMouseLeave={pressUp}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -1653,13 +1424,12 @@ export const ExportStudioPanel: React.FC<ExportStudioPanelProps> = ({
                   padding: '8px 16px',
                   borderRadius: '8px',
                   border: 'none',
-                  background: '#0F172A',
-                  color: '#FFFFFF',
+                  background: 'var(--accent-color, #0F172A)',
+                  color: 'var(--text-inverse, #FFFFFF)',
                   fontSize: '0.85rem',
                   fontWeight: 700,
                   cursor: isExporting ? 'not-allowed' : 'pointer',
                   opacity: isExporting ? 0.7 : 1,
-                  transition: 'transform 140ms cubic-bezier(0.16, 1, 0.3, 1), opacity 150ms ease',
                 }}
               >
                 {exportActionLoading === 'email' ? (

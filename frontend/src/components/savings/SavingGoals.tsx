@@ -1702,6 +1702,7 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
           ]}
           activeTab={statusTab}
           onChange={(tab) => setStatusTab(tab as 'active' | 'completed' | 'all')}
+          activeColor={typeTab === 'projects' ? 'var(--info-color, #3B82F6)' : 'var(--tool-savings, #10B981)'}
           style={{ width: 'auto' }}
         />
       </div>
