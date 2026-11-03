@@ -10,7 +10,7 @@ import { BottomNav, InstallPWA, RouteErrorBoundary } from './components/layout';
 import { ExpenseForm } from './components/dashboard/index';
 import { createExpense, createIncome } from './api';
 import type { ExpenseCreate, IncomeCreate } from './types';
-import { SkeletonHeroCard, SkeletonList } from './components/ui/Skeleton';
+import { SkeletonHeroCard, SkeletonList, ToolsHubSkeleton, SettingsSkeleton } from './components/ui/Skeleton';
 import './index.css';
 
 // Lazy loading de vistas y herramientas pesadas para optimizar el bundle inicial
@@ -24,6 +24,21 @@ const RatesPage = lazy(() => import('./components/rates').then(m => ({ default: 
 const SettingsPage = lazy(() => import('./components/settings').then(m => ({ default: m.SettingsPage })));
 const PanasPage = lazy(() => import('./components/panas').then(m => ({ default: m.PanasPage })));
 const ReportsHub = lazy(() => import('./components/reports/ReportsHub'));
+
+const ContextualFallback: React.FC<{ pathname: string }> = ({ pathname }) => {
+  if (pathname === '/herramientas') {
+    return <ToolsHubSkeleton />;
+  }
+  if (pathname.startsWith('/ajustes')) {
+    return <SettingsSkeleton />;
+  }
+  return (
+    <div style={{ maxWidth: '800px', margin: '0 auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <SkeletonHeroCard />
+      <SkeletonList count={4} />
+    </div>
+  );
+};
 
 const ProtectedRoute = ({ children }: { children?: React.ReactNode }) => {
   const { session, loading } = useAuth();
@@ -66,14 +81,7 @@ const AppLayout = () => {
     <div className="app-container">
       <main className="main-content">
         <RouteErrorBoundary>
-          <Suspense
-            fallback={
-              <div style={{ maxWidth: '800px', margin: '0 auto', padding: '16px' }}>
-                <SkeletonHeroCard />
-                <SkeletonList count={4} />
-              </div>
-            }
-          >
+          <Suspense fallback={<ContextualFallback pathname={location.pathname} />}>
             <Outlet />
           </Suspense>
         </RouteErrorBoundary>

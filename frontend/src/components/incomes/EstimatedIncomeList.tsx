@@ -56,7 +56,7 @@ import { SummaryHeroCard } from '../ui/SummaryHeroCard';
 import { SegmentedTabs } from '../ui/SegmentedTabs';
 import { EmptyState } from '../ui/EmptyState';
 import { CurrencyBreakdownCard } from '../ui/CurrencyBreakdownCard';
-import { SkeletonList } from '../ui/Skeleton';
+import { SkeletonListCard } from '../ui/Skeleton';
 import ListCard from '../ui/ListCard';
 import ListCardBottomSheet from '../ui/ListCardBottomSheet';
 import { useToast } from '../ui/Toast';
@@ -826,8 +826,10 @@ const EstimatedIncomeList: React.FC<EstimatedIncomeListProps> = ({ onBack }) => 
       </div>
 
       {isLoading ? (
-        <div style={{ padding: '8px 0' }}>
-          <SkeletonList count={4} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <SkeletonListCard key={i} showCheckbox={true} />
+          ))}
         </div>
       ) : activeTab === 'movements' ? (
         /* Tab 1: Movimientos */

@@ -52,8 +52,31 @@ export {
   SkeletonCard,
   SkeletonHeroCard,
   SkeletonList,
+  SkeletonPeriodSelector,
+  SkeletonFloatingHero,
+  SkeletonEquivalences,
+  SkeletonListCard,
+  SkeletonSegmentedTabs,
+  DashboardSkeleton,
+  ToolsHubSkeleton,
+  SettingsSkeleton,
+  SkeletonNotificationItem,
+  SkeletonNotificationList,
 } from './Skeleton';
-export type { SkeletonProps, SkeletonCardProps } from './Skeleton';
+export type {
+  SkeletonProps,
+  SkeletonCardProps,
+  SkeletonPeriodSelectorProps,
+  SkeletonFloatingHeroProps,
+  SkeletonEquivalencesProps,
+  SkeletonListCardProps,
+  SkeletonSegmentedTabsProps,
+  DashboardSkeletonProps,
+  ToolsHubSkeletonProps,
+  SettingsSkeletonProps,
+  SkeletonNotificationItemProps,
+  SkeletonNotificationListProps,
+} from './Skeleton';
 
 // Toast
 export {

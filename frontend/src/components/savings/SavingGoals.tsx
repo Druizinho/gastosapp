@@ -63,7 +63,7 @@ import { EmptyState } from '../ui/EmptyState';
 import { CurrencyBreakdownCard } from '../ui/CurrencyBreakdownCard';
 import { useToast } from '../ui/Toast';
 import { AttributionBadge } from '../ui/AttributionBadge';
-import { SkeletonList } from '../ui/Skeleton';
+import { SkeletonListCard } from '../ui/Skeleton';
 
 interface SavingGoalsProps {
   onBack?: () => void;
@@ -1709,7 +1709,11 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
 
       {/* Goals List */}
       {loading ? (
-        <div style={{ padding: '8px 0' }}><SkeletonList count={4} /></div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <SkeletonListCard key={i} showProgress={true} />
+          ))}
+        </div>
       ) : filteredGoals.length === 0 ? (
         <EmptyState
           icon={typeTab === 'projects' ? <FolderKanban size={28} /> : <PiggyBank size={28} />}

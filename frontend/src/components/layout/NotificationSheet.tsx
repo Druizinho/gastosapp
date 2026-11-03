@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useNotifications } from '../../context/NotificationContext';
-import { SkeletonList } from '../ui/Skeleton';
+import { SkeletonNotificationList } from '../ui/Skeleton';
 import { 
   Bell, 
   CreditCard, 
@@ -247,7 +247,7 @@ export const NotificationSheet = ({ isOpen, onClose }: NotificationSheetProps) =
           style={{ overflowY: 'auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}
         >
           {loading ? (
-            <SkeletonList count={3} />
+            <SkeletonNotificationList count={3} />
           ) : visibleGroups.length === 0 ? (
             <div style={{ padding: '3rem 1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', color: 'var(--text-tertiary)', gap: '1rem' }}>
               <Bell size={40} style={{ opacity: 0.5 }} />

@@ -30,7 +30,7 @@ import { SummaryHeroCard } from '../ui/SummaryHeroCard';
 import { SegmentedTabs } from '../ui/SegmentedTabs';
 import { EmptyState } from '../ui/EmptyState';
 import { ListCard } from '../ui/ListCard';
-import { SkeletonList } from '../ui/Skeleton';
+import { SkeletonListCard } from '../ui/Skeleton';
 import { formatCurrencyAmount } from '../../utils/currencyFormat';
 
 export const PanasPage: React.FC = () => {
@@ -208,8 +208,10 @@ export const PanasPage: React.FC = () => {
       />
 
       {loading ? (
-        <div style={{ padding: '8px 0' }}>
-          <SkeletonList count={3} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '8px 0' }}>
+          <SkeletonListCard showAmounts={false} badgeWidth={90} titleWidth="45%" iconBorderRadius="50%" />
+          <SkeletonListCard showAmounts={false} badgeWidth={110} titleWidth="60%" iconBorderRadius="50%" />
+          <SkeletonListCard showAmounts={false} badgeWidth={70} titleWidth="50%" iconBorderRadius="50%" />
         </div>
       ) : activeTab === 'panas' ? (
         /* TAB 1: MIS PANAS */

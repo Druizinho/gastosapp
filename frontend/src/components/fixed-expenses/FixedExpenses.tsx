@@ -44,8 +44,7 @@ import { EmptyState } from '../ui/EmptyState';
 import { CurrencyBreakdownCard } from '../ui/CurrencyBreakdownCard';
 import { useToast } from '../ui/Toast';
 import { AttributionBadge } from '../ui/AttributionBadge';
-import { SkeletonList } from '../ui/Skeleton';
-import { ListCard, ListCardBottomSheet } from '../ui';
+import { ListCard, ListCardBottomSheet, SkeletonSegmentedTabs, SkeletonListCard } from '../ui';
 
 const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
@@ -641,8 +640,13 @@ const FixedExpenses: React.FC = () => {
 
       {/* Expense list */}
       {isLoading ? (
-        <div style={{ padding: '8px 0' }}>
-          <SkeletonList count={4} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <SkeletonSegmentedTabs tabCount={2} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {Array.from({ length: 4 }).map((_, i) => (
+              <SkeletonListCard key={i} showCheckbox={true} />
+            ))}
+          </div>
         </div>
       ) : expenses.length === 0 ? (
         <EmptyState

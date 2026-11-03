@@ -42,7 +42,7 @@ import { PageHeader } from '../ui/PageHeader';
 import { MonthPicker } from '../ui/MonthPicker';
 import { SummaryHeroCard, type SummaryMetricItem } from '../ui/SummaryHeroCard';
 import { SegmentedTabs } from '../ui/SegmentedTabs';
-import { SkeletonList } from '../ui/Skeleton';
+import { SkeletonListCard } from '../ui/Skeleton';
 import { useToast } from '../ui/Toast';
 import { CategoryLimitModal } from './CategoryLimitModal';
 import { BudgetFormModal } from './BudgetFormModal';
@@ -857,8 +857,10 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
 
           {/* List of Sub-Budgets */}
           {isLoading ? (
-            <div style={{ padding: '8px 0' }}>
-              <SkeletonList count={4} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              {Array.from({ length: 4 }).map((_, i) => (
+                <SkeletonListCard key={i} showProgress={true} />
+              ))}
             </div>
           ) : displayedSubBudgets.length === 0 ? (
             subBudgetTab === 'shared' ? (

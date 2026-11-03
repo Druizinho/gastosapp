@@ -66,7 +66,7 @@ import { EmptyState } from '../ui/EmptyState';
 import { CurrencyBreakdownCard } from '../ui/CurrencyBreakdownCard';
 import { useToast } from '../ui/Toast';
 import { AttributionBadge } from '../ui/AttributionBadge';
-import { SkeletonList } from '../ui/Skeleton';
+import { SkeletonListCard } from '../ui/Skeleton';
 
 const currencyLabels: Record<string, string> = {
   'USD_BCV': '$',
@@ -1293,7 +1293,11 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
       </div>
 
       {loading ? (
-        <div style={{ padding: '8px 0' }}><SkeletonList count={4} /></div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <SkeletonListCard key={i} showProgress={true} />
+          ))}
+        </div>
       ) : displayedDebts.length === 0 ? (
         <EmptyState
           title={`No hay deudas ${activeTab === 'owed' ? 'por pagar' : activeTab === 'receivable' ? 'por cobrar' : ''} ${filterSettled ? 'liquidadas' : 'activas'}`.trim()}
