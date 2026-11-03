@@ -3318,16 +3318,29 @@ body {
 
 .reports-preset-btn {
   flex-shrink: 0;
-  padding: 5px 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.45rem 0.875rem;
   border-radius: var(--radius-full, 9999px);
-  font-size: 0.78rem;
+  font-size: 0.8125rem;
+  font-family: inherit;
+  font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
-  transition: transform 150ms ease-out, background-color 150ms ease, border-color 150ms ease, color 150ms ease;
-  border: 1px solid var(--border-color, rgba(0, 0, 0, 0.08));
-  background: var(--surface-muted, #F8FAFC);
-  color: var(--text-secondary, #64748B);
-  font-weight: 500;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  background: var(--surface-color, #FFFFFF);
+  color: var(--text-secondary, #6B7280);
+  border: 1px solid var(--border-color, #E5E7EB);
+  box-shadow: var(--shadow-xs);
+  transition: transform 150ms ease-out, background-color 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
+}
+
+.reports-preset-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+  border-color: #D1D5DB;
 }
 
 .reports-preset-btn:active:not(:disabled) {
@@ -3335,10 +3348,17 @@ body {
 }
 
 .reports-preset-btn--active {
-  border: 1.5px solid var(--tool-reports, #06B6D4);
-  background: var(--tool-reports-bg, rgba(6, 182, 212, 0.12));
-  color: var(--tool-reports, #06B6D4);
-  font-weight: 700;
+  background: var(--accent-color, #111827);
+  color: var(--text-inverse, #FFFFFF);
+  border-color: var(--accent-color, #111827);
+  font-weight: 600;
+  box-shadow: 0 2px 6px -1px rgba(17, 24, 39, 0.25);
+}
+
+.reports-preset-btn--active:hover {
+  background: var(--accent-hover);
+  color: var(--text-inverse);
+  border-color: var(--accent-hover);
 }
 
 .reports-compare-btn {
@@ -3346,16 +3366,22 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 5px 11px;
+  padding: 0.42rem 0.85rem;
   border-radius: var(--radius-full, 9999px);
   border: 1px solid var(--border-color, rgba(0, 0, 0, 0.1));
   background: var(--surface-muted, #F8FAFC);
   color: var(--text-secondary, #64748B);
-  font-size: 0.78rem;
-  font-weight: 700;
+  font-size: 0.8125rem;
+  font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
   transition: transform 150ms ease-out, background-color 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
+}
+
+.reports-compare-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+  border-color: #D1D5DB;
 }
 
 .reports-compare-btn:active:not(:disabled) {
@@ -3369,6 +3395,12 @@ body {
   box-shadow: 0 1px 3px rgba(6, 182, 212, 0.3);
 }
 
+.reports-compare-btn--active:hover {
+  background: #0891b2;
+  border-color: #0891b2;
+  color: #FFFFFF;
+}
+
 .reports-date-chip {
   display: inline-flex;
   align-items: center;
@@ -3380,18 +3412,8 @@ body {
   color: var(--text-primary, #0F172A);
   font-size: 0.78rem;
   font-weight: 600;
-  cursor: pointer;
+  cursor: default;
   font-variant-numeric: tabular-nums;
-  transition: transform 150ms ease-out, background-color 150ms ease, border-color 150ms ease;
-}
-
-.reports-date-chip:active:not(:disabled) {
-  transform: scale(0.96);
-}
-
-.reports-date-chip--open {
-  background: var(--tool-reports-bg, rgba(6, 182, 212, 0.08));
-  border-color: var(--tool-reports, #06B6D4);
 }
 
 .reports-date-input-chip {
@@ -3442,7 +3464,6 @@ body {
   font-size: 0.74rem;
   color: var(--tool-reports, #06B6D4);
   font-weight: 600;
-  margin-left: auto;
 }
 
 .reports-cta-card {
@@ -3493,7 +3514,6 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .reports-preset-btn:active:not(:disabled),
   .reports-compare-btn:active:not(:disabled),
-  .reports-date-chip:active:not(:disabled),
   .reports-cta-btn:active:not(:disabled),
   .reports-retry-btn:active:not(:disabled) {
     transform: none;

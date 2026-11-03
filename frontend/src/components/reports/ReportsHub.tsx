@@ -10,11 +10,7 @@ import {
   ArrowDownRight,
   Sparkles,
   ArrowLeftRight,
-  ChevronDown,
-  ChevronUp,
 } from 'lucide-react';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
 
 import { PageHeader } from '../ui/PageHeader';
 import { SegmentedTabs } from '../ui/SegmentedTabs';
@@ -73,29 +69,6 @@ function formatShortDate(isoDate: string): string {
   const monthIdx = parseInt(parts[1], 10) - 1;
   const monthName = MONTH_NAMES_ES[monthIdx] || parts[1];
   return `${day} ${monthName}`;
-}
-
-function formatReadableRange(fromStr: string, toStr: string, includeYear: boolean = true): string {
-  if (!fromStr || !toStr) return '';
-  const [y1, m1, d1] = fromStr.split('-').map(Number);
-  const [y2, m2, d2] = toStr.split('-').map(Number);
-  if (!y1 || !m1 || !d1 || !y2 || !m2 || !d2) return `${fromStr} – ${toStr}`;
-  const date1 = new Date(y1, m1 - 1, d1);
-  const date2 = new Date(y2, m2 - 1, d2);
-
-  const cleanMonth1 = format(date1, 'MMM', { locale: es }).replace('.', '');
-  const cleanMonth2 = format(date2, 'MMM', { locale: es }).replace('.', '');
-
-  if (y1 === y2) {
-    if (m1 === m2) {
-      if (d1 === d2) {
-        return includeYear ? `${d1} ${cleanMonth1} ${y1}` : `${d1} ${cleanMonth1}`;
-      }
-      return includeYear ? `${d1} – ${d2} ${cleanMonth1} ${y1}` : `${d1} – ${d2} ${cleanMonth1}`;
-    }
-    return includeYear ? `${d1} ${cleanMonth1} – ${d2} ${cleanMonth2} ${y1}` : `${d1} ${cleanMonth1} – ${d2} ${cleanMonth2}`;
-  }
-  return includeYear ? `${d1} ${cleanMonth1} ${y1} – ${d2} ${cleanMonth2} ${y2}` : `${d1} ${cleanMonth1} – ${d2} ${cleanMonth2}`;
 }
 
 function getRangeDays(from: string, to: string): number {
@@ -326,7 +299,6 @@ export const ReportsHub: React.FC = () => {
   const [activePreset, setActivePreset] = useState<PresetId>(() => {
     return searchParams.get('from') && searchParams.get('to') ? 'custom' : 'month';
   });
-  const [isDatePickersOpen, setIsDatePickersOpen] = useState(false);
 
   const [dateFromA, setDateFromA] = useState<string>(() => {
     return searchParams.get('from') || shortcuts.thisMonthStart;
@@ -585,10 +557,8 @@ export const ReportsHub: React.FC = () => {
   const applyPresetDates = (preset: PresetId, compareMode: boolean) => {
     setActivePreset(preset);
     if (preset === 'custom') {
-      setIsDatePickersOpen(true);
       return;
     }
-    setIsDatePickersOpen(false);
 
     if (!compareMode) {
       if (preset === 'month') {
@@ -636,9 +606,6 @@ export const ReportsHub: React.FC = () => {
   const handleToggleComparison = () => {
     const nextCompare = !isComparisonMode;
     setIsComparisonMode(nextCompare);
-    if (nextCompare) {
-      setIsDatePickersOpen(true);
-    }
     if (activePreset !== 'custom') {
       applyPresetDates(activePreset, nextCompare);
     } else if (nextCompare && (!dateFromB || !dateToB)) {
@@ -718,7 +685,7 @@ export const ReportsHub: React.FC = () => {
     return `${aText} vs ${bText}`;
   }, [dateFromA, dateToA, dateFromB, dateToB, isComparisonMode]);
 
-  const showDateInputs = activePreset === 'custom' || isComparisonMode || isDatePickersOpen;
+  const showDateInputs = activePreset === 'custom' || isComparisonMode;
 
   // -------------------------------------------------------------------------
   // Transition from Tab 1 to Tab 2 ("Exportar este análisis")
@@ -782,18 +749,6 @@ export const ReportsHub: React.FC = () => {
     />
   );
 
-  const headerSubtitle = useMemo(() => {
-    if (isComparisonMode && dateFromB && dateToB) {
-      const yA = dateFromA?.slice(0, 4);
-      const yB = dateFromB?.slice(0, 4);
-      if (yA === yB) {
-        return `${formatReadableRange(dateFromA, dateToA, false)} vs. ${formatReadableRange(dateFromB, dateToB, true)}`;
-      }
-      return `${formatReadableRange(dateFromA, dateToA, true)} vs. ${formatReadableRange(dateFromB, dateToB, true)}`;
-    }
-    return formatReadableRange(dateFromA, dateToA, true);
-  }, [isComparisonMode, dateFromA, dateToA, dateFromB, dateToB]);
-
   return (
     <div
       style={{
@@ -807,7 +762,6 @@ export const ReportsHub: React.FC = () => {
       {/* Header */}
       <PageHeader
         title="Resúmenes y Exportación"
-        subtitle={headerSubtitle}
         onBack={() => navigate('/herramientas')}
         controls={headerControls}
         controlsBorder={false}
@@ -820,7 +774,7 @@ export const ReportsHub: React.FC = () => {
       <div
         style={
           activeTab === 'analysis'
-            ? undefined
+            ? { marginTop: '0.75rem' }
             : {
                 position: 'absolute',
                 left: '-9999px',
@@ -834,48 +788,70 @@ export const ReportsHub: React.FC = () => {
         }
         aria-hidden={activeTab !== 'analysis'}
       >
-        <section aria-label="Análisis y Comparación de Periodos" style={{ display: 'flex', flexDirection: 'column', gap: '1.15rem' }}>
+        <section aria-label="Análisis y Comparación de Periodos" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {/* Floating Control Bar without Nested Cards */}
           <div className="reports-filter-card reports-filter-floating">
-            {/* Row 1: 1-line control bar with horizontal scrollable presets + toggle chip */}
+            {/* Row 1: Dedicated exclusively to scrollable presets */}
+            <div
+              className="reports-filter-scroll"
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                overflowX: 'auto',
+                WebkitOverflowScrolling: 'touch',
+                padding: '4px 2rem 4px 2px',
+                gap: '8px',
+              }}
+            >
+              {PRESET_OPTIONS.map((pill) => {
+                const isSel = activePreset === pill.id;
+                return (
+                  <button
+                    key={pill.id}
+                    type="button"
+                    onClick={() => handlePresetSelect(pill.id)}
+                    aria-pressed={isSel}
+                    className={`reports-preset-btn ${isSel ? 'reports-preset-btn--active' : ''}`}
+                  >
+                    {pill.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Row 2: 2-sided utility row */}
             <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
+                justifyContent: 'space-between',
                 gap: '8px',
+                flexWrap: 'wrap',
                 width: '100%',
               }}
             >
-              {/* Horizontal scrollable preset pills */}
-              <div
-                className="reports-filter-scroll"
-                style={{
-                  flex: 1,
-                  minWidth: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  overflowX: 'auto',
-                  WebkitOverflowScrolling: 'touch',
-                  padding: '4px 2rem 4px 2px',
-                  gap: '8px',
-                }}
-              >
-                {PRESET_OPTIONS.map((pill) => {
-                  const isSel = activePreset === pill.id;
-                  return (
-                    <button
-                      key={pill.id}
-                      type="button"
-                      onClick={() => handlePresetSelect(pill.id)}
-                      className={`reports-preset-btn ${isSel ? 'reports-preset-btn--active' : ''}`}
-                    >
-                      {pill.label}
-                    </button>
-                  );
-                })}
+              {/* Left: Date chip and loading badge */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <div
+                  className="reports-date-chip"
+                  title="Rango de fechas seleccionado"
+                  aria-label={`Rango activo: ${dateSummaryText}`}
+                >
+                  <Calendar size={13} color="var(--tool-reports, #06B6D4)" />
+                  <span>{dateSummaryText}</span>
+                </div>
+
+                {/* Small spinner indicator during refetch when previous data is visible */}
+                {loadingAnalysis && analysisData && (
+                  <span className="reports-reloading-badge" aria-live="polite">
+                    <Loader2 size={13} className="animate-spin" />
+                    <span>Actualizando...</span>
+                  </span>
+                )}
               </div>
 
-              {/* Toggle chip: ⇄ Comparar */}
+              {/* Right: Comparar toggle button */}
               <button
                 type="button"
                 onClick={handleToggleComparison}
@@ -887,47 +863,6 @@ export const ReportsHub: React.FC = () => {
                 <ArrowLeftRight size={13} strokeWidth={2.5} />
                 <span>Comparar</span>
               </button>
-            </div>
-
-            {/* Row 2: Progressive Disclosure Summary Chip + small reloading spinner (No dividers) */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                flexWrap: 'wrap',
-              }}
-            >
-              {/* Progressive Disclosure Date Summary Chip */}
-              <button
-                type="button"
-                onClick={() => setIsDatePickersOpen((prev) => !prev)}
-                className={`reports-date-chip ${showDateInputs ? 'reports-date-chip--open' : ''}`}
-                title="Mostrar u ocultar selectores de fecha exactos"
-              >
-                <Calendar size={13} color="var(--tool-reports, #06B6D4)" />
-                <span>{dateSummaryText}</span>
-                {!isComparisonMode && activePreset !== 'custom' && (
-                  <>
-                    <span style={{ color: 'var(--text-tertiary, #94A3B8)', fontSize: '0.72rem', fontWeight: 500 }}>
-                      · {showDateInputs ? 'Ocultar' : 'Editar fechas'}
-                    </span>
-                    {showDateInputs ? (
-                      <ChevronUp size={13} color="var(--text-tertiary, #94A3B8)" />
-                    ) : (
-                      <ChevronDown size={13} color="var(--text-tertiary, #94A3B8)" />
-                    )}
-                  </>
-                )}
-              </button>
-
-              {/* Small spinner indicator during refetch when previous data is visible */}
-              {loadingAnalysis && analysisData && (
-                <span className="reports-reloading-badge" aria-live="polite">
-                  <Loader2 size={13} className="animate-spin" />
-                  <span>Actualizando...</span>
-                </span>
-              )}
             </div>
 
             {/* Clean floating date inputs container (Shown when custom or comparison or open) */}
@@ -1284,19 +1219,21 @@ export const ReportsHub: React.FC = () => {
       {/* TAB 2: CONFIGURADOR DE EXPORTACIÓN (ExportStudioPanel)              */}
       {/* =================================================================== */}
       {activeTab === 'export' && (
-        <ExportStudioPanel
-          initialConfig={exportConfig}
-          onConfigChange={handleExportConfigChange}
-          defaultCurrency={mainCurrency}
-          defaultEmail={user?.email}
-          getSvgElements={() => {
-            const svgs: SVGSVGElement[] = [];
-            if (donutChartRef.current) svgs.push(donutChartRef.current);
-            if (trendChartRef.current) svgs.push(trendChartRef.current);
-            if (isComparisonMode && compChartRef.current) svgs.push(compChartRef.current);
-            return svgs;
-          }}
-        />
+        <div style={{ marginTop: '0.75rem' }}>
+          <ExportStudioPanel
+            initialConfig={exportConfig}
+            onConfigChange={handleExportConfigChange}
+            defaultCurrency={mainCurrency}
+            defaultEmail={user?.email}
+            getSvgElements={() => {
+              const svgs: SVGSVGElement[] = [];
+              if (donutChartRef.current) svgs.push(donutChartRef.current);
+              if (trendChartRef.current) svgs.push(trendChartRef.current);
+              if (isComparisonMode && compChartRef.current) svgs.push(compChartRef.current);
+              return svgs;
+            }}
+          />
+        </div>
       )}
     </div>
   );
