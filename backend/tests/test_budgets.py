@@ -217,6 +217,129 @@ class TestBudgetsContinuousRollover(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(db.commit.await_count, 2)
         self.assertEqual(mock_view.await_count, 2)
 
+    @patch("app.crud_budgets.ensure_budget_schema", new_callable=AsyncMock)
+    async def test_get_or_clone_does_not_invoke_ensure_budget_schema(self, mock_ensure_schema):
+        """
+        Verify get_or_clone_monthly_budgets does not invoke ensure_budget_schema
+        to avoid redundant round-trips on every budget read.
+        """
+        db = AsyncMock()
+        mock_res = MagicMock()
+        mock_res.unique.return_value = mock_res
+        mock_res.scalars.return_value.all.return_value = []
+        mock_res.scalar_one_or_none.return_value = None
+        db.execute.return_value = mock_res
+
+        await crud_budgets.get_or_clone_monthly_budgets(
+            db, self.user_id, self.current_month, allow_auto_clone=False
+        )
+        mock_ensure_schema.assert_not_called()
+
+    @patch("app.bcv_service.get_all_rates", new_callable=AsyncMock)
+    @patch("app.bcv_service.get_rates_instant_or_cached")
+    async def test_check_and_notify_uses_instant_or_cached_rates(self, mock_instant, mock_get_all):
+        """
+        Verify check_and_notify_budget_thresholds uses get_rates_instant_or_cached
+        instead of get_all_rates so mutations never block on external HTTP calls.
+        """
+        from datetime import date
+        mock_instant.return_value = {
+            "usd_bs": 1.0,
+            "eur_bs": 1.0,
+            "usdt_bs": 1.0
+        }
+        b = models.MonthlyBudget(
+            id=uuid.uuid4(),
+            user_id=self.user_id,
+            month_year=self.current_month,
+            name="Presupuesto Principal",
+            currency="USD_BCV",
+            is_confirmed=True,
+            is_primary=True,
+        )
+        b.category_limits = []
+
+        db = AsyncMock()
+        async def mock_execute(stmt, *args, **kwargs):
+            mock_res = MagicMock()
+            mock_res.unique.return_value = mock_res
+            stmt_str = str(stmt).lower()
+            if "monthly_budgets" in stmt_str:
+                mock_res.scalars.return_value.all.return_value = [b]
+            else:
+                mock_res.scalars.return_value.all.return_value = []
+            mock_res.all.return_value = []
+            return mock_res
+        db.execute.side_effect = mock_execute
+
+        await crud_budgets.check_and_notify_budget_thresholds(
+            db, self.user_id, date(2026, 11, 1), allow_notify=False
+        )
+
+        mock_instant.assert_called_once()
+        mock_get_all.assert_not_called()
+
+
+class TestBcvServiceColdStart(unittest.IsolatedAsyncioTestCase):
+    """
+    Tests for Cold-Start Rate Priming from DB in bcv_service.
+    """
+    @patch("app.bcv_service.vet_today")
+    async def test_prime_rates_from_db_prior_day(self, mock_vet_today):
+        from datetime import date
+        from app import bcv_service
+        mock_vet_today.return_value = date(2026, 11, 5)
+        bcv_service._last_valid_rates = {"usd_bs": None, "eur_bs": None, "usdt_bs": None}
+        bcv_service.rates_cache.clear()
+
+        db = AsyncMock()
+        mock_row = MagicMock()
+        mock_row.fecha = date(2026, 11, 4)
+        mock_row.usd_bs = Decimal("45.50")
+        mock_row.eur_bs = Decimal("48.20")
+        mock_row.usdt_bs = Decimal("46.00")
+
+        mock_res = MagicMock()
+        mock_res.scalars.return_value.first.return_value = mock_row
+        db.execute.return_value = mock_res
+
+        await bcv_service.prime_rates_from_db(db)
+
+        self.assertEqual(bcv_service._last_valid_rates["usd_bs"], 45.50)
+        self.assertEqual(bcv_service._last_valid_rates["eur_bs"], 48.20)
+        self.assertEqual(bcv_service._last_valid_rates["usdt_bs"], 46.00)
+        # Because row.fecha is prior day, timestamp in rates_cache is not set
+        self.assertNotIn("timestamp", bcv_service.rates_cache)
+
+        # get_rates_instant_or_cached should return the primed rate instead of 1.0 fallback
+        rates = bcv_service.get_rates_instant_or_cached()
+        self.assertEqual(rates["usd_bs"], 45.50)
+
+    @patch("app.bcv_service.vet_today")
+    async def test_prime_rates_from_db_today(self, mock_vet_today):
+        from datetime import date
+        from app import bcv_service
+        today = date(2026, 11, 5)
+        mock_vet_today.return_value = today
+        bcv_service._last_valid_rates = {"usd_bs": None, "eur_bs": None, "usdt_bs": None}
+        bcv_service.rates_cache.clear()
+
+        db = AsyncMock()
+        mock_row = MagicMock()
+        mock_row.fecha = today
+        mock_row.usd_bs = Decimal("45.80")
+        mock_row.eur_bs = Decimal("48.50")
+        mock_row.usdt_bs = Decimal("46.20")
+
+        mock_res = MagicMock()
+        mock_res.scalars.return_value.first.return_value = mock_row
+        db.execute.return_value = mock_res
+
+        await bcv_service.prime_rates_from_db(db)
+
+        self.assertEqual(bcv_service._last_valid_rates["usd_bs"], 45.80)
+        self.assertIn("timestamp", bcv_service.rates_cache)
+
 
 if __name__ == "__main__":
     unittest.main()

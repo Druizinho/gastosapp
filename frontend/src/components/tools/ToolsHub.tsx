@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Receipt, Wallet, ChevronRight, Lock, Users, PiggyBank, Target, ArrowLeftRight, BarChart3 } from 'lucide-react';
 import { TOOL_COLORS } from '../../utils/toolColors';
+import { getMonthlyBudget, getCachedMonthlyBudget, isMonthlyBudgetCacheStale } from '../../api';
 
 interface ToolCard {
   id: string;
@@ -114,6 +115,14 @@ const toolSections: ToolSection[] = [
 
 export const ToolsHub: React.FC = () => {
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const now = new Date();
+    const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    if (!getCachedMonthlyBudget(ym) || isMonthlyBudgetCacheStale(ym)) {
+      getMonthlyBudget(ym, isMonthlyBudgetCacheStale(ym)).catch(() => {});
+    }
+  }, []);
 
   return (
     <div style={{ padding: '1rem', paddingBottom: '6rem', maxWidth: '600px', margin: '0 auto' }}>

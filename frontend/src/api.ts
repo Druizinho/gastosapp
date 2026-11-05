@@ -119,18 +119,68 @@ export const sendReportEmail = async (payload: {
 
 // Monthly Budget Cache
 const monthlyBudgetCache = new Map<string, MonthlyBudgetResponse>();
+const staleMonthlyBudgetKeys = new Set<string>();
 const inFlightMonthlyBudget = new Map<string, Promise<MonthlyBudgetResponse>>();
+const MONTHLY_BUDGET_STORAGE_PREFIX = 'gastosapp:monthly_budget_cache:v1:';
+
+export const saveMonthlyBudgetToCache = (monthYear: string, data: MonthlyBudgetResponse): void => {
+  const key = data.month_year || monthYear;
+  if (key) {
+    monthlyBudgetCache.set(key, data);
+    staleMonthlyBudgetKeys.delete(key);
+  }
+  if (monthYear && monthYear !== key) {
+    monthlyBudgetCache.set(monthYear, data);
+    staleMonthlyBudgetKeys.delete(monthYear);
+  }
+  const storageKey = monthYear || key;
+  if (storageKey) {
+    try {
+      sessionStorage.setItem(MONTHLY_BUDGET_STORAGE_PREFIX + storageKey, JSON.stringify(data));
+    } catch {
+      // ignore storage quota / access errors
+    }
+  }
+};
 
 export const getCachedMonthlyBudget = (monthYear: string): MonthlyBudgetResponse | undefined => {
-  return monthlyBudgetCache.get(monthYear);
+  if (monthlyBudgetCache.has(monthYear)) {
+    return monthlyBudgetCache.get(monthYear);
+  }
+  try {
+    const raw = sessionStorage.getItem(MONTHLY_BUDGET_STORAGE_PREFIX + monthYear);
+    if (raw) {
+      const parsed = JSON.parse(raw) as MonthlyBudgetResponse;
+      monthlyBudgetCache.set(monthYear, parsed);
+      staleMonthlyBudgetKeys.add(monthYear);
+      return parsed;
+    }
+  } catch {
+    // ignore parse or storage errors
+  }
+  return undefined;
 };
+
+export const isMonthlyBudgetCacheStale = (monthYear: string): boolean => staleMonthlyBudgetKeys.has(monthYear);
 
 export const invalidateMonthlyBudgetCache = (monthYear?: string): void => {
   if (monthYear) {
-    monthlyBudgetCache.delete(monthYear);
+    staleMonthlyBudgetKeys.add(monthYear);
     inFlightMonthlyBudget.delete(monthYear);
   } else {
-    monthlyBudgetCache.clear();
+    for (const key of monthlyBudgetCache.keys()) {
+      staleMonthlyBudgetKeys.add(key);
+    }
+    try {
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const k = sessionStorage.key(i);
+        if (k && k.startsWith(MONTHLY_BUDGET_STORAGE_PREFIX)) {
+          staleMonthlyBudgetKeys.add(k.slice(MONTHLY_BUDGET_STORAGE_PREFIX.length));
+        }
+      }
+    } catch {
+      // ignore storage errors
+    }
     inFlightMonthlyBudget.clear();
   }
 };
@@ -590,14 +640,18 @@ export const getBudgetCategories = async (): Promise<string[]> => {
   return response.data;
 };
 
-export const getMonthlyBudget = async (monthYear: string): Promise<MonthlyBudgetResponse> => {
+export const getMonthlyBudget = async (monthYear: string, forceRefresh = false): Promise<MonthlyBudgetResponse> => {
+  if (!forceRefresh && monthlyBudgetCache.has(monthYear) && !staleMonthlyBudgetKeys.has(monthYear)) {
+    return monthlyBudgetCache.get(monthYear)!;
+  }
+
   if (inFlightMonthlyBudget.has(monthYear)) {
     return inFlightMonthlyBudget.get(monthYear)!;
   }
 
   const promise = api.get<MonthlyBudgetResponse>(`/budgets/monthly/${monthYear}`)
     .then((response) => {
-      monthlyBudgetCache.set(response.data.month_year || monthYear, response.data);
+      saveMonthlyBudgetToCache(monthYear, response.data);
       return response.data;
     })
     .finally(() => {
@@ -610,61 +664,61 @@ export const getMonthlyBudget = async (monthYear: string): Promise<MonthlyBudget
 
 export const upsertMonthlyBudget = async (monthYear: string, payload: MonthlyBudgetUpsert): Promise<MonthlyBudgetResponse> => {
   const response = await api.put(`/budgets/monthly/${monthYear}`, payload);
-  monthlyBudgetCache.set(response.data.month_year || monthYear, response.data);
+  saveMonthlyBudgetToCache(response.data.month_year || monthYear, response.data);
   return response.data;
 };
 
 export const confirmMonthlyBudget = async (monthYear: string): Promise<MonthlyBudgetResponse> => {
   const response = await api.post(`/budgets/monthly/${monthYear}/confirm`);
-  monthlyBudgetCache.set(response.data.month_year || monthYear, response.data);
+  saveMonthlyBudgetToCache(response.data.month_year || monthYear, response.data);
   return response.data;
 };
 
 export const upsertBudgetCategoryLimit = async (monthYear: string, item: BudgetCategoryLimitInput): Promise<MonthlyBudgetResponse> => {
   const response = await api.put(`/budgets/monthly/${monthYear}/category`, item);
-  monthlyBudgetCache.set(response.data.month_year || monthYear, response.data);
+  saveMonthlyBudgetToCache(response.data.month_year || monthYear, response.data);
   return response.data;
 };
 
 export const deleteBudgetCategoryLimit = async (monthYear: string, categoryName: string): Promise<MonthlyBudgetResponse> => {
   const response = await api.delete(`/budgets/monthly/${monthYear}/category/${encodeURIComponent(categoryName)}`);
-  monthlyBudgetCache.set(response.data.month_year || monthYear, response.data);
+  saveMonthlyBudgetToCache(response.data.month_year || monthYear, response.data);
   return response.data;
 };
 
 export const createMonthlyBudget = async (monthYear: string, payload: MonthlyBudgetCreate): Promise<MonthlyBudgetResponse> => {
   const response = await api.post(`/budgets/monthly/${monthYear}`, payload);
-  monthlyBudgetCache.set(response.data.month_year || monthYear, response.data);
+  saveMonthlyBudgetToCache(response.data.month_year || monthYear, response.data);
   return response.data;
 };
 
 export const updateMonthlyBudgetById = async (budgetId: string, payload: MonthlyBudgetUpdate): Promise<MonthlyBudgetResponse> => {
   const response = await api.put(`/budgets/${budgetId}`, payload);
-  monthlyBudgetCache.set(response.data.month_year, response.data);
+  saveMonthlyBudgetToCache(response.data.month_year, response.data);
   return response.data;
 };
 
 export const setPrimaryMonthlyBudget = async (budgetId: string): Promise<MonthlyBudgetResponse> => {
   const response = await api.post(`/budgets/${budgetId}/primary`);
-  monthlyBudgetCache.set(response.data.month_year, response.data);
+  saveMonthlyBudgetToCache(response.data.month_year, response.data);
   return response.data;
 };
 
 export const deleteMonthlyBudgetById = async (budgetId: string): Promise<MonthlyBudgetResponse> => {
   const response = await api.delete(`/budgets/${budgetId}`);
-  monthlyBudgetCache.set(response.data.month_year, response.data);
+  saveMonthlyBudgetToCache(response.data.month_year, response.data);
   return response.data;
 };
 
 export const upsertCategoryLimitByBudgetId = async (budgetId: string, item: BudgetCategoryLimitInput): Promise<MonthlyBudgetResponse> => {
   const response = await api.put(`/budgets/${budgetId}/category`, item);
-  monthlyBudgetCache.set(response.data.month_year, response.data);
+  saveMonthlyBudgetToCache(response.data.month_year, response.data);
   return response.data;
 };
 
 export const deleteCategoryLimitByBudgetId = async (budgetId: string, categoryName: string): Promise<MonthlyBudgetResponse> => {
   const response = await api.delete(`/budgets/${budgetId}/category/${encodeURIComponent(categoryName)}`);
-  monthlyBudgetCache.set(response.data.month_year, response.data);
+  saveMonthlyBudgetToCache(response.data.month_year, response.data);
   return response.data;
 };
 

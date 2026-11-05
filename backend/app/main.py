@@ -10,7 +10,7 @@ from typing import Optional
 from sqlalchemy import text, select, func
 
 from .routers import expenses, categories, profiles, fixed_expenses, debts, incomes, push, notifications, connections, savings, shares, budgets, reports
-from .database import engine, Base, SessionLocal as AsyncSessionLocal
+from .database import engine, Base, SessionLocal, SessionLocal as AsyncSessionLocal
 from .time_utils import vet_now
 from . import bcv_service, models
 
@@ -198,6 +198,12 @@ async def lifespan(app: FastAPI):
             await conn.run_sync(Base.metadata.create_all)
     except Exception as e:
         print(f"Aviso metadata create_all: {e}")
+
+    try:
+        async with SessionLocal() as db:
+            await bcv_service.prime_rates_from_db(db)
+    except Exception as e:
+        print(f"Aviso priming tasas desde BD: {e}")
 
     rates_init_task = asyncio.create_task(_init_daily_rates_bg())
     print("✅ Tarea de inicialización de tasas diarias lanzada en segundo plano.")

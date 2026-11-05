@@ -24,6 +24,7 @@ import type {
 import {
   getMonthlyBudget,
   getCachedMonthlyBudget,
+  isMonthlyBudgetCacheStale,
   createMonthlyBudget,
   deleteMonthlyBudgetById,
   deleteCategoryLimitByBudgetId,
@@ -398,7 +399,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
         setSelectedBudgetId(null);
       }
       invalidateMonthlyBudgetCache(currentMonthYear);
-      await fetchData(true);
+      await fetchData(true, true);
     } catch (err: any) {
       console.error('Error al salir del presupuesto compartido:', err);
       toast.error(err?.response?.data?.detail || 'Error al salir del presupuesto compartido');
@@ -409,7 +410,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
   };
 
   // Fetch budget data
-  const fetchData = async (silent = false) => {
+  const fetchData = async (silent = false, forceRefresh = silent) => {
     const cached = getCachedMonthlyBudget(currentMonthYear);
     if (cached) {
       setBudgetResponse(cached);
@@ -417,7 +418,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
       setIsLoading(true);
     }
     try {
-      const bRes = await getMonthlyBudget(currentMonthYear);
+      const bRes = await getMonthlyBudget(currentMonthYear, forceRefresh);
       setBudgetResponse(bRes);
     } catch (error) {
       console.error('Error fetching budget data:', error);
@@ -429,7 +430,16 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
   };
 
   useEffect(() => {
-    fetchData();
+    const cached = getCachedMonthlyBudget(currentMonthYear);
+    if (cached) {
+      setBudgetResponse(cached);
+      setIsLoading(false);
+      if (isMonthlyBudgetCacheStale(currentMonthYear)) {
+        fetchData(true, true);
+      }
+    } else {
+      fetchData(false, false);
+    }
   }, [currentMonthYear]);
 
   // Deep-linking: automatically select and open subId if present
@@ -463,8 +473,9 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
     return () => clearTimeout(timer);
   }, [subId, selectedBudgetId]);
 
-  // Load panas once when Budgets mounts so modals render instantly with no layout shift
+  // Lazy-load connections only when budget modal opens
   useEffect(() => {
+    if (!budgetModal.isOpen || connections.length > 0) return;
     let isMounted = true;
     getConnections()
       .then((conns) => {
@@ -483,7 +494,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [budgetModal.isOpen, connections.length]);
 
   const handleBack = () => {
     if (selectedBudgetId) {
@@ -575,9 +586,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
       if (selectedBudgetId === budgetId) {
         setSelectedBudgetId(null);
       }
-      invalidateMonthlyBudgetCache(currentMonthYear);
       toast.success(`Grupo "${budgetName}" eliminado`);
-      await fetchData(true);
     } catch (error) {
       console.error('Error deleting budget:', error);
       toast.error('Error al eliminar presupuesto');
@@ -613,13 +622,11 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
     try {
       const updated = await deleteCategoryLimitByBudgetId(budgetId, catName);
       setBudgetResponse(updated);
-      invalidateMonthlyBudgetCache(currentMonthYear);
       toast.success(
         selectedBudget?.is_primary || !selectedBudget
           ? `Límite de "${catName}" restablecido a 0`
           : `Categoría "${catName}" quitada del grupo`
       );
-      await fetchData(true);
     } catch (error: any) {
       console.error('Error deleting category limit:', error);
       toast.error(error?.response?.data?.detail || 'Error al eliminar límite de categoría');
@@ -1727,8 +1734,6 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
           onSaved={(updated: MonthlyBudgetResponse) => {
             setBudgetResponse(updated);
             setBudgetModal({ isOpen: false, budgetToEdit: null });
-            invalidateMonthlyBudgetCache(currentMonthYear);
-            fetchData(true);
           }}
         />
       )}
@@ -1746,8 +1751,6 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
           onSaved={(updated: MonthlyBudgetResponse) => {
             setBudgetResponse(updated);
             setCategoryModal((prev) => ({ ...prev, isOpen: false }));
-            invalidateMonthlyBudgetCache(currentMonthYear);
-            fetchData(true);
           }}
           onResetLimit={() => {
             const targetId = (primaryBudget || selectedBudget)?.id || '';
@@ -1803,12 +1806,12 @@ export const Budgets: React.FC<BudgetsProps> = ({ onBack }) => {
           onClose={() => setActiveShareModalItem(null)}
           onUpdated={() => {
             invalidateMonthlyBudgetCache(currentMonthYear);
-            fetchData(true);
+            fetchData(true, true);
           }}
           onSelfLeave={() => {
             setActiveShareModalItem(null);
             invalidateMonthlyBudgetCache(currentMonthYear);
-            fetchData(true);
+            fetchData(true, true);
             toast.success('Has salido del presupuesto compartido');
           }}
         />

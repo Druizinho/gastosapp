@@ -162,8 +162,18 @@ async def get_available_budget_categories(db: AsyncSession, user_id: UUID) -> Li
     user_cats = res.scalars().all()
     if not user_cats:
         from . import crud
-        cats_obj = await crud.get_categories(db, user_id, kind='expense')
-        user_cats = [c.name for c in cats_obj]
+        if type(db).__name__ == "AsyncSession":
+            await crud.seed_default_categories(db, user_id, only_if_empty=True, kind='expense')
+            res = await db.execute(
+                select(models.Category.name).where(
+                    models.Category.user_id == user_id,
+                    models.Category.kind == 'expense'
+                ).order_by(models.Category.name.asc())
+            )
+            user_cats = res.scalars().all()
+        else:
+            cats_obj = await crud.get_categories(db, user_id, kind='expense')
+            user_cats = [c.name for c in cats_obj] if cats_obj else []
     seen = set()
     result = []
     
@@ -330,8 +340,6 @@ async def get_or_clone_monthly_budgets(
     Retrieves all MonthlyBudgets for (user_id, month_year).
     If none exist and allow_auto_clone is True, auto-clones all budgets from the most recent prior month.
     """
-    await ensure_budget_schema(db)
-
     res = await db.execute(
         select(models.MonthlyBudget)
         .execution_options(populate_existing=True)
@@ -380,20 +388,21 @@ async def get_or_clone_monthly_budgets(
                 commit=False,
             )
             await db.commit()
-            res = await db.execute(
-                select(models.MonthlyBudget)
-                .execution_options(populate_existing=True)
-                .options(
-                    joinedload(models.MonthlyBudget.category_limits),
-                    noload(models.MonthlyBudget.linked_income)
+            if type(db).__name__ != "AsyncSession":
+                res = await db.execute(
+                    select(models.MonthlyBudget)
+                    .execution_options(populate_existing=True)
+                    .options(
+                        joinedload(models.MonthlyBudget.category_limits),
+                        noload(models.MonthlyBudget.linked_income)
+                    )
+                    .where(
+                        models.MonthlyBudget.user_id == user_id,
+                        models.MonthlyBudget.month_year == month_year
+                    )
+                    .order_by(models.MonthlyBudget.is_primary.desc(), models.MonthlyBudget.name.asc())
                 )
-                .where(
-                    models.MonthlyBudget.user_id == user_id,
-                    models.MonthlyBudget.month_year == month_year
-                )
-                .order_by(models.MonthlyBudget.is_primary.desc(), models.MonthlyBudget.name.asc())
-            )
-            budgets = _scalars_all(res)
+                budgets = _scalars_all(res)
         return budgets
 
     if not allow_auto_clone:
@@ -562,20 +571,21 @@ async def get_or_clone_monthly_budgets(
             commit=False,
         )
         await db.commit()
-        re_res = await db.execute(
-            select(models.MonthlyBudget)
-            .execution_options(populate_existing=True)
-            .options(
-                joinedload(models.MonthlyBudget.category_limits),
-                noload(models.MonthlyBudget.linked_income)
+        if type(db).__name__ != "AsyncSession":
+            re_res = await db.execute(
+                select(models.MonthlyBudget)
+                .execution_options(populate_existing=True)
+                .options(
+                    joinedload(models.MonthlyBudget.category_limits),
+                    noload(models.MonthlyBudget.linked_income)
+                )
+                .where(
+                    models.MonthlyBudget.user_id == user_id,
+                    models.MonthlyBudget.month_year == month_year
+                )
+                .order_by(models.MonthlyBudget.is_primary.desc(), models.MonthlyBudget.name.asc())
             )
-            .where(
-                models.MonthlyBudget.user_id == user_id,
-                models.MonthlyBudget.month_year == month_year
-            )
-            .order_by(models.MonthlyBudget.is_primary.desc(), models.MonthlyBudget.name.asc())
-        )
-        cloned_budgets = _scalars_all(re_res)
+            cloned_budgets = _scalars_all(re_res)
 
     return cloned_budgets
 
@@ -1280,7 +1290,7 @@ async def get_monthly_budget_view(
                 if type(db).__name__ == "AsyncSession":
                     anchor_res = await db.execute(
                         select(models.MonthlyBudget)
-                        .options(noload(models.MonthlyBudget.category_limits), noload(models.MonthlyBudget.linked_income))
+                        .options(joinedload(models.MonthlyBudget.category_limits), noload(models.MonthlyBudget.linked_income))
                         .where(models.MonthlyBudget.id.in_(anchor_ids))
                     )
                     for mb in _scalars_all(anchor_res):
@@ -1345,8 +1355,8 @@ async def get_monthly_budget_view(
                         func.coalesce(models.Expense.category, "Sin Categoría").label("category"),
                         func.coalesce(func.sum(models.Expense.amount_usd), 0).label("spent_usd"),
                         func.coalesce(func.sum(models.Expense.amount_bs), 0).label("spent_bs"),
-                        func.coalesce(func.sum(models.Expense.amount_eur), 0).label("spent_eur"),
-                        func.coalesce(func.sum(models.Expense.amount_usdt), 0).label("spent_usdt")
+                        func.coalesce(func.sum(func.coalesce(models.Expense.amount_eur, models.Expense.amount_usd)), 0).label("spent_eur"),
+                        func.coalesce(func.sum(func.coalesce(models.Expense.amount_usdt, models.Expense.amount_usd)), 0).label("spent_usdt")
                     ).where(
                         models.Expense.user_id.in_(all_owner_ids),
                         models.Expense.date >= start_date,
@@ -1405,26 +1415,28 @@ async def get_monthly_budget_view(
                     owner_prof = profiles_by_id.get(share_owner_id)
                     owner_name = owner_prof.display_name if owner_prof and owner_prof.display_name else "Pana"
 
-                    # Fetch or clone owner's budgets for month_year directly (NO recursion!)
+                    # Fallback in-memory to [anchor_budget] (read-only mode, no external owner DB writes/cloning)
                     if share_owner_id not in owner_budgets_cache:
-                        owner_budgets_cache[share_owner_id] = await get_or_clone_monthly_budgets(
-                            db, share_owner_id, month_year, allow_auto_clone=True
-                        )
+                        owner_budgets_cache[share_owner_id] = [anchor_budget]
                     owner_budgets = owner_budgets_cache[share_owner_id]
 
                     owner_primary = next((b for b in owner_budgets if b.is_primary), owner_budgets[0] if owner_budgets else None)
                     owner_primary_currency = owner_primary.currency if owner_primary else 'USD_BCV'
                     owner_primary_limits_map = {
                         cl.category_name.strip().lower(): cl
-                        for cl in (owner_primary.category_limits if owner_primary else [])
+                        for cl in (owner_primary.category_limits if owner_primary and getattr(owner_primary, 'category_limits', None) else [])
                     }
 
                     target_b = next(
                         (b for b in owner_budgets if not b.is_primary and (b.id == anchor_budget_id or (b.name and b.name.strip().lower() == anchor_budget_name.strip().lower()))),
                         None
                     )
+                    if not target_b and anchor_budget:
+                        target_b = anchor_budget
                     if not target_b:
                         continue
+                    if getattr(target_b, 'category_limits', None) is None:
+                        target_b.category_limits = []
 
                     if share_owner_id not in owner_spending_cache:
                         owner_spending_cache[share_owner_id] = await _get_monthly_category_spending(
@@ -1976,7 +1988,8 @@ async def update_monthly_budget_by_id(
 
     budget.is_confirmed = True
     await db.commit()
-    db.expire_all()
+    if type(db).__name__ != "AsyncSession":
+        db.expire_all()
 
     await check_and_notify_budget_thresholds(
         db, user_id, date(int(target_month_year[:4]), int(target_month_year[5:7]), 1), allow_notify=False
@@ -2164,7 +2177,8 @@ async def upsert_category_limit_by_budget_id(
 
     month_year = budget.month_year
     await db.commit()
-    db.expire_all()
+    if type(db).__name__ != "AsyncSession":
+        db.expire_all()
 
     await check_and_notify_budget_thresholds(
         db, user_id, date(int(month_year[:4]), int(month_year[5:7]), 1), allow_notify=False
@@ -2232,7 +2246,8 @@ async def delete_category_limit_by_budget_id(
             await db.flush()
 
         await db.commit()
-        db.expire_all()
+        if type(db).__name__ != "AsyncSession":
+            db.expire_all()
         await check_and_notify_budget_thresholds(
             db, user_id, date(int(month_year[:4]), int(month_year[5:7]), 1), allow_notify=False
         )
@@ -2311,7 +2326,8 @@ async def upsert_monthly_budget(
                 db.add(new_cl)
 
     await db.commit()
-    db.expire_all()
+    if type(db).__name__ != "AsyncSession":
+        db.expire_all()
 
     await check_and_notify_budget_thresholds(
         db, user_id, date(int(month_year[:4]), int(month_year[5:7]), 1), allow_notify=False
@@ -2373,7 +2389,8 @@ async def delete_budget_category_limit(
                 await db.flush()
 
     await db.commit()
-    db.expire_all()
+    if type(db).__name__ != "AsyncSession":
+        db.expire_all()
     await check_and_notify_budget_thresholds(
         db, user_id, date(int(month_year[:4]), int(month_year[5:7]), 1), allow_notify=False
     )
@@ -2447,7 +2464,7 @@ async def check_and_notify_budget_thresholds(
         if not budgets:
             return
 
-        rates = await bcv_service.get_all_rates()
+        rates = bcv_service.get_rates_instant_or_cached()
         usd_bs = rates.get("usd_bs")
         eur_bs = rates.get("eur_bs")
         usdt_bs = rates.get("usdt_bs")

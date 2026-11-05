@@ -22,7 +22,7 @@ from fastapi import HTTPException
 from app.time_utils import vet_today
 
 # Cache for 30 minutes (1800 seconds)
-rates_cache = TTLCache(maxsize=1, ttl=1800)
+rates_cache = TTLCache(maxsize=10, ttl=1800)
 # Cache for historical rates (24 hours = 86400 seconds)
 historical_rates_cache = TTLCache(maxsize=365, ttl=86400)
 _last_valid_rates = {
@@ -31,6 +31,50 @@ _last_valid_rates = {
     "usdt_bs": None
 }
 _rates_lock = asyncio.Lock()
+
+
+def get_caracas_today() -> date:
+    return vet_today()
+
+
+async def prime_rates_from_db(db: AsyncSession) -> None:
+    """
+    Cold-start optimization: primes _last_valid_rates directly from the latest
+    DailyRate record in the database so get_rates_instant_or_cached() immediately
+    serves valid rates instead of 1.0 fallbacks.
+    """
+    global _last_valid_rates
+    from app import models
+
+    stmt = select(models.DailyRate).order_by(models.DailyRate.fecha.desc()).limit(1)
+    res = await db.execute(stmt)
+    row = res.scalars().first()
+
+    current_usd = _last_valid_rates.get("usd_bs")
+    if row and (current_usd is None or current_usd == 0.0 or current_usd == 0):
+        try:
+            usd_bs = float(row.usd_bs) if row.usd_bs is not None else None
+        except Exception:
+            usd_bs = None
+        try:
+            eur_bs = float(row.eur_bs) if row.eur_bs is not None else None
+        except Exception:
+            eur_bs = None
+        try:
+            usdt_bs = float(row.usdt_bs) if row.usdt_bs is not None else None
+        except Exception:
+            usdt_bs = None
+
+        if usd_bs and usd_bs > 0:
+            _last_valid_rates["usd_bs"] = usd_bs
+            _last_valid_rates["eur_bs"] = eur_bs
+            _last_valid_rates["usdt_bs"] = usdt_bs
+
+            today = get_caracas_today()
+            if row.fecha == today or str(row.fecha)[:10] == str(today)[:10]:
+                now = datetime.now(timezone.utc)
+                rates_cache["rates"] = _last_valid_rates.copy()
+                rates_cache["timestamp"] = now
 
 
 @asynccontextmanager
