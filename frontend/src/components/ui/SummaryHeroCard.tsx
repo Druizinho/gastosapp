@@ -52,10 +52,11 @@ export const SummaryHeroCard: React.FC<SummaryHeroCardProps> = ({
   const isDuplicateEyebrow = Boolean(
     badgeText && eyebrow.trim().toLowerCase() === (badgeText || '').trim().toLowerCase()
   );
+  const hasFooter = Boolean((metrics && metrics.length > 0) || progress || children);
 
   return (
     <div
-      className="soft-card"
+      className={`soft-card summary-hero-card ${isInteractive ? 'summary-hero-card--interactive' : ''}`}
       title={isInteractive ? 'Toca para alternar moneda' : undefined}
       onClick={onCycleCurrency}
       role={isInteractive ? 'button' : undefined}
@@ -67,61 +68,32 @@ export const SummaryHeroCard: React.FC<SummaryHeroCardProps> = ({
         }
       } : undefined}
       style={{
-        marginBottom: '1.5rem',
-        padding: '1.35rem 1.45rem',
-        borderRadius: '20px',
         background: `linear-gradient(140deg, ${colorWithOpacity(accentColor, '1a')} 0%, ${colorWithOpacity(accentColor, '06')} 45%, var(--surface-color, #FFFFFF) 100%)`,
         border: `1px solid ${colorWithOpacity(accentColor, '25')}`,
         boxShadow: `0 4px 20px -2px ${colorWithOpacity(accentColor, '14')}, var(--shadow-sm, 0 2px 8px rgba(0,0,0,0.04))`,
-        cursor: isInteractive ? 'pointer' : 'default',
-        transition: 'transform 150ms ease-out, box-shadow 150ms ease-out',
-        position: 'relative',
-        overflow: 'hidden',
       }}
-      onMouseDown={isInteractive ? (e) => {
-        e.currentTarget.style.transform = 'scale(0.99)';
-      } : undefined}
-      onMouseUp={isInteractive ? (e) => {
-        e.currentTarget.style.transform = 'scale(1)';
-      } : undefined}
-      onMouseLeave={isInteractive ? (e) => {
-        e.currentTarget.style.transform = 'scale(1)';
-      } : undefined}
     >
       {/* Zone 1: Top Bar (Eyebrow + Badge) */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: '0.4rem',
-        gap: '0.5rem',
-      }}>
+      <div className="summary-hero-header">
         {!isDuplicateEyebrow && (
-          <span style={{
-            fontSize: '0.78rem',
-            color: colorWithOpacity(accentColor, 'b0') || 'var(--text-tertiary, #64748B)',
-            fontWeight: 700,
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em',
-          }}>
+          <span
+            className="summary-hero-eyebrow"
+            style={{
+              color: colorWithOpacity(accentColor, 'b0') || 'var(--text-tertiary, #64748B)',
+            }}
+          >
             {eyebrow}
           </span>
         )}
 
         {badgeText && (
-          <div style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.35rem',
-            padding: '0.2rem 0.6rem',
-            borderRadius: '9999px',
-            background: `${colorWithOpacity(badgeColor || accentColor, '18')}`,
-            color: badgeColor || accentColor,
-            fontSize: '0.72rem',
-            fontWeight: 700,
-            whiteSpace: 'nowrap',
-            flexShrink: 0,
-          }}>
+          <div
+            className="summary-hero-badge"
+            style={{
+              background: colorWithOpacity(badgeColor || accentColor, '18'),
+              color: badgeColor || accentColor,
+            }}
+          >
             {badgeIcon}
             <span>{badgeText}</span>
           </div>
@@ -129,14 +101,11 @@ export const SummaryHeroCard: React.FC<SummaryHeroCardProps> = ({
       </div>
 
       {/* Zone 2: Main Amount + Status/Hint */}
-      <div style={{ marginBottom: metrics || progress || children ? '0.9rem' : 0 }}>
-        <div style={{
-          fontSize: '2.1rem',
-          fontWeight: 800,
-          color: mainAmountColor || 'var(--text-primary, #0F172A)',
-          letterSpacing: '-0.03em',
-          lineHeight: 1.15,
-        }}>
+      <div className={`summary-hero-amount-zone ${hasFooter ? 'summary-hero-amount-zone--has-footer' : ''}`}>
+        <div
+          className="summary-hero-amount"
+          style={mainAmountColor ? { color: mainAmountColor } : undefined}
+        >
           {isLoading || mainAmount === '...' ? (
             <Skeleton width={150} height={30} borderRadius={8} style={{ verticalAlign: 'middle' }} />
           ) : (
@@ -145,152 +114,73 @@ export const SummaryHeroCard: React.FC<SummaryHeroCardProps> = ({
         </div>
 
         {statusSubtext && (
-          <div style={{ marginTop: '0.25rem' }}>
-            <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary, #475569)', fontWeight: 500 }}>
-              {statusSubtext}
-            </span>
+          <div className="summary-hero-status-text">
+            {statusSubtext}
           </div>
         )}
       </div>
 
       {/* Zone 3: Metrics Grid (2 or 3 columns, responsive on mobile / 4+ items) */}
       {metrics && metrics.length > 0 && (
-        <>
-          <style>{`
-            .summary-hero-metrics-grid {
-              display: grid;
-              gap: 0.75rem;
-              border-top: 1px solid var(--border-color, rgba(0, 0, 0, 0.07));
-              padding-top: 0.85rem;
-            }
-            .summary-hero-metrics-grid.multi-row {
-              grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-            }
-            .summary-hero-metrics-grid.multi-row .summary-hero-metric-item:nth-child(2n) {
-              border-right: none !important;
-              padding-right: 0 !important;
-            }
-            .summary-hero-metrics-grid.multi-row .summary-hero-metric-item:last-child {
-              border-right: none !important;
-              padding-right: 0 !important;
-            }
-            .summary-hero-metrics-grid.multi-row.has-multiple-rows .summary-hero-metric-item:nth-child(-n+2) {
-              border-bottom: 1px solid var(--border-color, rgba(0, 0, 0, 0.07));
-              padding-bottom: 0.65rem;
-            }
-            @media (max-width: 480px) {
-              .summary-hero-metrics-grid {
-                grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)) !important;
-              }
-              .summary-hero-metrics-grid .summary-hero-metric-item:nth-child(2n) {
-                border-right: none !important;
-                padding-right: 0 !important;
-              }
-              .summary-hero-metrics-grid .summary-hero-metric-item:last-child {
-                border-right: none !important;
-                padding-right: 0 !important;
-              }
-              .summary-hero-metrics-grid.has-multiple-rows .summary-hero-metric-item:nth-child(-n+2) {
-                border-bottom: 1px solid var(--border-color, rgba(0, 0, 0, 0.07));
-                padding-bottom: 0.65rem;
-              }
-            }
-          `}</style>
-          <div
-            className={`summary-hero-metrics-grid ${metrics.length >= 4 ? 'multi-row' : ''} ${metrics.length > 2 ? 'has-multiple-rows' : ''}`}
-            style={{
-              gridTemplateColumns: metrics.length >= 4
-                ? 'repeat(auto-fit, minmax(130px, 1fr))'
-                : `repeat(${metrics.length}, 1fr)`,
-            }}
-          >
-            {metrics.map((item, idx) => (
+        <div
+          className={`summary-hero-metrics-grid ${metrics.length >= 4 ? 'multi-row' : ''} ${metrics.length > 2 ? 'has-multiple-rows' : ''}`}
+          style={{
+            '--hero-metric-cols': metrics.length,
+          } as React.CSSProperties}
+        >
+          {metrics.map((item, idx) => (
+            <div
+              key={idx}
+              className="summary-hero-metric-item"
+            >
+              <div className="summary-hero-metric-label">
+                {item.icon}
+                <span>{item.label}</span>
+              </div>
               <div
-                key={idx}
-                className="summary-hero-metric-item"
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  borderRight: idx < metrics.length - 1 ? '1px solid var(--border-color, rgba(0, 0, 0, 0.07))' : 'none',
-                  paddingRight: idx < metrics.length - 1 ? '0.75rem' : 0,
-                }}
+                className="summary-hero-metric-value"
+                style={item.valueColor ? { color: item.valueColor } : undefined}
               >
-                <div style={{
-                  fontSize: '0.68rem',
-                  color: 'var(--text-tertiary, #94A3B8)',
-                  fontWeight: 600,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.04em',
-                  marginBottom: '0.15rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.3rem',
-                }}>
-                  {item.icon}
-                  <span>{item.label}</span>
-                </div>
-                <div style={{
-                  fontSize: '0.95rem',
-                  fontWeight: 700,
-                  color: item.valueColor || 'var(--text-primary, #0F172A)',
-                  letterSpacing: '-0.01em',
-                }}>
-                  {isLoading || item.value === '...' ? (
-                    <Skeleton width={68} height={16} borderRadius={6} style={{ marginTop: 2 }} />
-                  ) : (
-                    item.value
-                  )}
-                </div>
-                {item.subtext && (
-                  <div style={{ fontSize: '0.68rem', color: 'var(--text-tertiary, #94A3B8)', marginTop: '2px' }}>
-                    {item.subtext}
-                  </div>
+                {isLoading || item.value === '...' ? (
+                  <Skeleton width={68} height={16} borderRadius={6} style={{ marginTop: 2 }} />
+                ) : (
+                  item.value
                 )}
               </div>
-            ))}
-          </div>
-        </>
+              {item.subtext && (
+                <div className="summary-hero-metric-subtext">
+                  {item.subtext}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
       )}
 
       {/* Zone 4: Progress Bar */}
       {progress && (
-        <div style={{
-          marginTop: '0.85rem',
-          paddingTop: '0.85rem',
-          borderTop: '1px solid var(--border-color, rgba(0, 0, 0, 0.07))',
-        }}>
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '0.4rem',
-          }}>
-            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-primary, #0F172A)' }}>
+        <div className="summary-hero-progress">
+          <div className="summary-hero-progress-labels">
+            <span className="summary-hero-progress-left">
               {progress.leftLabel}
             </span>
             {progress.rightLabel && (
-              <span style={{
-                fontSize: '0.75rem',
-                color: progress.color || accentColor,
-                fontWeight: 700,
-              }}>
+              <span
+                className="summary-hero-progress-right"
+                style={{ color: progress.color || accentColor }}
+              >
                 {progress.rightLabel}
               </span>
             )}
           </div>
-          <div style={{
-            height: '7px',
-            borderRadius: '9999px',
-            background: 'var(--surface-muted, rgba(0, 0, 0, 0.06))',
-            overflow: 'hidden',
-          }}>
-            <div style={{
-              height: '100%',
-              borderRadius: '9999px',
-              background: progress.color || `linear-gradient(90deg, ${accentColor}, ${colorWithOpacity(accentColor, 'cc')})`,
-              width: `${Math.min(100, Math.max(0, progress.percent))}%`,
-              transition: 'width 300ms ease-out',
-            }} />
+          <div className="summary-hero-progress-track">
+            <div
+              className="summary-hero-progress-bar"
+              style={{
+                background: progress.color || `linear-gradient(90deg, ${accentColor}, ${colorWithOpacity(accentColor, 'cc')})`,
+                width: `${Math.min(100, Math.max(0, progress.percent))}%`,
+              }}
+            />
           </div>
         </div>
       )}

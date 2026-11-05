@@ -1,15 +1,16 @@
 # 💰 GastosApp — Gestión Financiera Personal y Colaborativa (PWA Mobile-First)
 
-![React 19](https://img.shields.io/badge/React-19-blue?logo=react&style=for-the-badge)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&style=for-the-badge)
-![Vite](https://img.shields.io/badge/Vite-6.x-646CFF?logo=vite&style=for-the-badge)
+![React 19](https://img.shields.io/badge/React-19.2+-blue?logo=react&style=for-the-badge)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.6+-3178C6?logo=typescript&style=for-the-badge)
+![Vite](https://img.shields.io/badge/Vite-8.x-646CFF?logo=vite&style=for-the-badge)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&style=for-the-badge)
 ![SQLAlchemy 2.0](https://img.shields.io/badge/SQLAlchemy-2.0_Async-D71F00?logo=sqlalchemy&style=for-the-badge)
-![Supabase PostgreSQL](https://img.shields.io/badge/Supabase-PostgreSQL_RLS-3ECF8E?logo=supabase&style=for-the-badge)
+![Supabase PostgreSQL](https://img.shields.io/badge/Supabase-PostgreSQL_21_Tablas-3ECF8E?logo=supabase&style=for-the-badge)
 ![Firebase Cloud Messaging](https://img.shields.io/badge/Firebase-FCM_Push-FFCA28?logo=firebase&style=for-the-badge)
+![Export Studio](https://img.shields.io/badge/Exports-PDF_|_Excel_|_CSV-10B981?style=for-the-badge)
 ![Workbox PWA](https://img.shields.io/badge/PWA-Workbox-purple?logo=pwa&style=for-the-badge)
 
-**GastosApp** es una Progressive Web App (**PWA**) de vanguardia, concebida bajo la filosofía *mobile-first*, diseñada para transformar la gestión financiera personal y colaborativa. El sistema combina registro de gastos con conversión multidivisa en tiempo real (Bolívares, USD BCV, EUR BCV, USDT Binance P2P y USD Efectivo), un motor inteligente de presupuestos mensuales por categorías con auto-clonación, un ecosistema de herramientas financieras integradas (gastos fijos, deudas amortizables, ingresos proyectados y metas de ahorro) y una red social financiera ("Panas") con arquitectura unificada de compartición y sincronización de saldos entre usuarios.
+**GastosApp** es una Progressive Web App (**PWA**) de última generación con filosofía *mobile-first*, diseñada para solucionar de manera integral los retos de la administración financiera personal y colaborativa. El sistema combina registro ágil de gastos e ingresos con conversión multidivisa en tiempo real e histórica (Bolívares, USD BCV, EUR BCV, USDT Binance P2P y USD Efectivo), un motor inteligente de presupuestos y subpresupuestos mensuales con auto-clonación, un ecosistema de herramientas financieras especializadas (gastos fijos recurrentes, deudas amortizables e incrementables, ingresos proyectados/transaccionales y metas de ahorro con aportes y retiros), una red social financiera ("Panas") con cuentas espejo automáticas y sincronización en tiempo real, un monitor de tasas de cambio con calculadora interactiva, y un completo **Centro de Resúmenes, Comparador de Periodos y Estudio de Exportaciones** a PDF corporativo, Excel multi-hoja, CSV y despacho por correo electrónico.
 
 ---
 
@@ -20,14 +21,18 @@
 - [🛠 Stack Tecnológico Completo](#-stack-tecnológico-completo)
 - [📁 Estructura del Proyecto y Directorios Clave](#-estructura-del-proyecto-y-directorios-clave)
 - [🔄 Módulos Funcionales Detallados](#-módulos-funcionales-detallados)
-  - [1. Autenticación y Perfil de Usuario](#1-autenticación-y-perfil-de-usuario)
-  - [2. Gastos Diarios y Motor Multidivisa en Tiempo Real](#2-gastos-diarios-y-motor-multidivisa-en-tiempo-real)
-  - [3. Motor de Presupuestos Mensuales (Budgets Engine)](#3-motor-de-presupuestos-mensuales-budgets-engine)
-  - [4. Herramientas Financieras (Tools Hub)](#4-herramientas-financieras-tools-hub)
-  - [5. Red de Contactos ("Panas") y Arquitectura de Compartición](#5-red-de-contactos-panas-y-arquitectura-de-compartición)
-  - [6. Sistema de Notificaciones Push (FCM), Cron Jobs y Bandeja In-App](#6-sistema-de-notificaciones-push-fcm-cron-jobs-y-bandeja-in-app)
-  - [7. Sistema de Categorías Dinámicas y Visuales](#7-sistema-de-categorías-dinámicas-y-visuales)
-- [🗄 Modelo Relacional Canónico (V4 - 18 Tablas)](#-modelo-relacional-canónico-v4---18-tablas)
+  - [1. Autenticación, Resolución de Identidad y Perfil](#1-autenticación-resolución-de-identidad-y-perfil)
+  - [2. Gastos Diarios y Motor Multidivisa Histórico](#2-gastos-diarios-y-motor-multidivisa-histórico)
+  - [3. Gestión Integral de Ingresos (Proyectados y Transaccionales)](#3-gestión-integral-de-ingresos-proyectados-y-transaccionales)
+  - [4. Motor de Presupuestos Mensuales y Subpresupuestos Compartidos](#4-motor-de-presupuestos-mensuales-y-subpresupuestos-compartidos)
+  - [5. Herramientas Financieras (Tools Hub)](#5-herramientas-financieras-tools-hub)
+  - [6. Finanzas Colaborativas ("Panas") y Compartición Unificada](#6-finanzas-colaborativas-panas-y-compartición-unificada)
+  - [7. Centro de Resúmenes, Comparador y Estudio de Exportaciones](#7-centro-de-resúmenes-comparador-y-estudio-de-exportaciones)
+  - [8. Monitor de Tasas Oficiales, Cripto y Calculadora](#8-monitor-de-tasas-oficiales-cripto-y-calculadora)
+  - [9. Notificaciones Push (FCM), Schedulers y Bandeja In-App](#9-notificaciones-push-fcm-schedulers-y-bandeja-in-app)
+  - [10. Categorías Dinámicas de Gastos e Ingresos](#10-categorías-dinámicas-de-gastos-e-ingresos)
+  - [11. PWA, UX Móvil y Estrategia Antidormida en Render](#11-pwa-ux-móvil-y-estrategia-antidormida-en-render)
+- [🗄 Modelo Relacional Canónico (V5 - 21 Tablas)](#-modelo-relacional-canónico-v5---21-tablas)
 - [🚀 Guía de Instalación y Configuración Local](#-guía-de-instalación-y-configuración-local)
 - [🔐 Variables de Entorno](#-variables-de-entorno)
 - [📡 Referencia Completa de API REST](#-referencia-completa-de-api-rest)
@@ -38,46 +43,59 @@
 
 ## ✨ Características Principales
 
-1. **Control de Gastos Diarios y Snapshot Multimoneda:**
-   - Registro instantáneo con importe, descripción, categoría, fecha y moneda seleccionada.
-   - Cálculo y persistencia de valores equivalentes en `BS`, `USD_BCV`, `EUR_BCV`, `USDT` y `USD_CASH`, congelando las tasas vigentes en el instante del gasto.
-   - Posibilidad de sobrescribir la tasa con un valor manual personalizado por transacción.
-   - Filtros de alta granularidad: Rangos de fecha (Hoy, Esta Semana, Este Mes, Este Año, Todo el Historial, Rango Personalizado) y montos mínimos/máximos.
+1. **Control Transaccional de Gastos e Ingresos con Snapshot Multimoneda:**
+   - Registro instantáneo de gastos e ingresos con importe, concepto/descripción, categoría, fecha y moneda seleccionada.
+   - Cálculo y persistencia automática de valores equivalentes en `BS`, `USD_BCV`, `EUR_BCV`, `USDT` y `USD_CASH`, congelando las tasas vigentes en el instante del movimiento o aplicando la tasa histórica de la fecha seleccionada (`daily_rates`).
+   - Soporte para sobrescribir la tasa con un valor manual personalizado por transacción.
+   - Filtros de alta granularidad: Rangos predefinidos (Hoy, Esta Semana, Este Mes, Este Año, Todo el Historial), Rango Personalizado entre fechas y montos mínimos/máximos.
 
-2. **Motor de Presupuestos Mensuales y Límites por Categoría:**
-   - Presupuestos independientes por mes (`YYYY-MM`) y por categoría con seguimiento del gasto ejecutado vs. límite asignado.
-   - Tres modos de cálculo global: `manual` (monto fijado por el usuario), `single_income` (vinculado a un ingreso específico) y `all_incomes` (suma automática de todos los ingresos estimados del mes).
-   - Mecanismo de **clonado automático inteligente**: al iniciar un nuevo mes, si no existe presupuesto, se heredan los límites del mes anterior con estado `is_confirmed = false` para revisión y confirmación en un clic.
-   - Sistema de alertas preventivas que dispara notificaciones push al alcanzar el 80% y el 100% del presupuesto.
+2. **Doble Módulo de Ingresos (Flujo de Caja Proyectado vs. Ejecución Real):**
+   - **Ingresos Estimados:** Planificación de cobros mensuales esperados con día previsto y registro de cobros reales parciales o totales con reprogramación de saldos pendientes (`income_checks`).
+   - **Ingresos Directos:** Registro transaccional diario de entradas de dinero (`incomes`) con categorías exclusivas de ingresos (`income_categories`).
 
-3. **Herramientas Financieras Especializadas (Tools Hub):**
-   - **Gastos Fijos:** Control de compromisos periódicos con día de corte mensual, historial de pagos (`checks`) y opción de convertir el pago directamente en un gasto real del Dashboard.
-   - **Deudas Nuestras (Owed) y Por Cobrar (Receivable):** Registro de préstamos y deudas con historial de abonos parciales, cálculo dinámico de remanente y liquidación automática al 100%.
-   - **Ingresos Estimados:** Proyección de cobros mensuales con confirmación real, abonos parciales y reprogramación de fechas pendientes.
-   - **Metas de Ahorro:** Creación de fondos de ahorro con importe objetivo, fecha límite, depósitos progresivos con opción de vincularlos como gastos reales, barra de progreso y felicitación festiva con confeti al alcanzar el 100%.
+3. **Motor Inteligente de Presupuestos Mensuales y Subpresupuestos:**
+   - Presupuestos independientes por mes (`YYYY-MM`) con límites asignados por categoría y cálculo del gasto ejecutado en tiempo real.
+   - Creación de múltiples presupuestos por mes (Presupuesto Principal y Subpresupuestos temáticos).
+   - Mecanismo de **clonado automático continuo**: al iniciar un nuevo mes, se heredan automáticamente los límites del mes anterior en estado pendiente de confirmación (`is_confirmed = false`) para aceptar o ajustar en un toque.
+   - Posibilidad de compartir subpresupuestos con contactos ("Panas").
+   - Alertas preventivas automáticas al alcanzar el 80% y el 100% de los techos presupuestarios.
 
-4. **Finanzas Colaborativas ("Panas") y Compartición Unificada:**
-   - Búsqueda y conexión entre usuarios registrados mediante correo electrónico.
+4. **Hub de Herramientas Financieras Especializadas (Tools Hub):**
+   - **Gastos Fijos:** Compromisos periódicos con día de corte mensual, registro de pagos mensuales (`checks`) y opción directa de convertir el pago en un gasto ordinario del Dashboard.
+   - **Deudas Nuestras (Owed) y Por Cobrar (Receivable):** Préstamos con historial de abonos parciales (`payment`), aumentos de capital adeudado (`increase`), liquidación automática al 100% y opción de registrar el abono como gasto ordinario.
+   - **Metas de Ahorro:** Creación de fondos con importe objetivo, fecha meta, depósitos progresivos (`deposit`), retiros parciales de fondos (`withdrawal`), cálculo de progreso y animación con confeti al alcanzar la meta.
+
+5. **Finanzas Colaborativas ("Panas") y Cuentas Espejo Automáticas:**
+   - Conexión entre usuarios mediante solicitud por correo electrónico o identificador único.
    - Arquitectura unificada de compartición (`shares` y `share_members`) con roles `admin` y `member`.
-   - Generación automática de registros espejo en la cuenta del destinatario (por ejemplo, registrar una deuda crea automáticamente una deuda "Por Cobrar" simétrica en la cuenta del prestamista).
-   - Sincronización bidireccional inmediata de abonos, pagos de gastos fijos y depósitos a metas compartidas.
+   - Generación simétrica de cuentas espejo: si el Usuario A registra una deuda que le debe al Usuario B, el Usuario B ve automáticamente una deuda "Por Cobrar" de $X por parte del Usuario A.
+   - Sincronización bidireccional inmediata de abonos, pagos de gastos fijos, depósitos de ahorro y subpresupuestos compartidos mediante `sync_id`.
 
-5. **Monitor de Tasas en Vivo y Conversor Interactivo:**
-   - Consulta automatizada del Dólar y Euro oficial del Banco Central de Venezuela (**BCV**).
-   - Consulta directa del USDT mediante la API pública P2P de **Binance**.
-   - Memoria caché en servidor con TTL de 30 minutos para evitar saturación y bloqueos de IP.
-   - Calculadora y conversor interactivo bidireccional entre todas las divisas soportadas.
+6. **Centro de Resúmenes, Comparador de Periodos y Estudio de Exportaciones (`/herramientas/resumenes`):**
+   - **Comparador Analítico:** Permite contrastar dos periodos de tiempo cualesquiera (mes actual vs anterior, año vs año, o rangos libres) con cálculo de variaciones absolutas (`Δ$`) y porcentuales (`Δ%`).
+   - **Aviso de Integridad por Asimetría Temporal:** Alerta preventiva y normalización por Promedio Diario (`$/día`) cuando los periodos comparados tienen diferente cantidad de días.
+   - **Gráficos Vectoriales SVG:** Evolución temporal acumulada, comparativa de barras agrupadas y distribución porcentual por categoría.
+   - **Exportación Multi-formato:** Generación cliente a medida en **PDF Corporativo** (mediante `jspdf` y `jspdf-autotable`), libros multi-hoja en **Excel (`.xlsx`)** (mediante SheetJS `xlsx`) y **CSV** con codificación UTF-8 + BOM.
+   - **Plantillas Especializadas por Entidad:** Exportación de estados de cuenta individuales o consolidados de Deudas, Metas de Ahorro, Presupuestos Mensuales, Gastos Fijos e Ingresos.
+   - **Despacho Directo por Correo:** Envío seguro del reporte adjunto en PDF o Excel por email a través del backend utilizando SMTP (Gmail, etc.) o Resend API.
 
-6. **Notificaciones Push Web (FCM), Cron Jobs y Bandeja In-App:**
-   - Notificaciones Web Push nativas mediante Firebase Cloud Messaging (FCM) integradas en Service Worker (`sw.ts`).
-   - Centro de notificaciones in-app con contador en tiempo real de mensajes no leídos y marcado masivo.
-   - Disparador programado dual mediante Vercel Serverless Function (`api/cron/notifications.ts`):
-     - **Ventana Matutina (9:00 AM VET / 13:00 UTC):** Gastos fijos por vencer hoy, deudas vencidas y cobros pendientes.
-     - **Ventana Nocturna (8:00 PM VET / 00:00 UTC):** Vencimientos del día siguiente y alerta de inactividad (3+ días sin registros).
+7. **Monitor de Tasas en Vivo y Conversor Interactivo (`/tasas`):**
+   - Cotizaciones oficiales actualizadas del Banco Central de Venezuela (**USD BCV**, **EUR BCV**).
+   - Tasa de **USDT** extraída en tiempo real de la API P2P de Binance.
+   - Historial de tasas diarias (`daily_rates`) con selector de fecha para consultar el valor oficial de cualquier día pasado.
+   - Calculadora y conversor interactivo bidireccional entre todas las monedas admitidas.
 
-7. **Arquitectura PWA y Resiliencia en la Nube:**
-   - PWA instalable en dispositivos móviles y de escritorio, con soporte de ejecución en segundo plano.
-   - Bucle interno de **Self-Ping** cada 10 minutos en el backend para evitar la suspensión del contenedor en Render Free Tier.
+8. **Notificaciones Web Push (FCM), Schedulers y Bandeja In-App:**
+   - Notificaciones Web Push nativas con Firebase Cloud Messaging (FCM) integradas en Service Worker (`sw.ts`).
+   - Schedulers duales:
+     - **Scheduler Interno en Backend:** Tarea en background (`_notification_scheduler_loop`) en FastAPI que evalúa cada minuto si es hora de disparar alertas y registrar las tasas del día.
+     - **Vercel Cron Jobs:** Respaldo serverless programado para las 9:00 AM VET (`0 13 * * *`) y 7:00 PM VET (`0 23 * * *`).
+   - Historial persistente en la tabla `notifications` con contador de no leídas en tiempo real en la barra superior.
+
+9. **Arquitectura PWA y Gestión Eficiente de Recursos en la Nube:**
+   - Instalable en Android, iOS y escritorio con soporte para orientación táctil y navegación inferior fluida (`BottomNav`).
+   - **Estrategia Inteligente de Self-Ping:** Mantiene despierto el contenedor en Render Free Tier con pings cada 10 minutos, entrando automáticamente en reposo nocturno entre la **01:00 AM y las 06:30 AM VET** para ahorrar horas gratuitas de computación sin interrumpir el servicio en el día.
+   - Pantalla de espera optimizada (**WakeUpLoader**) con animación suave en caso de reactivación (*cold start*).
 
 ---
 
@@ -85,8 +103,9 @@
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│                   Cliente Web / PWA (React 19)                         │
-│   Vite + TypeScript + Workbox SW + NotificationContext + Categories    │
+│                   Cliente Web / PWA (React 19.2+)                      │
+│   Vite 8 + TypeScript + Workbox SW + Feature Folders + Lucide Icons    │
+│   Contextos: Auth, Categories, Notifications, CurrencyPreference       │
 └───────────────┬────────────────────────────────────────┬───────────────┘
                 │                                        │
       Supabase Auth JWT                           REST API (HTTP/JSON)
@@ -97,38 +116,46 @@
    │    Supabase Auth JWKS    │             │      FastAPI Backend       │
    │  Validación asíncrona    │             │   SQLAlchemy 2.0 (Async)   │
    │   sin latencia de BD     │             │    asyncpg Connection Pool │
+   │  User Identity Resolver  │             │    13 Routers Modulares    │
    └──────────────────────────┘             └────────────┬───────────────┘
                                                          │
          ┌───────────────────────┬───────────────────────┼───────────────────────┐
          │                       │                       │                       │
          ▼                       ▼                       ▼                       ▼
 ┌──────────────────┐   ┌───────────────────┐   ┌───────────────────┐   ┌───────────────────┐
-│   Supabase DB    │   │  Firebase Admin   │   │  Tasas de Cambio  │   │    Vercel Cron    │
-│  PostgreSQL 15+  │   │  Cloud Messaging  │   │ pyDolar / Scraping│   │ Serverless Func   │
-│  18 Tablas + RLS │   │ (Web Push a FCM)  │   │   Binance P2P     │   │ /api/push/cron    │
+│   Supabase DB    │   │  Firebase Admin   │   │  Tasas de Cambio  │   │ Envío de Correos  │
+│  PostgreSQL 15+  │   │  Cloud Messaging  │   │  BCV Scraping     │   │   SMTP (Gmail)    │
+│  21 Tablas + RLS │   │ (Web Push a FCM)  │   │   Binance P2P     │   │     o Resend      │
+│   daily_rates    │   │                   │   │   daily_rates     │   │ (/reports/email)  │
 └──────────────────┘   └───────────────────┘   └───────────────────┘   └───────────────────┘
 ```
 
-### Capas de la Solución:
-- **Capa Cliente (PWA):** React 19 con enrutador centralizado, gestión de estados mediante contextos especializados (`AuthContext`, `NotificationContext`, `CategoriesContext`), interceptores de peticiones Axios para inyección del JWT y Service Worker Workbox configurado con `injectManifest` para interceptar notificaciones push de Firebase en background.
-- **Capa de Seguridad e Identidad:** Las peticiones viajan firmadas con tokens JWT emitidos por Supabase Auth. El backend FastAPI descarga y almacena en caché el juego de claves públicas (JWKS) del proyecto Supabase y verifica criptográficamente la firma del token sin consultar la base de datos en cada petición.
-- **Capa de Servicios y Negocio (FastAPI):** Arquitectura modular dividida en routers específicos por dominio funcional. Utiliza sesiones asíncronas con SQLAlchemy 2.0 y `asyncpg` para máxima concurrencia y bajo consumo de memoria.
-- **Capa de Persistencia (PostgreSQL en Supabase):** 18 tablas canónicas con integridad referencial estricta (`ON DELETE CASCADE` y `ON DELETE SET NULL`), índices sobre claves foráneas y fechas, y políticas de seguridad Row Level Security (RLS) habilitadas.
+### Capas Principales:
+- **Capa Cliente (PWA):** React 19.2 empaquetado con Vite 8. Enrutamiento centralizado con React Router DOM v7, modularizado por *feature folders*, exportadores client-side en segundo plano (`jspdf`, `xlsx`), contextos especializados (`AuthContext`, `CategoriesContext`, `NotificationContext`, `CurrencyPreferenceContext`) y Service Worker Workbox configurado con `injectManifest` para interceptar notificaciones push en segundo plano.
+- **Capa de Seguridad e Identidad:** Peticiones HTTP autenticadas con tokens JWT emitidos por Supabase Auth. El backend FastAPI valida la firma del token mediante JWKS (`.well-known/jwks.json`) en memoria sin generar consultas a base de datos por autenticación, e hidrata la identidad y avatares con cascada resiliente en `user_resolver.py`.
+- **Capa de Negocio y Controladores (FastAPI):** 13 routers especializados organizados en `backend/app/routers/` que operan con sesiones asíncronas SQLAlchemy 2.0 y `asyncpg`.
+- **Capa de Persistencia (PostgreSQL en Supabase):** 21 tablas canónicas integradas con claves foráneas en cascada, índices compuestos para acelerar filtros de fecha y políticas de seguridad Row Level Security (RLS).
+- **Capa de Workers y Automatización:** Tarea periódica de notificaciones matutinas y vespertinas en el backend, sincronización diaria de cotizaciones en `daily_rates`, bucle de self-ping inteligente con reposo nocturno y soporte de disparadores Vercel Cron.
 
 ---
 
 ## 🛠 Stack Tecnológico Completo
 
 ### Frontend
-- **Framework:** React 19.0.0
+- **Framework:** React 19.2+
 - **Lenguaje:** TypeScript 5.6+
-- **Herramienta de Construcción:** Vite 6.0+
+- **Herramienta de Construcción:** Vite 8.x
+- **Linter de Alta Velocidad:** Oxlint (`oxlint`)
 - **Enrutamiento:** React Router DOM v7
-- **Estilos:** Custom Modern CSS Design System (variables CSS, temas oscuro/claro, tokens tipográficos y de elevación)
-- **Íconos:** Lucide React (catálogo de más de 40 íconos semánticos)
-- **Cliente HTTP:** Axios (con interceptores automáticos de autenticación y manejo de errores)
+- **Tipografía y Estilos:** Inter (`@fontsource/inter`) y Custom Modern CSS Design System (variables semánticas, paleta por herramienta, elevaciones y temas adaptativos)
+- **Generación de Reportes y Exportación:**
+  - `jspdf` (v4.2+) y `jspdf-autotable` (v5.0+) para generación vectorial de PDFs ejecutivos
+  - `xlsx` (SheetJS v0.18+) para generación de libros Excel multi-hoja y tablas CSV con UTF-8 BOM
+- **Manipulación de Fechas:** `date-fns` (v4.4+)
+- **Íconos:** Lucide React (catálogo de más de 45 íconos semánticos)
+- **Cliente HTTP:** Axios con interceptores para inyección del JWT Bearer y control de errores
 - **PWA & Offline:** Vite Plugin PWA (`vite-plugin-pwa`) y Workbox Service Worker
-- **Push Client:** Firebase JS SDK v11 (módulo Messaging)
+- **Push Client:** Firebase JS SDK v12 (módulo Messaging)
 
 ### Backend
 - **Framework:** FastAPI 0.115+
@@ -136,18 +163,19 @@
 - **Lenguaje:** Python 3.10+
 - **ORM:** SQLAlchemy 2.0 (Motor asíncrono con `create_async_engine`)
 - **Driver de BD:** `asyncpg`
-- **Validación de Datos:** Pydantic v2
-- **Criptografía & Auth:** PyJWT y `cryptography` para validación de JWKS de Supabase
+- **Validación de Datos:** Pydantic v2 y `pydantic-settings`
+- **Criptografía & Auth:** PyJWT y `cryptography` para validación stateless de JWKS de Supabase
 - **Cliente HTTP Asíncrono:** HTTPX (para consulta de tasas BCV, Binance P2P y bucle de self-ping)
+- **Servicios de Correo Electrónico:** Soporte dual para SMTP TLS/SSL (ej. Gmail) y Resend API para despacho de reportes financieros
 - **Web Scraping:** BeautifulSoup4 y `pyDolarVenezuela`
 - **Push Server:** Firebase Admin SDK (Python)
 
 ### Base de Datos & Servicios en la Nube
-- **Base de Datos:** Supabase PostgreSQL 15+ con Row Level Security (RLS)
+- **Base de Datos:** Supabase PostgreSQL 15+ (21 tablas canónicas con RLS habilitado)
 - **Autenticación:** Supabase Auth (GoTrue con JWKS asimétrico RS256)
-- **Hospedaje Backend:** Render (Web Service con contenedor Linux)
+- **Hospedaje Backend:** Render (Web Service con contenedor Linux y Python 3)
 - **Hospedaje Frontend:** Vercel (Edge Network + Serverless Functions)
-- **Orquestación de Cron:** Vercel Cron Jobs (`vercel.json`) invocando `/api/cron/notifications.ts`
+- **Orquestación de Cron:** Scheduler interno en FastAPI + Vercel Cron Jobs (`vercel.json`) invocando `/api/cron/notifications.ts`
 - **Servicio Push:** Firebase Cloud Messaging (FCM Web Push)
 
 ---
@@ -156,179 +184,201 @@
 
 ```
 gastosapp/
-├── schema.sql                    # Esquema DDL canónico de PostgreSQL (V4 - 18 tablas)
-├── rls_policies.sql              # Políticas RLS generales para tablas personales
-├── rls_connections.sql           # Políticas RLS para la red de Panas y compartición
-├── migrate_*.sql                 # Scripts históricos de migración (consolidados en schema.sql)
+├── schema.sql                    # Esquema DDL canónico de PostgreSQL (V5 - 21 tablas)
+├── rls_policies.sql              # Políticas RLS para tablas personales
+├── rls_connections.sql           # Políticas RLS para Panas y compartición
 ├── README.md                     # Documentación técnica maestra del sistema
+├── DOCUMENTACION_DETALLADA.md    # Guía arquitectónica y catálogo exhaustivo de archivos
 │
 ├── backend/
 │   ├── app/
 │   │   ├── auth.py               # Decodificación y validación de Supabase JWKS JWT
-│   │   ├── bcv_service.py        # Scraping de BCV, API Binance P2P y conversiones
-│   │   ├── crud.py               # Lógica de base de datos para gastos y resúmenes
-│   │   ├── crud_budgets.py       # Motor de presupuestos, límites, clonación y alertas
+│   │   ├── bcv_service.py        # Tasas en vivo, histórico daily_rates, scrapers y conversor
+│   │   ├── crud.py               # Operaciones BD para gastos, ingresos y categorías
+│   │   ├── crud_budgets.py       # Motor de presupuestos mensuales, límites y clonación continua
 │   │   ├── crud_connections.py   # Lógica de conexiones entre usuarios ("Panas")
-│   │   ├── crud_debts.py         # Lógica de deudas, amortizaciones y cuentas espejo
+│   │   ├── crud_debts.py         # Lógica de deudas, abonos, aumentos y cuentas espejo
 │   │   ├── crud_fixed_expenses.py# Lógica de gastos fijos y comprobantes mensuales
-│   │   ├── crud_incomes.py       # Lógica de ingresos proyectados y confirmaciones
-│   │   ├── crud_savings.py       # Lógica de fondos de ahorro y depósitos
+│   │   ├── crud_incomes.py       # Lógica de ingresos estimados y cobros parciales
+│   │   ├── crud_savings.py       # Lógica de fondos de ahorro, depósitos y retiros
 │   │   ├── database.py           # Conexión asyncpg y generador de sesiones get_db
-│   │   ├── main.py               # Inicialización FastAPI, lifespan y self-ping loop
-│   │   ├── models.py             # Modelos declarativos ORM de SQLAlchemy 2.0
+│   │   ├── main.py               # Inicialización FastAPI, lifespan, self-ping y schedulers
+│   │   ├── models.py             # Modelos declarativos ORM de SQLAlchemy 2.0 (21 tablas)
 │   │   ├── push_service.py       # Despacho de notificaciones push vía Firebase Admin
 │   │   ├── schemas.py            # DTOs de entrada y salida con Pydantic v2
 │   │   ├── sharing.py            # Motor unificado de compartición de entidades
 │   │   ├── time_utils.py         # Utilidades de hora legal de Venezuela (UTC-4)
+│   │   ├── user_resolver.py      # Resuelve nombres y avatares con cascada de metadatos
 │   │   └── routers/
-│   │       ├── budgets.py        # Endpoints /api/budgets
-│   │       ├── categories.py     # Endpoints /api/categories
-│   │       ├── connections.py    # Endpoints /api/connections
-│   │       ├── debts.py          # Endpoints /api/debts
-│   │       ├── expenses.py       # Endpoints /api/expenses
+│   │       ├── budgets.py        # Endpoints /api/budgets (principales y subpresupuestos)
+│   │       ├── categories.py     # Endpoints /api/categories (gastos e ingresos)
+│   │       ├── connections.py    # Endpoints /api/connections ("Panas")
+│   │       ├── debts.py          # Endpoints /api/debts (abonos y aumentos)
+│   │       ├── expenses.py       # Endpoints /api/expenses (gastos y tasas en fecha)
 │   │       ├── fixed_expenses.py # Endpoints /api/fixed-expenses
-│   │       ├── incomes.py        # Endpoints /api/incomes
+│   │       ├── incomes.py        # Endpoints /api/incomes y /api/estimated-incomes
 │   │       ├── notifications.py  # Endpoints /api/notifications
 │   │       ├── profiles.py       # Endpoints /api/profile
 │   │       ├── push.py           # Endpoints /api/push y webhook /cron
-│   │       ├── savings.py        # Endpoints /api/savings
+│   │       ├── reports.py        # Endpoints /api/reports (análisis y envío por email)
+│   │       ├── savings.py        # Endpoints /api/savings (depósitos y retiros)
 │   │       └── shares.py         # Endpoints /api/shares
-│   ├── create_tables.py          # Script de inicialización de modelos SQLAlchemy
 │   └── requirements.txt          # Dependencias de Python congeladas
 │
 └── frontend/
     ├── api/
     │   └── cron/
-    │       └── notifications.ts  # Vercel Serverless Function disparadora del cron
-    ├── public/                   # Manifiesto PWA, favicon SVG y assets públicos
+    │       └── notifications.ts  # Vercel Serverless Function disparadora de notificaciones
+    ├── public/                   # Manifiesto PWA, favicon SVG y assets
     ├── src/
-    │   ├── api.ts                # Cliente Axios tipado con todas las llamadas API
-    │   ├── App.tsx               # Enrutamiento principal, Guards y Shell de navegación
-    │   ├── firebase.ts           # Inicialización del cliente Web de Firebase FCM
-    │   ├── pushManager.ts        # Registro de Service Worker y solicitud de tokens
-    │   ├── supabaseClient.ts     # Cliente Supabase para inicio de sesión
-    │   ├── sw.ts                 # Service Worker (Workbox + FCM Push Handler)
+    │   ├── api.ts                # Cliente Axios tipado con todas las funciones API
+    │   ├── App.tsx               # Enrutamiento principal, Lazy loading y layout shell
+    │   ├── firebase.ts           # Inicialización cliente de Firebase FCM
+    │   ├── pushManager.ts        # Registro de Service Worker y tokens FCM
+    │   ├── supabaseClient.ts     # Cliente Supabase para autenticación
+    │   ├── sw.ts                 # Service Worker (Workbox + Firebase Push)
     │   ├── types.ts              # Tipos canónicos e interfaces TypeScript
     │   ├── context/
     │   │   ├── AuthContext.tsx   # Estado de sesión de usuario y perfil
-    │   │   ├── CategoriesContext.tsx # Caché de categorías dinámicas y colores
-    │   │   └── NotificationContext.tsx # Contador de no leídas y drawer de avisos
-    │   ├── pages/
-    │   │   └── PanasPage.tsx     # Gestión de conexiones, solicitudes y balance con panas
-    │   ├── components/
-    │   │   ├── Budgets.tsx       # Interfaz completa del motor de presupuestos
-    │   │   ├── Dashboard.tsx     # Tablero principal de gastos y estadísticas
-    │   │   ├── DebtList.tsx      # Gestión y abono de deudas
-    │   │   ├── FixedExpenses.tsx # Gestión de gastos fijos y pagos mensuales
-    │   │   ├── SavingGoals.tsx   # Gestión de metas y depósitos de ahorro
-    │   │   ├── ToolsHub.tsx      # Centro de acceso rápido a herramientas
-    │   │   ├── InvitePanaModal.tsx # Modal para invitar un pana por correo
-    │   │   └── PanaDetailModal.tsx # Detalle de finanzas compartidas con un pana
-    │   └── utils/
-    │       └── categoryVisuals.ts# 12 colores semánticos, 44+ íconos y mapeo heurístico
-    ├── vercel.json               # Reglas SPA y programación del cron en Vercel
-    └── vite.config.ts            # Configuración de Vite y plugin VitePWA
+    │   │   ├── CategoriesContext.tsx # Caché de categorías (gastos e ingresos)
+    │   │   ├── CurrencyPreferenceContext.tsx # Preferencia de moneda global (USD, BS, EUR, USDT)
+    │   │   └── NotificationContext.tsx # Notificaciones no leídas y drawer
+    │   ├── hooks/
+    │   │   └── useReportExport.ts# Hook para configuración y generación de exportaciones
+    │   ├── utils/
+    │   │   ├── categoryVisuals.ts# 12 colores semánticos, 45+ íconos y mapeo heurístico
+    │   │   ├── currencyFormat.ts # Formateadores de moneda y conversiones de visualización
+    │   │   ├── currencySummary.ts# Helpers de sumatoria y resolución multimoneda
+    │   │   ├── toolColors.ts     # Paleta semántica por herramienta financiera
+    │   │   └── exporters/
+    │   │       ├── entityTemplates.ts     # Plantillas normalizadas para cada módulo
+    │   │       ├── pdfExporter.ts         # Generador de PDFs con jsPDF y jsPDF-AutoTable
+    │   │       └── spreadsheetExporter.ts # Generador de Excel (.xlsx) y CSV con SheetJS
+    │   └── components/
+    │       ├── auth/             # Componentes de Login, Registro y Recuperación
+    │       ├── budgets/          # Motor de presupuestos y límites por categoría
+    │       ├── common/           # Selectores compartidos de categoría y tasa de cambio
+    │       ├── dashboard/        # Gastos diarios, resumen hero, filtros y formulario
+    │       ├── debts/            # Deudas nuestras y por cobrar, abonos y aumentos
+    │       ├── fixed-expenses/   # Gastos fijos recurrentes y comprobantes mensuales
+    │       ├── incomes/          # Ingresos estimados y cobros parciales
+    │       ├── layout/           # BottomNav, NotificationBell, ErrorBoundary, WakeUpLoader
+    │       ├── panas/            # Red de Panas, invitaciones, miembros y subpresupuestos
+    │       ├── rates/            # Pantalla /tasas con cotizaciones oficiales y calculadora
+    │       ├── reports/          # ReportsHub, ExportStudioPanel y ReportCharts
+    │       ├── savings/          # Metas de ahorro, depósitos y retiros
+    │       ├── settings/         # ProfileManager, NotificationSettings, CategoryManager
+    │       ├── tools/            # Hub de acceso centralizado a herramientas financieras
+    │       └── ui/               # Botones, Cards, Modales, Tabs, Skeletons y Toasts
+    ├── vercel.json               # Reglas SPA y programación Vercel Cron
+    └── vite.config.ts            # Configuración Vite 8 y VitePWA
 ```
 
 ---
 
 ## 🔄 Módulos Funcionales Detallados
 
-### 1. Autenticación y Perfil de Usuario
-- **Emisión e Inspección de Tokens:** El usuario se autentica contra Supabase Auth mediante correo/contraseña o Magic Link. El token JWT resultante es interceptado por Axios y enviado en el encabezado `Authorization: Bearer <token>`.
-- **Validación Criptográfica Stateless en Backend (`backend/app/auth.py`):** El backend no consulta la base de datos para validar credenciales; en su lugar, obtiene las claves públicas del endpoint JWKS (`https://<supabase-project>.supabase.co/auth/v1/.well-known/jwks.json`) y valida la firma asimétrica del token directamente en memoria.
-- **Sincronización Automática de Perfil:** Un trigger en PostgreSQL (`on_auth_user_created`) crea automáticamente un registro en la tabla `public.profiles`. Si un usuario antiguo no posee perfil, el endpoint `/api/profile/` lo genera perezosamente (*lazy provisioning*) e inicializa las categorías por defecto.
-- **Preferencias Granulares:** Cada perfil almacena ajustes individuales de notificación (`notify_fixed_expenses`, `notify_debts`, `notify_incomes`, `notify_inactivity`) que el cron respeta antes de emitir alertas.
+### 1. Autenticación, Resolución de Identidad y Perfil
+- **Supabase Auth:** Autenticación por correo y contraseña o enlace mágico (*Magic Link*). El token JWT resultante viaja en el encabezado `Authorization: Bearer <token>`.
+- **Validación Criptográfica Stateless (`auth.py`):** El backend descarga las claves públicas JWKS de Supabase y las mantiene en memoria, verificando la firma de cada petición sin consultar la base de datos.
+- **Resolución Resiliente de Identidad (`user_resolver.py`):** Si un usuario no ha configurado un nombre visible, el sistema extrae automáticamente la mejor opción disponible siguiendo una cascada de caídas: `display_name` -> `full_name` -> `name` -> `user_name` -> prefijo de correo -> `"Usuario"`. Para el avatar se aplica igual prioridad: `avatar_url` -> `picture` -> `None`.
+- **Ajustes de Notificación en Perfil:** Banderas individuales para activar o pausar avisos de gastos fijos, deudas, ingresos, presupuestos, panas e inactividad.
 
-### 2. Gastos Diarios y Motor Multidivisa en Tiempo Real
-- **Monedas Admitidas:**
-  - `BS`: Bolívares soberanos.
-  - `USD_BCV`: Dólar a tasa oficial del Banco Central de Venezuela.
-  - `EUR_BCV`: Euro a tasa oficial del Banco Central de Venezuela.
-  - `USDT`: Dólar cripto referenciado en la mediana de compra de Binance P2P.
-  - `USD_CASH`: Dólar en efectivo con soporte de tasa manual personalizada.
-- **Motor de Conversión (`backend/app/bcv_service.py`):**
-  - Mantiene en memoria las tasas vigentes con un tiempo de expiración (TTL) de 30 minutos.
-  - Al insertar o editar un gasto, calcula y persiste simultáneamente: `amount_usd`, `amount_bs`, `amount_eur`, `amount_usdt`, `rate_usd_bs`, `rate_eur_bs` y `rate_usdt_bs`.
-  - Esta estrategia congela la "foto exacta" del valor de la moneda en la fecha del gasto, evitando que las fluctuaciones cambiarias alteren los registros históricos.
+### 2. Gastos Diarios y Motor Multidivisa Histórico
+- **5 Divisas Admitidas:** Bolívares (`BS`), Dólar Oficial (`USD_BCV`), Euro Oficial (`EUR_BCV`), Cripto P2P (`USDT`) y Dólar Efectivo (`USD_CASH`).
+- **Snapshot y Preservación Histórica:** Al registrar o editar un gasto, el sistema calcula y almacena de forma inmutable: `amount_usd`, `amount_bs`, `amount_eur`, `amount_usdt`, junto con las tasas `rate_usd_bs`, `rate_eur_bs` y `rate_usdt_bs`.
+- **Cotizaciones por Fecha (`daily_rates`):** Si el gasto tiene una fecha pasada, el endpoint `/api/expenses/rates?target_date=YYYY-MM-DD` consulta la tasa oficial registrada en la tabla `daily_rates` para ese día específico, evitando calcular gastos antiguos con tasas actuales infladas.
 
-### 3. Motor de Presupuestos Mensuales (Budgets Engine)
-- **Archivos:** `backend/app/routers/budgets.py`, `backend/app/crud_budgets.py`, `frontend/src/components/Budgets.tsx`.
+### 3. Gestión Integral de Ingresos (Proyectados y Transaccionales)
+- **Ingresos Directos (`incomes`):** Permite registrar entradas reales de dinero en cualquier divisa con categoría, fecha y notas desde el botón "+" o desde la pantalla de ingresos.
+- **Ingresos Estimados (`estimated_incomes`):** Permite proyectar el flujo de caja del mes con día esperado de cobro.
+- **Cobros Reales Parciales (`income_checks`):** Permite marcar un ingreso como cobrado totalmente o registrar cobros parciales con campo `pending_date` para reprogramar la fecha del saldo restante.
+- **Categorías de Ingresos Dedicadas (`income_categories`):** Catálogo separado de categorías con colores e íconos propios para no mezclar las categorías de gastos con las fuentes de ingreso.
+
+### 4. Motor de Presupuestos Mensuales y Subpresupuestos Compartidos
+- **Archivos:** `backend/app/routers/budgets.py`, `backend/app/crud_budgets.py`, `frontend/src/components/budgets/`.
 - **Modelos:** `monthly_budgets` y `budget_category_limits`.
-- **Modos de Cálculo del Límite Global (`income_mode`):**
-  1. `manual`: El usuario establece una cifra fija en su moneda de preferencia (`manual_global_limit`).
-  2. `single_income`: El presupuesto toma como techo el monto de un ingreso estimado específico (`linked_income_id`).
-  3. `all_incomes`: El techo se calcula dinámicamente sumando todos los ingresos estimados activos del mes.
-- **Límites Específicos por Categoría:** Cada categoría puede tener un límite monetario asignado. El sistema calcula en tiempo real el monto ejecutado consumido por los gastos registrados en ese mes.
-- **Clonado Automático entre Meses:** Al consultar un nuevo mes (`YYYY-MM`) que aún no ha sido configurado, el motor localiza el presupuesto del mes anterior, duplica la estructura de categorías y límites, y lo marca como no confirmado (`is_confirmed = false`), permitiendo al usuario aceptarlo con un botón o modificarlo sin rehacer el trabajo.
-- **Alertas Proactivas de Consumo:** El cron evalúa el porcentaje gastado del presupuesto global y de cada categoría. Cuando se alcanza el 80% o el 100%, emite una notificación push personalizada y marca las columnas `notified_80` o `notified_100` para evitar envíos duplicados.
+- **Presupuesto Principal y Subpresupuestos:** Soporta crear presupuestos nombrados adicionales para proyectos específicos (ej. "Vacaciones", "Remodelación") y compartirlos con Panas.
+- **Modos de Límite Global (`income_mode`):**
+  1. `manual`: Cifra fija en la moneda seleccionada.
+  2. `single_income`: Límite igual al monto de un ingreso estimado vinculado.
+  3. `all_incomes`: Suma automática de todos los ingresos estimados del mes.
+- **Clonado Automático Continuo:** Al consultar un nuevo mes (`YYYY-MM`) no configurado, el motor clona automáticamente la estructura de categorías y límites del mes previo, marcándolo como pendiente de confirmación (`is_confirmed = false`).
+- **Alertas Proactivas:** El scheduler evalúa los porcentajes de consumo y emite notificaciones push preventivas al alcanzar el 80% y el 100% de los techos presupuestarios.
 
-### 4. Herramientas Financieras (Tools Hub)
-- **Gastos Fijos (`fixed_expenses` y `fixed_expense_checks`):**
-  - Almacena compromisos recurrentes con día de corte mensual (`payment_day`).
-  - Cada mes se puede marcar como pagado, guardando la tasa de cambio de esa fecha y permitiendo con un solo toggle (`create_expense = true`) insertar el registro como un gasto ordinario en el Dashboard.
-- **Deudas Propias y por Cobrar (`debts` y `debt_payments`):**
-  - Distingue entre `owed` (lo que debes) y `receivable` (lo que te deben).
-  - Los abonos parciales van deduciendo el saldo de la deuda. Al llegar al total adeudado, el sistema conmuta automáticamente `is_settled = true`.
-- **Ingresos Estimados (`estimated_incomes` e `income_checks`):**
-  - Permite planificar el flujo de caja del mes. Soporta cobros parciales con campo `pending_date` para reprogramar la fecha de cobro de la fracción pendiente.
-- **Metas de Ahorro (`saving_goals` y `saving_deposits`):**
-  - Permite crear objetivos de ahorro con monto meta, fecha límite y categoría.
-  - Los depósitos pueden registrarse opcionalmente como gastos en el Dashboard (`create_expense = true`). Al alcanzar el 100%, el sistema marca la meta como cumplida y lanza una celebración visual con confeti.
+### 5. Herramientas Financieras (Tools Hub)
+- **Gastos Fijos (`fixed_expenses`):** Gastos mensuales recurrentes con día de corte (`payment_day`), comprobantes de pago por mes (`fixed_expense_checks`) y toggle directo para insertar el pago como gasto en el Dashboard.
+- **Deudas Nuestras y Por Cobrar (`debts`):** Distingue entre `owed` (deuda propia) y `receivable` (préstamo otorgado). Permite registrar tanto abonos (`payment`) que reducen el saldo, como incrementos de capital (`increase`). Al amortizar el 100%, conmuta automáticamente a `is_settled = true`.
+- **Metas de Ahorro (`saving_goals`):** Fondos de ahorro con importe meta, fecha límite, depósitos progresivos (`deposit`), retiros parciales (`withdrawal`) y animación festiva de confeti al cumplir el objetivo.
 
-### 5. Red de Contactos ("Panas") y Arquitectura de Compartición
-- **Archivos:** `backend/app/routers/shares.py`, `backend/app/sharing.py`, `backend/app/routers/connections.py`, `frontend/src/pages/PanasPage.tsx`.
-- **Ciclo de Conexión:** Un usuario envía una solicitud por correo (`/api/connections/request`). El destinatario puede aceptarla o rechazarla. Al aceptarse, ambos usuarios quedan conectados como "Panas".
+### 6. Finanzas Colaborativas ("Panas") y Compartición Unificada
+- **Conexiones:** Vínculo de amistad entre usuarios mediante solicitud por email o UID.
 - **Modelo Unificado de Compartición (`shares` y `share_members`):**
-  - Soporta tres tipos de entidad: `debt`, `fixed_expense` y `saving_goal`.
-  - Roles definidos: `admin` (quien creó el recurso compartido o fue promovido) y `member` (integrante con permisos de visualización y abono).
-  - Al compartir una deuda o gasto fijo con un pana, el backend genera una entidad espejo en la cuenta del destinatario (por ejemplo, si el Usuario A registra que le debe $50 al Usuario B, el Usuario B ve automáticamente una deuda "Por Cobrar" de $50 del Usuario A).
-  - Los abonos o pagos realizados por cualquiera de las partes generan un registro de pago espejo mediante `sync_id`, manteniendo los balances perfectamente sincronizados en tiempo real.
+  - Soporta 4 tipos de entidades: `debt`, `fixed_expense`, `saving_goal` y `budget`.
+  - Roles: `admin` (creador o administrador con permisos completos) y `member` (integrante con permisos de visualización y abono).
+  - Cuentas espejo simétricas en la base de datos sincronizadas en tiempo real mediante `sync_id`.
 
-### 6. Sistema de Notificaciones Push (FCM), Cron Jobs y Bandeja In-App
-- **Registro de Dispositivos:** El frontend solicita permiso mediante la Notification API del navegador, obtiene el token FCM del SDK de Firebase y lo registra en `/api/push/subscribe`.
-- **Orquestación del Cron Dual:** La función Serverless de Vercel (`api/cron/notifications.ts`) se ejecuta mediante Vercel Cron dos veces al día:
-  - `0 13 * * *` (13:00 UTC = 9:00 AM UTC-4): Vencimientos de hoy, atrasos y recordatorios del día posterior.
-  - `0 0 * * *` (00:00 UTC = 8:00 PM UTC-4): Recordatorios de vencimientos de mañana y alerta de inactividad (3+ días sin registrar gastos).
-- **Seguridad del Cron:** El endpoint `/api/push/cron` exige un token Bearer validado mediante `secrets.compare_digest(provided_token, cron_secret)` para impedir ejecuciones no autorizadas.
-- **Bandeja In-App:** Cada notificación enviada genera un registro en la tabla `notifications`, permitiendo que el usuario consulte el historial desde la campana de la barra superior aun si tenía el dispositivo apagado o sin conexión al momento del push.
+### 7. Centro de Resúmenes, Comparador y Estudio de Exportaciones
+- **Ubicación:** Centralizado en `/herramientas/resumenes` (`ReportsHub.tsx`).
+- **Pestaña 1: Resumen y Comparador:**
+  - Análisis interactivo entre dos periodos (Periodo A vs. Periodo B).
+  - Banner de integridad analítica y normalización por promedio diario (`$/día`) cuando los periodos tienen distinta duración.
+  - 3 Gráficos vectoriales SVG dinámicos: Evolución temporal acumulada, barras comparativas y desglose por categoría.
+- **Pestaña 2: Estudio de Exportaciones (Constructor Paso a Paso):**
+  - Permite seleccionar el origen: Resumen de periodo, Comparativa, Deudas (individual o consolidado), Metas de ahorro, Presupuesto mensual, Gastos fijos o Ingresos.
+  - Selección de moneda base (`mainCurrency` pre-seleccionada desde `CurrencyPreferenceContext`).
+  - Opciones de incluir columnas multimoneda originales y tasas históricas aplicadas.
+  - Salida en **PDF Corporativo**, libro **Excel (.xlsx)** multi-hoja y **CSV** con UTF-8 BOM.
+  - Envío directo por correo electrónico mediante `/api/reports/send-email` soportando SMTP y Resend.
 
-### 7. Sistema de Categorías Dinámicas y Visuales
-- **Archivos:** `frontend/src/context/CategoriesContext.tsx`, `frontend/src/utils/categoryVisuals.ts`, `frontend/src/components/CategoryManager.tsx`.
-- **Paleta Semántica de 12 Colores:** Ámbar (`#F59E0B`), Azul (`#3B82F6`), Morado (`#8B5CF6`), Cian (`#06B6D4`), Rojo (`#EF4444`), Rosa (`#EC4899`), Esmeralda (`#10B981`), Índigo (`#6366F1`), Turquesa (`#14B8A6`), Naranja (`#F97316`), Verde (`#22C55E`) y Pizarra (`#64748B`).
-- **Biblioteca de 44+ Íconos:** Integración nativa con Lucide React (`Utensils`, `Car`, `Home`, `Zap`, `HeartPulse`, `Gamepad2`, `Briefcase`, `PiggyBank`, etc.).
-- **Mapeo Heurístico Inteligente (`NAME_TO_ICON`):** Si una categoría se crea o importa sin ícono explícito, el sistema infiere el ícono óptimo a partir de palabras clave (ej. "gasolina" -> `Car`, "luz" -> `Zap`, "médico" -> `HeartPulse`).
-- **Aislamiento por Usuario:** Las categorías se almacenan en la tabla `categories` con una restricción única por usuario `(user_id, name)`.
+### 8. Monitor de Tasas Oficiales, Cripto y Calculadora
+- **Ubicación:** Pantalla dedicada `/tasas` (`RatesPage.tsx`).
+- Muestra el Dólar BCV, Euro BCV, USDT Binance P2P y efectivo.
+- Selector de fecha histórica que consulta la tabla `daily_rates`.
+- Calculadora y conversor interactivo bidireccional entre todas las divisas.
+
+### 9. Notificaciones Push (FCM), Schedulers y Bandeja In-App
+- **Entrega Web Push:** Firebase Cloud Messaging (FCM) integrada en Service Worker (`sw.ts`).
+- **Ventana Matutina (9:00 AM VET / 13:00 UTC):** Gastos fijos por vencer hoy, deudas vencidas y cobros pendientes.
+- **Ventana Vespertina (7:00 PM VET / 23:00 UTC):** Vencimientos del día siguiente y alerta de inactividad (3+ días sin registros).
+- **Scheduler Interno en Backend:** Bucle asíncrono en `main.py` que no depende exclusivamente de servidores externos para disparar los recordatorios diarios.
+
+### 10. Categorías Dinámicas de Gastos e Ingresos
+- Paleta semántica de 12 colores y catálogo de más de 45 íconos semánticos Lucide.
+- Mapeo heurístico inteligente por nombre (ej. "gasolina" -> `Car`, "sueldo" -> `Briefcase`).
+- Reasignación segura: al eliminar una categoría, los gastos no se borran; se transfieren automáticamente a `"Sin Categoría"`.
+
+### 11. PWA, UX Móvil y Estrategia Antidormida en Render
+- Instalable como aplicación móvil nativa con Service Worker Workbox en modo `injectManifest`.
+- **Reposo Nocturno Inteligente de Self-Ping:** El backend se auto-consulta cada 10 minutos para no dormirse, pero pausa los pings entre las **01:00 AM y 06:30 AM VET**, logrando que el servicio ahorre horas del plan gratuito de Render mientras duermes sin perder disponibilidad durante el día.
 
 ---
 
-## 🗄 Modelo Relacional Canónico (V4 - 18 Tablas)
+## 🗄 Modelo Relacional Canónico (V5 - 21 Tablas)
 
-El sistema utiliza un esquema relacional normalizado con integridad referencial estricta y claves foráneas en cascada:
+Consolidado en `schema.sql`:
 
-1. `profiles`: Datos de usuario vinculados 1:1 a `auth.users(id)`. Almacena nombre visible, avatar y banderas de preferencia para notificaciones.
-2. `categories`: Categorías personalizadas por usuario con campos de nombre, color hexadecimal e ícono Lucide. Restricción única en `(user_id, name)`.
-3. `expenses`: Registro transaccional de gastos con fecha, categoría, moneda de entrada, montos equivalentes calculados y tasas históricas de cambio.
-4. `fixed_expenses`: Catálogo de gastos fijos recurrentes mensuales con día de pago esperado (`payment_day`) y bandera de activación.
-5. `fixed_expense_checks`: Registro mensual (`month_year`, ej. '2026-10') de pagos efectuados sobre gastos fijos. Soporta vinculación directa al gasto generado (`expense_id`) y trazabilidad de sincronización (`sync_id`).
-6. `debts`: Deudas contraídas (`owed`) o préstamos otorgados (`receivable`) con contraparte, monto original, fecha límite y bandera `is_settled`.
-7. `debt_payments`: Registro de abonos sobre deudas con conversión multimoneda en la fecha del pago, opción de generar gasto en Dashboard y sincronización espejo.
-8. `estimated_incomes`: Proyección de ingresos recurrentes o eventuales por mes con monto esperado y día de cobro.
-9. `income_checks`: Comprobante mensual de cobro real sobre un ingreso estimado, con soporte de pagos parciales (`is_partial`) y reprogramación.
-10. `push_subscriptions`: Tokens FCM únicos asociados a cada usuario para entrega de notificaciones Web Push.
-11. `notifications`: Historial persistente de avisos y alertas in-app para la campana de notificaciones con estado `is_read`.
-12. `connections`: Solicitudes y vínculos de amistad ("Panas") entre dos usuarios con estados `pending`, `accepted` o `rejected`.
-13. `saving_goals`: Metas de ahorro con monto objetivo, fecha meta, categoría, color, ícono y estado de completado.
-14. `saving_deposits`: Historial de aportes monetarios a metas de ahorro, con fecha, conversión cambiaria y generación opcional de gasto.
-15. `shares`: Tabla maestra de la arquitectura unificada de compartición que define la entidad raíz compartida (`debt`, `fixed_expense`, `saving_goal`) y su propietario original.
-16. `share_members`: Membresía de usuarios en cada ítem compartido, vinculando la instancia individual de la entidad (`entity_id`), su rol (`admin` o `member`) y quién lo agregó.
-17. `monthly_budgets`: Cabecera del presupuesto mensual por usuario y mes (`month_year`), modo de cálculo global (`manual`, `single_income`, `all_incomes`), banderas de confirmación y banderas de alerta enviada (80% y 100%).
-18. `budget_category_limits`: Límites de gasto asignados a categorías específicas dentro de un presupuesto mensual, con banderas de deduplicación de alertas.
-
-### Políticas de Row Level Security (RLS)
-Todas las tablas tienen habilitado Row Level Security (RLS) en Supabase:
-- El backend FastAPI se conecta mediante `DATABASE_URL` utilizando el rol `postgres`, el cual realiza *bypass* de RLS de forma transparente.
-- Las políticas de RLS garantizan que si un cliente intenta consultar Supabase directamente con la clave anónima (`anon_key`), solo tendrá acceso a filas donde `auth.uid() = user_id`.
+1. `profiles`: Perfil de usuario vinculado a `auth.users(id)`, nombre visible, avatar y banderas de notificación.
+2. `categories`: Categorías de gastos por usuario con nombre, color hexadecimal e ícono.
+3. `income_categories`: Categorías de ingresos independientes por usuario con nombre, color e ícono.
+4. `expenses`: Registro transaccional de gastos con fecha, moneda original, montos equivalentes calculados y tasas históricas.
+5. `fixed_expenses`: Catálogo de gastos fijos recurrentes con día de pago mensual (`payment_day`) y estado activo.
+6. `fixed_expense_checks`: Comprobante mensual de pago sobre gastos fijos con opción de generar gasto ordinario y sincronización espejo (`sync_id`).
+7. `debts`: Deudas por pagar (`owed`) o por cobrar (`receivable`) con monto total, contraparte, vencimiento y bandera `is_settled`.
+8. `debt_payments`: Movimientos de deuda: abonos amortizables (`payment`) o aumentos de deuda (`increase`), con tasas en la fecha de pago.
+9. `estimated_incomes`: Proyección de ingresos del mes con monto esperado y día previsto.
+10. `income_checks`: Comprobante mensual de cobro real sobre un ingreso estimado con soporte de cobros parciales y reprogramación.
+11. `incomes`: Registro transaccional de ingresos directos ejecutados con categoría, moneda y fecha.
+12. `push_subscriptions`: Tokens FCM únicos por usuario para envío de notificaciones Web Push.
+13. `notifications`: Historial persistente in-app con campos `title`, `body`, `type`, `url`, `is_read`, `is_resolved`, `entity_type` y `entity_id`.
+14. `connections`: Vínculos y solicitudes de amistad ("Panas") con estados `pending`, `accepted` o `rejected`.
+15. `saving_goals`: Metas de ahorro con monto objetivo, plazo, categoría, color, ícono y estado completado.
+16. `saving_deposits`: Movimientos de fondos de ahorro: depósitos (`deposit`) o retiros (`withdrawal`), con opción de generar gasto en Dashboard.
+17. `shares`: Tabla maestra de compartición que define la entidad raíz (`debt`, `fixed_expense`, `saving_goal`, `budget`) y su propietario.
+18. `share_members`: Membresía de usuarios en cada ítem compartido con roles (`admin`, `member`), categoría local y perspectiva.
+19. `monthly_budgets`: Presupuestos mensuales (principal y subpresupuestos nombrados) con modo de cálculo, confirmación y banderas de alerta.
+20. `budget_category_limits`: Límites de gasto asignados a categorías específicas dentro de un presupuesto mensual.
+21. `daily_rates`: Registro histórico diario de cotizaciones de divisas (`fecha`, `usd_bs`, `eur_bs`, `usdt_bs`, `source`).
 
 ---
 
@@ -337,72 +387,59 @@ Todas las tablas tienen habilitado Row Level Security (RLS) en Supabase:
 ### Prerrequisitos
 - **Node.js** v18+ y **npm** v9+
 - **Python** 3.10+
-- Cuenta gratuita en [Supabase](https://supabase.com/)
-- Cuenta gratuita en [Firebase Console](https://console.firebase.google.com/)
+- Cuenta en [Supabase](https://supabase.com/)
+- Cuenta en [Firebase Console](https://console.firebase.google.com/)
 
 ---
 
-### 1. Configuración de Base de Datos (Supabase)
-1. Crea un nuevo proyecto en Supabase.
-2. Dirígete a la sección **SQL Editor** del panel de control de Supabase.
-3. Ejecuta el archivo maestro canónico `schema.sql` (contiene las 18 tablas, triggers e índices).
-4. Ejecuta a continuación `rls_policies.sql` y `rls_connections.sql` para blindar el acceso directo desde el cliente.
-5. En **Project Settings -> Database**, copia la cadena de conexión en formato URI (modo *Transaction* o *Session*).
+### 1. Base de Datos (Supabase)
+1. Crea un proyecto en Supabase.
+2. Ve al **SQL Editor** y ejecuta el archivo maestro `schema.sql` (crea las 21 tablas, índices y triggers).
+3. Ejecuta `rls_policies.sql` y `rls_connections.sql` para proteger el acceso directo de clientes.
+4. En **Project Settings -> Database**, copia la URI de conexión en modo *Session* o *Transaction*.
 
 ---
 
-### 2. Configuración de Firebase Cloud Messaging (Web Push)
-1. Crea un proyecto en [Firebase Console](https://console.firebase.google.com/).
-2. Registra una **Aplicación Web** y guarda el objeto de configuración (`firebaseConfig`).
-3. En **Configuración del proyecto -> Cloud Messaging**, ve a la sección de certificados Web Push y genera un nuevo **Par de claves VAPID**.
-4. En **Configuración del proyecto -> Cuentas de servicio**, genera una nueva clave privada en formato JSON.
-5. Guarda este archivo en `backend/firebase-adminsdk.json` o codifícalo en Base64 para producción.
+### 2. Firebase Cloud Messaging (Web Push)
+1. En Firebase Console, crea un proyecto y agrega una **Aplicación Web**.
+2. En **Configuración del proyecto -> Cloud Messaging**, genera el **Par de claves VAPID**.
+3. En **Cuentas de servicio**, genera una nueva clave privada en archivo JSON.
+4. Guarda el archivo en `backend/firebase-adminsdk.json` o codifícalo a Base64 para producción.
 
 ---
 
 ### 3. Instalación del Backend (FastAPI)
-1. Accede al directorio `backend`:
-   ```bash
-   cd backend
-   ```
-2. Crea y activa un entorno virtual de Python:
-   ```bash
-   # Windows (PowerShell)
-   python -m venv venv
-   .\venv\Scripts\Activate.ps1
+```bash
+cd backend
 
-   # Linux / macOS
-   python3 -m venv venv
-   source venv/bin/activate
-   ```
-3. Instala todas las dependencias requeridas:
-   ```bash
-   pip install -r requirements.txt
-   ```
-4. Crea el archivo `.env` en `backend/` basándote en la plantilla de la sección [Variables de Entorno](#-variables-de-entorno).
-5. Inicia el servidor de desarrollo:
-   ```bash
-   python -m uvicorn app.main:app --reload --port 8000
-   ```
-   *La API estará disponible en `http://localhost:8000` y la documentación interactiva Swagger en `http://localhost:8000/docs`.*
+# Crear y activar entorno virtual
+python -m venv venv
+.\venv\Scripts\Activate.ps1   # En Windows PowerShell
+# source venv/bin/activate    # En Linux / macOS
+
+# Instalar dependencias
+pip install -r requirements.txt
+
+# Configurar variables de entorno en backend/.env
+# Iniciar servidor de desarrollo
+python -m uvicorn app.main:app --reload --port 8000
+```
+*API activa en `http://localhost:8000` y documentación interactiva Swagger en `http://localhost:8000/docs`.*
 
 ---
 
-### 4. Instalación del Frontend (React 19 + Vite)
-1. Abre una nueva terminal y navega al directorio `frontend`:
-   ```bash
-   cd frontend
-   ```
-2. Instala los paquetes de Node:
-   ```bash
-   npm install
-   ```
-3. Crea el archivo `.env` en `frontend/` completando tus credenciales de Supabase y Firebase.
-4. Inicia el entorno local de desarrollo:
-   ```bash
-   npm run dev
-   ```
-   *Accede a la aplicación en `http://localhost:5173`.*
+### 4. Instalación del Frontend (React 19 + Vite 8)
+```bash
+cd frontend
+
+# Instalar dependencias
+npm install
+
+# Configurar variables de entorno en frontend/.env
+# Iniciar frontend de desarrollo
+npm run dev
+```
+*Aplicación disponible en `http://localhost:5173`.*
 
 ---
 
@@ -410,185 +447,180 @@ Todas las tablas tienen habilitado Row Level Security (RLS) en Supabase:
 
 ### Backend (`backend/.env`)
 
-| Variable | Tipo | Descripción | Ejemplo |
+| Variable | Requerido | Descripción | Ejemplo |
 | :--- | :--- | :--- | :--- |
-| `DATABASE_URL` | Requerido | Cadena de conexión asíncrona a Supabase con protocolo `postgresql+asyncpg://` | `postgresql+asyncpg://postgres.xxxx:pass@aws-0-us-east-1.pooler.supabase.com:5432/postgres` |
-| `SUPABASE_URL` | Requerido | URL raíz del proyecto Supabase para verificación de JWKS | `https://xyzcompany.supabase.co` |
-| `FRONTEND_URL` | Opcional | URL del frontend para enlaces de notificación | `http://localhost:5173` |
-| `CRON_SECRET` | Requerido | Token secreto para autenticar las peticiones al endpoint `/api/push/cron` | `mi_clave_secreta_super_segura_123` |
-| `ALLOWED_ORIGINS` | Opcional | Orígenes CORS permitidos separados por comas | `http://localhost:5173,https://gastosapp.vercel.app` |
-| `FIREBASE_SERVICE_ACCOUNT_BASE64` | Opcional | Clave JSON de Firebase codificada en Base64 (ideal para Render sin subir archivo JSON) | `eyJuYW1lIjogImdhc3RvcyJ9...` |
-| `PORT` | Opcional | Puerto de escucha de Uvicorn (Render lo asigna dinámicamente) | `8000` |
-
-```env
-# Plantilla para backend/.env
-DATABASE_URL=postgresql+asyncpg://postgres.xxxx:tu_password@aws-0-us-east-1.pooler.supabase.com:5432/postgres
-SUPABASE_URL=https://tu-proyecto.supabase.co
-FRONTEND_URL=http://localhost:5173
-CRON_SECRET=super_secret_cron_token_32chars
-ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
-```
+| `DATABASE_URL` | Sí | Cadena asíncrona de conexión a Supabase con driver `postgresql+asyncpg://` | `postgresql+asyncpg://postgres.xxxx:pass@aws-0-us-east-1.pooler.supabase.com:5432/postgres` |
+| `SUPABASE_URL` | Sí | URL raíz del proyecto Supabase para verificación de firmas JWKS | `https://xyzcompany.supabase.co` |
+| `FRONTEND_URL` | No | URL pública del frontend para enlaces en notificaciones | `http://localhost:5173` |
+| `CRON_SECRET` | Sí | Clave secreta para autenticar peticiones a `/api/push/cron` | `clave_secreta_super_segura_32_chars` |
+| `ALLOWED_ORIGINS` | No | Orígenes permitidos por CORS separados por comas | `http://localhost:5173,https://gastosapp.vercel.app` |
+| `FIREBASE_SERVICE_ACCOUNT_BASE64` | No | Clave JSON de Firebase Admin codificada en Base64 | `eyJuYW1lIjogImdhc3RvcyJ9...` |
+| `SMTP_USER` | No | Correo emisor para despacho de reportes por SMTP | `notificaciones@tudominio.com` |
+| `SMTP_PASSWORD` | No | Contraseña o App Password del correo emisor | `abcd efgh ijkl mnop` |
+| `SMTP_HOST` | No | Servidor SMTP (por defecto `smtp.gmail.com`) | `smtp.gmail.com` |
+| `SMTP_PORT` | No | Puerto SMTP (465 para SSL, 587 para TLS) | `465` |
+| `RESEND_API_KEY` | No | API Key de Resend (alternativa moderna a SMTP) | `re_123456789...` |
+| `RESEND_FROM_EMAIL` | No | Dirección remitente verificada en Resend | `GastosApp <reportes@tudominio.com>` |
+| `PORT` | No | Puerto de Uvicorn (asignado automáticamente por Render) | `8000` |
 
 ### Frontend (`frontend/.env`)
 
-| Variable | Tipo | Descripción | Ejemplo |
+| Variable | Requerido | Descripción | Ejemplo |
 | :--- | :--- | :--- | :--- |
-| `VITE_API_URL` | Requerido | URL base del API backend (debe terminar en `/api`) | `http://localhost:8000/api` |
-| `VITE_SUPABASE_URL` | Requerido | URL de Supabase para inicializar el cliente Auth | `https://xyzcompany.supabase.co` |
-| `VITE_SUPABASE_ANON_KEY` | Requerido | Clave pública anónima de Supabase | `eyJhbGciOiJIUzI1NiIsIn...` |
-| `VITE_FIREBASE_API_KEY` | Requerido | API Key web de Firebase | `AIzaSyB...` |
-| `VITE_FIREBASE_AUTH_DOMAIN` | Requerido | Dominio de Auth de Firebase | `tu-proyecto.firebaseapp.com` |
-| `VITE_FIREBASE_PROJECT_ID` | Requerido | ID del proyecto en Firebase | `tu-proyecto-id` |
-| `VITE_FIREBASE_STORAGE_BUCKET` | Requerido | Bucket de storage de Firebase | `tu-proyecto.firebasestorage.app` |
-| `VITE_FIREBASE_MESSAGING_SENDER_ID` | Requerido | ID de remitente del servicio FCM | `123456789012` |
-| `VITE_FIREBASE_APP_ID` | Requerido | Identificador de aplicación Web en Firebase | `1:123456789012:web:abcdef` |
-| `VITE_FIREBASE_VAPID_KEY` | Requerido | Clave pública VAPID para Web Push | `BEl62...` |
-| `CRON_SECRET` | Servidor | Token secreto para la función serverless `api/cron/notifications.ts` en Vercel | `super_secret_cron_token_32chars` |
-
-```env
-# Plantilla para frontend/.env
-VITE_API_URL=http://localhost:8000/api
-VITE_SUPABASE_URL=https://tu-proyecto.supabase.co
-VITE_SUPABASE_ANON_KEY=tu_clave_anonima_publica
-VITE_FIREBASE_API_KEY=tu_api_key_firebase
-VITE_FIREBASE_AUTH_DOMAIN=tu-proyecto.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=tu-proyecto
-VITE_FIREBASE_STORAGE_BUCKET=tu-proyecto.firebasestorage.app
-VITE_FIREBASE_MESSAGING_SENDER_ID=123456789012
-VITE_FIREBASE_APP_ID=1:123456789012:web:abcdef
-VITE_FIREBASE_VAPID_KEY=tu_vapid_key_publica
-CRON_SECRET=super_secret_cron_token_32chars
-```
+| `VITE_API_URL` | Sí | URL base del backend FastAPI (debe terminar en `/api`) | `http://localhost:8000/api` |
+| `VITE_SUPABASE_URL` | Sí | URL de Supabase para inicializar el cliente Auth | `https://xyzcompany.supabase.co` |
+| `VITE_SUPABASE_ANON_KEY` | Sí | Clave anónima pública de Supabase | `eyJhbGciOiJIUzI1NiIsIn...` |
+| `VITE_FIREBASE_API_KEY` | Sí | API Key de Firebase Web | `AIzaSyB...` |
+| `VITE_FIREBASE_AUTH_DOMAIN` | Sí | Dominio de Auth de Firebase | `tu-proyecto.firebaseapp.com` |
+| `VITE_FIREBASE_PROJECT_ID` | Sí | ID del proyecto en Firebase | `tu-proyecto` |
+| `VITE_FIREBASE_STORAGE_BUCKET` | Sí | Bucket de almacenamiento en Firebase | `tu-proyecto.firebasestorage.app` |
+| `VITE_FIREBASE_MESSAGING_SENDER_ID` | Sí | Sender ID del servicio FCM | `123456789012` |
+| `VITE_FIREBASE_APP_ID` | Sí | Identificador de aplicación web en Firebase | `1:123456789012:web:abcdef` |
+| `VITE_FIREBASE_VAPID_KEY` | Sí | Clave pública VAPID para registro Web Push | `BEl62...` |
+| `CRON_SECRET` | Vercel | Clave secreta para la función serverless de cron en Vercel | `clave_secreta_super_segura_32_chars` |
 
 ---
 
 ## 📡 Referencia Completa de API REST
 
-Todos los endpoints (salvo `/health`, `/` y `/api/expenses/rates`) requieren autenticación mediante encabezado HTTP: `Authorization: Bearer <supabase_jwt>`.
+Todas las peticiones (salvo `/health`, `/` y `/api/expenses/rates`) requieren autenticación mediante encabezado HTTP: `Authorization: Bearer <supabase_jwt>`.
 
 ### 1. Gastos Diarios y Tasas (`/api/expenses`)
 | Método | Endpoint | Descripción |
 | :--- | :--- | :--- |
 | `GET` | `/api/expenses/` | Lista paginada y filtrada por fechas (`date_from`, `date_to`) de gastos. |
-| `POST` | `/api/expenses/` | Crea un nuevo gasto y calcula equivalencias en las 5 monedas. |
+| `POST` | `/api/expenses/` | Crea un gasto y calcula equivalencias en 5 divisas según la fecha. |
 | `GET` | `/api/expenses/{expense_id}` | Obtiene los detalles de un gasto específico. |
 | `PUT` | `/api/expenses/{expense_id}` | Actualiza monto, categoría, notas o tasa de un gasto existente. |
 | `DELETE` | `/api/expenses/{expense_id}` | Elimina un gasto del sistema. |
 | `GET` | `/api/expenses/summary` | Resumen global acumulado de gastos por divisa. |
 | `GET` | `/api/expenses/summary-range` | Resumen estadístico agrupado para un rango de fechas. |
-| `GET` | `/api/expenses/rates` | Devuelve las tasas oficiales actuales de BCV y Binance P2P. |
+| `GET` | `/api/expenses/rates` | Devuelve las tasas oficiales actuales o históricas si se envía `?target_date=YYYY-MM-DD`. |
 
-### 2. Categorías Dinámicas (`/api/categories`)
+### 2. Ingresos Directos y Estimados (`/api/incomes` y `/api/estimated-incomes`)
 | Método | Endpoint | Descripción |
 | :--- | :--- | :--- |
-| `GET` | `/api/categories/` | Obtiene todas las categorías activas del usuario autenticado. |
-| `POST` | `/api/categories/` | Crea una nueva categoría con nombre, color e ícono personalizado. |
-| `POST` | `/api/categories/seed-defaults` | Restaura el conjunto de categorías por defecto del sistema. |
-| `PUT` | `/api/categories/{category_id}` | Modifica el nombre, color o ícono de una categoría. |
-| `DELETE` | `/api/categories/{category_id}` | Elimina una categoría del usuario. |
+| `GET` | `/api/incomes/` | Lista transacciones de ingresos reales del usuario entre fechas. |
+| `POST` | `/api/incomes/` | Registra un nuevo ingreso directo en cualquier divisa. |
+| `GET` | `/api/incomes/{income_id}` | Obtiene un ingreso real por su ID. |
+| `PUT` | `/api/incomes/{income_id}` | Modifica una transacción de ingreso directo. |
+| `DELETE` | `/api/incomes/{income_id}` | Elimina un ingreso directo registrado. |
+| `GET` | `/api/estimated-incomes/` | Lista fuentes de ingreso estimadas activas. |
+| `POST` | `/api/estimated-incomes/` | Crea una proyección de cobro mensual recurrente. |
+| `GET` | `/api/estimated-incomes/monthly/{month_year}` | Retorna los ingresos proyectados y su estado de cobro en el mes. |
+| `PUT` | `/api/estimated-incomes/{income_id}` | Actualiza monto, concepto o día de cobro de un ingreso estimado. |
+| `DELETE` | `/api/estimated-incomes/{income_id}` | Desactiva o elimina un ingreso estimado. |
+| `POST` | `/api/estimated-incomes/{income_id}/checks` | Registra cobro real (total o parcial con reprogramación). |
+| `DELETE` | `/api/estimated-incomes/{income_id}/checks/{month_year}` | Elimina el comprobante de cobro de un mes. |
 
-### 3. Presupuestos Mensuales (`/api/budgets`)
+### 3. Categorías de Gastos e Ingresos (`/api/categories`)
 | Método | Endpoint | Descripción |
 | :--- | :--- | :--- |
-| `GET` | `/api/budgets/categories` | Lista categorías elegibles para configurar presupuestos. |
-| `GET` | `/api/budgets/monthly/{month_year}` | Obtiene o auto-clona la vista de presupuesto del mes `YYYY-MM`. |
-| `PUT` | `/api/budgets/monthly/{month_year}` | Crea o actualiza la configuración global del presupuesto mensual. |
+| `GET` | `/api/categories/` | Obtiene todas las categorías de gastos del usuario. |
+| `POST` | `/api/categories/` | Crea una nueva categoría de gastos con nombre, color e ícono. |
+| `POST` | `/api/categories/seed-defaults` | Restaura el conjunto predeterminado de categorías de gastos. |
+| `PUT` | `/api/categories/{category_id}` | Modifica una categoría de gastos. |
+| `DELETE` | `/api/categories/{category_id}` | Elimina una categoría de gastos (los gastos pasan a "Sin Categoría"). |
+| `GET` | `/api/categories/income` | Obtiene las categorías específicas de ingresos. |
+| `POST` | `/api/categories/income` | Crea una nueva categoría de ingresos con color e ícono. |
+| `POST` | `/api/categories/income/seed-defaults` | Restaura categorías predeterminadas de ingresos. |
+| `PUT` | `/api/categories/income/{category_id}` | Modifica una categoría de ingresos. |
+| `DELETE` | `/api/categories/income/{category_id}` | Elimina una categoría de ingresos. |
+
+### 4. Presupuestos Mensuales y Subpresupuestos (`/api/budgets`)
+| Método | Endpoint | Descripción |
+| :--- | :--- | :--- |
+| `GET` | `/api/budgets/categories` | Lista categorías elegibles para límites presupuestarios. |
+| `GET` | `/api/budgets/monthly/{month_year}` | Obtiene o auto-clona la vista de presupuestos del mes `YYYY-MM`. |
+| `PUT` | `/api/budgets/monthly/{month_year}` | Actualiza la configuración global del presupuesto principal. |
 | `POST` | `/api/budgets/monthly/{month_year}/confirm` | Confirma explícitamente el presupuesto clonado del mes. |
-| `PUT` | `/api/budgets/monthly/{month_year}/category` | Agrega o actualiza el límite para una categoría específica. |
-| `DELETE` | `/api/budgets/monthly/{month_year}/category/{name}` | Elimina el límite presupuestario de una categoría. |
-| `POST` | `/api/budgets/monthly/{month_year}` | Crea un nuevo presupuesto adicional nombrado para el mes. |
-| `PUT` | `/api/budgets/{budget_id}` | Actualiza un presupuesto por su ID único. |
-| `POST` | `/api/budgets/{budget_id}/primary` | Marca el presupuesto como el primario del mes. |
-| `DELETE` | `/api/budgets/{budget_id}` | Elimina un presupuesto por su ID. |
-| `PUT` | `/api/budgets/{budget_id}/category` | Modifica un límite de categoría referenciado por el ID del presupuesto. |
-| `DELETE` | `/api/budgets/{budget_id}/category/{name}` | Elimina un límite de categoría referenciado por el ID del presupuesto. |
+| `PUT` | `/api/budgets/monthly/{month_year}/category` | Agrega o actualiza el límite para una categoría en el mes. |
+| `DELETE` | `/api/budgets/monthly/{month_year}/category/{name}` | Elimina el límite de una categoría en el presupuesto principal. |
+| `POST` | `/api/budgets/monthly/{month_year}` | Crea un nuevo subpresupuesto nombrado adicional para el mes. |
+| `PUT` | `/api/budgets/{budget_id}` | Actualiza un subpresupuesto por su UUID. |
+| `POST` | `/api/budgets/{budget_id}/primary` | Marca el presupuesto especificado como el primario del mes. |
+| `DELETE` | `/api/budgets/{budget_id}` | Elimina un subpresupuesto por su UUID. |
+| `PUT` | `/api/budgets/{budget_id}/category` | Modifica un límite de categoría referenciado al ID del subpresupuesto. |
+| `DELETE` | `/api/budgets/{budget_id}/category/{name}` | Elimina un límite de categoría del subpresupuesto. |
 
-### 4. Compartición Unificada ("Shares") (`/api/shares`)
+### 5. Resúmenes Analíticos y Despacho de Reportes (`/api/reports`)
 | Método | Endpoint | Descripción |
 | :--- | :--- | :--- |
-| `GET` | `/api/shares/by-entity/{entity_id}` | Retorna metadatos de compartición de una entidad (`debt`, `fixed_expense`, `saving_goal`). |
-| `POST` | `/api/shares/{share_id}/members` | Añade nuevos usuarios integrantes (`user_ids`) a un ítem compartido. |
-| `PATCH` | `/api/shares/{share_id}/members/{user_id}` | Actualiza el rol de un integrante (`admin` o `member`). |
-| `DELETE` | `/api/shares/{share_id}/members/{user_id}` | Expulsa o permite abandonar voluntariamente un ítem compartido. |
+| `GET` | `/api/reports/analysis` | Análisis comparativo entre Periodo A y Periodo B (deltas, promedios y desglose). |
+| `POST` | `/api/reports/send-email` | Despacha un reporte financiero adjunto (PDF/Excel) por email vía SMTP o Resend. |
 
-### 5. Conexiones entre Panas (`/api/connections`)
+### 6. Deudas y Préstamos (`/api/debts`)
 | Método | Endpoint | Descripción |
 | :--- | :--- | :--- |
-| `GET` | `/api/connections/` | Lista las conexiones de amigos aprobadas y pendientes. |
-| `GET` | `/api/connections/overview` | Resumen consolidado del balance financiero con todos los panas. |
-| `GET` | `/api/connections/partner/{partner_id}/details` | Desglose pormenorizado de ítems compartidos con un pana específico. |
-| `POST` | `/api/connections/request` | Envía una solicitud de amistad por correo electrónico. |
-| `POST` | `/api/connections/request-by-user/{target_id}` | Envía una solicitud de amistad por UUID de usuario. |
-| `PUT` | `/api/connections/{connection_id}/accept` | Acepta una solicitud de amistad recibida. |
-| `PUT` | `/api/connections/{connection_id}/reject` | Rechaza una solicitud de amistad recibida. |
-| `DELETE` | `/api/connections/{connection_id}` | Elimina una conexión existente entre panas. |
-
-### 6. Gastos Fijos (`/api/fixed-expenses`)
-| Método | Endpoint | Descripción |
-| :--- | :--- | :--- |
-| `GET` | `/api/fixed-expenses/` | Lista los gastos fijos configurados del usuario. |
-| `POST` | `/api/fixed-expenses/` | Registra un nuevo gasto fijo con su día de corte mensual. |
-| `GET` | `/api/fixed-expenses/summary` | Estadísticas acumuladas y porcentaje de pago del mes. |
-| `GET` | `/api/fixed-expenses/monthly/{month_year}` | Lista los gastos fijos indicando si ya fueron pagados en el mes. |
-| `PUT` | `/api/fixed-expenses/{expense_id}` | Modifica monto, nombre o día de corte del gasto fijo. |
-| `DELETE` | `/api/fixed-expenses/{expense_id}` | Elimina o desactiva un gasto fijo. |
-| `POST` | `/api/fixed-expenses/{expense_id}/check` | Marca el gasto fijo como pagado en un mes y opcionalmente crea un gasto. |
-| `DELETE` | `/api/fixed-expenses/{expense_id}/check/{month_year}` | Desmarca el pago de un mes específico. |
-
-### 7. Deudas y Préstamos (`/api/debts`)
-| Método | Endpoint | Descripción |
-| :--- | :--- | :--- |
-| `GET` | `/api/debts/?type=owed|receivable` | Lista las deudas activas o liquidadas según su tipo. |
+| `GET` | `/api/debts/?type=owed|receivable` | Lista deudas activas o saldadas según su tipo. |
 | `POST` | `/api/debts/` | Crea una nueva deuda por pagar o por cobrar. |
-| `GET` | `/api/debts/{debt_id}` | Detalle de la deuda e historial de abonos efectuados. |
+| `GET` | `/api/debts/{debt_id}` | Detalle de la deuda e historial completo de abonos e incrementos. |
 | `PUT` | `/api/debts/{debt_id}` | Modifica las condiciones originales de la deuda. |
 | `DELETE` | `/api/debts/{debt_id}` | Elimina una deuda del sistema. |
-| `POST` | `/api/debts/{debt_id}/payments` | Registra un abono a la deuda, recalculando el saldo y verificando liquidación. |
-| `PUT` | `/api/debts/payments/{payment_id}` | Modifica un abono registrado con anterioridad. |
-| `DELETE` | `/api/debts/payments/{payment_id}` | Elimina un abono y revierte el balance pendiente. |
+| `POST` | `/api/debts/{debt_id}/payments` | Registra un abono (`payment`) o un incremento (`increase`) de deuda. |
+| `PUT` | `/api/debts/payments/{payment_id}` | Modifica un abono o incremento registrado previamente. |
+| `DELETE` | `/api/debts/payments/{payment_id}` | Elimina un abono/incremento y recalcula el saldo pendiente. |
 
-### 8. Ingresos Estimados (`/api/incomes`)
+### 7. Gastos Fijos (`/api/fixed-expenses`)
 | Método | Endpoint | Descripción |
 | :--- | :--- | :--- |
-| `GET` | `/api/incomes/` | Lista las fuentes de ingreso estimadas. |
-| `POST` | `/api/incomes/` | Crea una proyección de ingreso con día de cobro previsto. |
-| `GET` | `/api/incomes/monthly/{month_year}` | Retorna los ingresos estimados con su estado de cobro en el mes. |
-| `PUT` | `/api/incomes/{income_id}` | Actualiza el monto o concepto del ingreso proyectado. |
-| `DELETE` | `/api/incomes/{income_id}` | Elimina una proyección de ingreso. |
-| `POST` | `/api/incomes/{income_id}/check` | Registra el cobro real (total o parcial) de un ingreso mensual. |
-| `DELETE` | `/api/incomes/{income_id}/check/{month_year}` | Elimina el comprobante de cobro de un mes. |
+| `GET` | `/api/fixed-expenses/` | Lista gastos fijos configurados. |
+| `POST` | `/api/fixed-expenses/` | Registra un gasto recurrente con día de corte mensual. |
+| `GET` | `/api/fixed-expenses/summary` | Estadísticas acumuladas y porcentaje de pago del mes actual. |
+| `GET` | `/api/fixed-expenses/monthly/{month_year}` | Lista gastos fijos con estado de pago en el mes indicado. |
+| `PUT` | `/api/fixed-expenses/{expense_id}` | Modifica monto, concepto o día de corte del gasto fijo. |
+| `DELETE` | `/api/fixed-expenses/{expense_id}` | Elimina o desactiva un gasto fijo. |
+| `POST` | `/api/fixed-expenses/{expense_id}/check` | Marca como pagado en un mes con opción de crear gasto real. |
+| `DELETE` | `/api/fixed-expenses/{expense_id}/check/{month_year}` | Desmarca el pago de un mes específico. |
 
-### 9. Metas de Ahorro (`/api/savings`)
+### 8. Metas de Ahorro (`/api/savings`)
 | Método | Endpoint | Descripción |
 | :--- | :--- | :--- |
-| `GET` | `/api/savings/` | Lista las metas de ahorro activas o cumplidas. |
-| `POST` | `/api/savings/` | Crea un nuevo fondo de ahorro con monto meta y plazo. |
-| `GET` | `/api/savings/summary` | Estadísticas del total ahorrado y porcentaje de alcance. |
-| `GET` | `/api/savings/{goal_id}` | Consulta una meta de ahorro y el desglose de aportes. |
-| `PUT` | `/api/savings/{goal_id}` | Modifica el nombre, meta o fecha límite del ahorro. |
+| `GET` | `/api/savings/` | Lista metas de ahorro activas o cumplidas. |
+| `POST` | `/api/savings/` | Crea un fondo de ahorro con monto meta y plazo. |
+| `GET` | `/api/savings/summary` | Estadísticas del total acumulado y porcentaje global de progreso. |
+| `GET` | `/api/savings/{goal_id}` | Consulta una meta de ahorro y el desglose de depósitos/retiros. |
+| `PUT` | `/api/savings/{goal_id}` | Modifica nombre, meta o fecha límite del fondo. |
 | `DELETE` | `/api/savings/{goal_id}` | Elimina una meta de ahorro. |
-| `POST` | `/api/savings/{goal_id}/deposits` | Registra un aporte a la meta, validando si alcanza el 100%. |
-| `PUT` | `/api/savings/deposits/{deposit_id}` | Actualiza un depósito registrado previamente. |
-| `DELETE` | `/api/savings/deposits/{deposit_id}` | Elimina un depósito y ajusta el balance del fondo. |
+| `POST` | `/api/savings/{goal_id}/deposits` | Registra un depósito (`deposit`) o retiro (`withdrawal`) de fondos. |
+| `PUT` | `/api/savings/deposits/{deposit_id}` | Actualiza un depósito o retiro previo. |
+| `DELETE` | `/api/savings/deposits/{deposit_id}` | Elimina un depósito/retiro y actualiza el saldo del fondo. |
 
-### 10. Notificaciones e Historial (`/api/notifications`)
+### 9. Compartición Unificada ("Shares") (`/api/shares`)
 | Método | Endpoint | Descripción |
 | :--- | :--- | :--- |
-| `GET` | `/api/notifications/` | Obtiene el historial de notificaciones in-app del usuario. |
+| `GET` | `/api/shares/by-entity/{entity_id}` | Retorna metadatos de compartición de una entidad (`debt`, `fixed_expense`, `saving_goal`, `budget`). |
+| `POST` | `/api/shares/{share_id}/members` | Añade integrantes a un ítem compartido con roles (`admin`/`member`). |
+| `PATCH` | `/api/shares/{share_id}/members/{user_id}` | Actualiza el rol de un integrante. |
+| `DELETE` | `/api/shares/{share_id}/members/{user_id}` | Expulsa o permite abandonar voluntariamente un ítem compartido. |
+| `PATCH` | `/api/shares/entity/{entity_id}/category` | Actualiza la categoría local para la vista del integrante. |
+
+### 10. Conexiones entre Panas (`/api/connections`)
+| Método | Endpoint | Descripción |
+| :--- | :--- | :--- |
+| `GET` | `/api/connections/` | Lista conexiones activas y solicitudes pendientes. |
+| `GET` | `/api/connections/overview` | Balance consolidado general con todos los panas. |
+| `GET` | `/api/connections/partner/{partner_id}/details` | Desglose pormenorizado de finanzas compartidas con un pana específico. |
+| `POST` | `/api/connections/request` | Envía solicitud de amistad por correo electrónico. |
+| `POST` | `/api/connections/request-by-user/{target_id}` | Envía solicitud de amistad por UUID de usuario. |
+| `PUT` | `/api/connections/{connection_id}/accept` | Acepta una solicitud de amistad recibida. |
+| `PUT` | `/api/connections/{connection_id}/reject` | Rechaza una solicitud de amistad. |
+| `DELETE` | `/api/connections/{connection_id}` | Elimina una conexión existente entre panas. |
+
+### 11. Notificaciones Push y Cron Webhook (`/api/push` y `/api/notifications`)
+| Método | Endpoint | Descripción |
+| :--- | :--- | :--- |
+| `GET` | `/api/notifications/` | Obtiene el historial de avisos in-app del usuario. |
 | `PATCH` | `/api/notifications/mark-read` | Marca todas las notificaciones pendientes como leídas. |
-
-### 11. Suscripciones Push y Cron Trigger (`/api/push`)
-| Método | Endpoint | Descripción |
-| :--- | :--- | :--- |
-| `POST` | `/api/push/subscribe` | Registra el token FCM del dispositivo para envíos push. |
-| `POST` | `/api/push/unsubscribe` | Desvincula un token FCM de la cuenta del usuario. |
-| `POST` | `/api/push/test` | Envía una notificación push de diagnóstico al dispositivo actual. |
-| `POST` / `GET` | `/api/push/cron` | Disparador seguro del cron nocturno/matutino (requiere `CRON_SECRET`). |
+| `POST` | `/api/push/subscribe` | Registra el token FCM del dispositivo para entrega Web Push. |
+| `POST` | `/api/push/unsubscribe` | Desvincula un token FCM del usuario. |
+| `POST` | `/api/push/test` | Envía una notificación push de prueba al dispositivo actual. |
+| `POST` / `GET` | `/api/push/cron` | Disparador seguro del cron matutino/vespertino (requiere `CRON_SECRET`). |
 
 ### 12. Perfil de Usuario (`/api/profile`)
 | Método | Endpoint | Descripción |
 | :--- | :--- | :--- |
-| `GET` | `/api/profile/` | Devuelve el perfil del usuario actual (auto-creándolo si no existe). |
+| `GET` | `/api/profile/` | Devuelve el perfil del usuario actual (auto-hidratado con `user_resolver.py`). |
 | `PUT` | `/api/profile/` | Actualiza nombre para mostrar, avatar y preferencias de notificación. |
 
 ---
@@ -597,42 +629,55 @@ Todos los endpoints (salvo `/health`, `/` y `/api/expenses/rates`) requieren aut
 
 ### 1. Despliegue del Backend en [Render](https://render.com/)
 1. Conecta tu repositorio de GitHub en Render y crea un **Web Service**.
-2. Parámetros de compilación y arranque:
+2. Parámetros de configuración:
    - **Root Directory:** `backend`
    - **Runtime:** `Python 3`
    - **Build Command:** `pip install -r requirements.txt`
    - **Start Command:** `python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`
 3. Variables de entorno en Render:
-   - `DATABASE_URL`: Cadena asíncrona de Supabase (`postgresql+asyncpg://...`).
-   - `SUPABASE_URL`: URL oficial de tu proyecto Supabase.
+   - `DATABASE_URL`: URI asíncrona de Supabase (`postgresql+asyncpg://...`).
+   - `SUPABASE_URL`: URL de tu proyecto Supabase.
    - `FRONTEND_URL`: URL pública de tu frontend en Vercel (ej. `https://gastosapp.vercel.app`).
-   - `CRON_SECRET`: Clave secreta idéntica a la configurada en Vercel.
-   - `ALLOWED_ORIGINS`: Lista de orígenes de confianza.
-   - `FIREBASE_SERVICE_ACCOUNT_BASE64`: Cadena Base64 del archivo `firebase-adminsdk.json`.
-4. El backend mantendrá su contenedor activo automáticamente gracias a la rutina asíncrona de **Self-Ping** integrada en `main.py`.
+   - `CRON_SECRET`: Clave secreta compartida con Vercel.
+   - `ALLOWED_ORIGINS`: Lista de dominios permitidos.
+   - `FIREBASE_SERVICE_ACCOUNT_BASE64`: Credencial JSON de Firebase codificada en Base64.
+   - `SMTP_USER` y `SMTP_PASSWORD` (o `RESEND_API_KEY`) para el envío de reportes por correo.
+4. El contenedor optimiza el uso del tier gratuito mediante el bucle de **Self-Ping** con reposo nocturno automático de 01:00 AM a 06:30 AM VET.
 
 ### 2. Despliegue del Frontend en [Vercel](https://vercel.com/)
 1. Importa el repositorio en Vercel y asigna como **Root Directory:** `frontend`.
-2. Vercel detectará el framework como **Vite** de manera nativa.
-3. Configura las variables de entorno en el panel de Vercel con los valores descritos en la sección Frontend de [Variables de Entorno](#-variables-de-entorno).
-4. El archivo `vercel.json` se encargará de:
-   - Redirigir el tráfico SPA a `index.html`.
-   - Programar automáticamente la ejecución del cron en los horarios `0 13 * * *` y `0 0 * * *`.
+2. Vercel detectará el framework como **Vite** de forma nativa.
+3. Configura las variables de entorno (`VITE_API_URL`, `VITE_SUPABASE_*`, `VITE_FIREBASE_*`, `CRON_SECRET`).
+4. El archivo `vercel.json` se encarga automáticamente de:
+   - Enrutar el tráfico de la Single Page Application (SPA) hacia `index.html`.
+   - Programar los Cron Jobs serverless:
+     - `0 13 * * *`: Ventana matutina (9:00 AM VET).
+     - `0 23 * * *`: Ventana vespertina (7:00 PM VET).
 
 ---
 
-## 🧹 Mantenimiento y Flujo Git
+## 🧹 Mantenimiento, Scripts y Flujo Git
+
+### Verificación de Calidad y Linting
+```bash
+# Frontend: Oxlint ultrarrápido
+cd frontend
+npm run lint
+
+# Frontend: Compilación de TypeScript y empaquetado de producción
+npm run build
+```
 
 ### Flujo de Trabajo Git Recomendado
 ```bash
-# 1. Verificar estado de archivos modificados
+# 1. Verificar estado del árbol de trabajo
 git status
 
-# 2. Agregar cambios al área de preparación
+# 2. Agregar cambios al stage
 git add .
 
 # 3. Confirmar cambios con convención semántica
-git commit -m "docs: actualizar README exhaustivo con arquitectura V4 y motor de presupuestos"
+git commit -m "docs: actualizar README y DOCUMENTACION_DETALLADA con arquitectura V5, 21 tablas y Centro de Resúmenes"
 
 # 4. Publicar en rama principal
 git push origin main
@@ -640,4 +685,4 @@ git push origin main
 
 ---
 
-*GastosApp — Gestión financiera moderna, transparente y colaborativa.*
+*GastosApp — Gestión financiera inteligente, transparente y colaborativa.*

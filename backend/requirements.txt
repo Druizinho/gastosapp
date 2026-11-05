@@ -9,4 +9,5 @@ python-jose[cryptography]
 supabase
 httpx
 pyDolarVenezuela
+beautifulsoup4
 firebase-admin

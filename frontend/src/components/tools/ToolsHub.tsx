@@ -150,18 +150,9 @@ export const ToolsHub: React.FC = () => {
               {section.tools.map((tool) => (
                 <button
                   key={tool.id}
-                  className="tool-card"
+                  className="tool-card tactile-press"
                   onClick={() => tool.enabled && navigate(tool.path)}
                   disabled={!tool.enabled}
-                  onMouseDown={(e) => {
-                    if (tool.enabled) e.currentTarget.style.transform = 'scale(0.96)';
-                  }}
-                  onMouseUp={(e) => {
-                    if (tool.enabled) e.currentTarget.style.transform = 'scale(1)';
-                  }}
-                  onMouseLeave={(e) => {
-                    if (tool.enabled) e.currentTarget.style.transform = 'scale(1)';
-                  }}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -175,7 +166,7 @@ export const ToolsHub: React.FC = () => {
                     cursor: tool.enabled ? 'pointer' : 'default',
                     textAlign: 'left',
                     fontFamily: 'inherit',
-                    transition: 'transform 150ms ease-out, box-shadow 150ms ease-out, opacity 150ms ease-out',
+                    transition: 'box-shadow 150ms ease-out, opacity 150ms ease-out',
                     opacity: tool.enabled ? 1 : 0.7,
                     position: 'relative',
                     overflow: 'hidden',

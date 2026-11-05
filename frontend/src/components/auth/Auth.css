@@ -40,13 +40,11 @@
 }
 
 /* =============================================
-   AUTH CARD (Glassmorphism)
+   AUTH CARD
    ============================================= */
 .auth-card {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: var(--surface-color, #FFFFFF);
+  border: 1px solid var(--border-color, #E5E7EB);
   border-radius: var(--radius-lg);
   padding: 3rem 2rem;
   width: 100%;

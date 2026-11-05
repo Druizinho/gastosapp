@@ -750,6 +750,30 @@ class TestHistoricalRates(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res_default["amount_bs"], Decimal("450.0000"))
         self.assertEqual(res_default["rate_usd_bs"], Decimal("45.0"))
 
+    def test_parse_bcv_rate_text_thousands_separator(self):
+        self.assertEqual(bcv_service._parse_bcv_rate_text("894,88760000"), Decimal("894.88760000"))
+        self.assertEqual(bcv_service._parse_bcv_rate_text("1.006,03263992"), Decimal("1006.03263992"))
+        self.assertEqual(bcv_service._parse_bcv_rate_text("12.345,6789"), Decimal("12345.6789"))
+        self.assertIsNone(bcv_service._parse_bcv_rate_text(""))
+        self.assertIsNone(bcv_service._parse_bcv_rate_text("invalid"))
+
+    async def test_get_bcv_rates_parsing_with_mock_html(self):
+        sample_html = """
+        <div class="view-tipo-de-cambio-oficial-del-bcv">
+            <div id="dolar"><strong> 894,88760000 </strong></div>
+            <div id="euro"><strong> 1.006,03263992 </strong></div>
+        </div>
+        """
+        mock_resp = MagicMock(status_code=200, text=sample_html)
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.get.return_value = mock_resp
+        with patch("app.bcv_service.httpx.AsyncClient", return_value=mock_client):
+            usd, eur = await bcv_service.get_bcv_rates()
+            self.assertEqual(usd, Decimal("894.88760000"))
+            self.assertEqual(eur, Decimal("1006.03263992"))
+
 
 if __name__ == "__main__":
     unittest.main()

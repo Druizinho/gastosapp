@@ -103,7 +103,7 @@ body {
   margin: 0 auto;
   min-height: 100vh;
   padding: 0 1rem;
-  padding-bottom: 6rem;
+  padding-bottom: calc(6.5rem + env(safe-area-inset-bottom, 0px));
   position: relative;
 }
 
@@ -172,6 +172,16 @@ body {
   -webkit-backdrop-filter: none;
 }
 
+/* Tactile Press Utility */
+.tactile-press {
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 120ms cubic-bezier(0.2, 0, 0, 1), box-shadow 120ms ease;
+  user-select: none;
+}
+.tactile-press:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
 /* =============================================
    APP HEADER (Dashboard)
    ============================================= */
@@ -225,8 +235,8 @@ body {
 }
 
 .header-action-btn {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: var(--radius-full);
   background: var(--surface-color);
   box-shadow: var(--shadow-md);
@@ -236,12 +246,18 @@ body {
   justify-content: center;
   cursor: pointer;
   color: var(--text-secondary);
-  transition: all var(--transition-base);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  transition: color var(--transition-base), box-shadow 120ms ease, transform 120ms cubic-bezier(0.2, 0, 0, 1);
 }
 
 .header-action-btn:hover {
   box-shadow: var(--shadow-lg);
   color: var(--text-primary);
+}
+
+.header-action-btn:active:not(:disabled) {
+  transform: scale(0.96);
 }
 
 /* =============================================
@@ -271,6 +287,7 @@ body {
   color: var(--text-primary);
   letter-spacing: -0.02em;
   line-height: 1.1;
+  font-variant-numeric: tabular-nums;
 }
 
 .balance-actions {
@@ -389,6 +406,7 @@ body {
   font-size: 1.75rem;
   font-weight: 700;
   color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
 }
 
 .summary-card .amount.highlight {
@@ -401,7 +419,19 @@ body {
   margin-top: 0.25rem;
 }
 
-/* Horizontal scrolling metrics */
+/* Horizontal scrolling metrics & equivalencies */
+.equivalencies-carousel {
+  display: flex;
+  gap: 1rem;
+  overflow-x: auto;
+  padding-bottom: 0.75rem;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scroll-padding: 0.5rem;
+}
+
 .metrics-scroll {
   display: flex;
   gap: 1rem;
@@ -477,6 +507,7 @@ body {
 .category-percentage {
   color: var(--text-tertiary);
   font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .category-value {
@@ -484,6 +515,7 @@ body {
   font-weight: 600;
   font-size: 0.9rem;
   color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
 }
 
 /* =============================================
@@ -594,6 +626,7 @@ body {
   font-weight: 700;
   font-size: 1rem;
   color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
 }
 
 .expense-amount.negative {
@@ -642,6 +675,7 @@ body {
   background: var(--surface-muted);
   border-radius: var(--radius-sm);
   padding: 0.75rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .equivalents-grid span {
@@ -1019,7 +1053,7 @@ body {
 
 .bottom-nav {
   position: fixed;
-  bottom: 1rem;
+  bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
   left: 50%;
   transform: translateX(-50%);
   width: calc(100% - 2rem);
@@ -1419,6 +1453,7 @@ body {
 .py-8 { padding-top: 2rem; padding-bottom: 2rem; }
 .space-y-2 > * + * { margin-top: 0.5rem; }
 .font-mono { font-family: 'Inter', monospace; }
+.tabular-nums { font-variant-numeric: tabular-nums; }
 
 /* =============================================
    SCROLLBAR STYLING
@@ -1591,6 +1626,7 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-height: 40px;
   border-radius: var(--radius-full);
   background: var(--surface-color);
   color: var(--text-secondary);
@@ -1622,8 +1658,8 @@ body {
   border-color: #D1D5DB;
 }
 
-.period-pill:active:not(:disabled),
-.period-chip:active:not(:disabled) {
+.period-pill:active,
+.period-chip:active {
   transform: scale(0.96);
 }
 
@@ -2761,8 +2797,6 @@ body {
   background: var(--surface-color);
   color: var(--text-primary);
   border: 1px solid var(--border-color);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
   animation: toastSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
@@ -3511,11 +3545,260 @@ body {
   transform: scale(0.96);
 }
 
+/* =============================================
+   SUMMARY HERO CARD
+   ============================================= */
+
+.summary-hero-card {
+  margin-bottom: 1.5rem;
+  padding: 1.35rem 1.45rem;
+  border-radius: var(--radius-lg);
+  position: relative;
+  overflow: hidden;
+  transition: transform var(--transition-fast, 150ms ease), box-shadow var(--transition-fast, 150ms ease);
+}
+
+.summary-hero-card--interactive {
+  cursor: pointer;
+}
+
+.summary-hero-card--interactive:active:not(:disabled) {
+  transform: scale(0.99);
+}
+
+.summary-hero-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.4rem;
+  gap: 0.5rem;
+}
+
+.summary-hero-eyebrow {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.summary-hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-full);
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.summary-hero-amount-zone {
+  margin-bottom: 0;
+}
+
+.summary-hero-amount-zone--has-footer {
+  margin-bottom: 0.9rem;
+}
+
+.summary-hero-amount {
+  font-size: 2.1rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+.summary-hero-status-text {
+  font-size: 0.78rem;
+  color: var(--text-secondary, #475569);
+  font-weight: 500;
+  margin-top: 0.25rem;
+}
+
+.summary-hero-metrics-grid {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border-color, rgba(0, 0, 0, 0.07));
+  grid-template-columns: repeat(var(--hero-metric-cols, 3), minmax(0, 1fr));
+}
+
+.summary-hero-metrics-grid.multi-row {
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+}
+
+.summary-hero-metrics-grid.multi-row .summary-hero-metric-item:nth-child(2n),
+.summary-hero-metrics-grid.multi-row .summary-hero-metric-item:last-child {
+  border-right: none !important;
+  padding-right: 0 !important;
+}
+
+.summary-hero-metrics-grid.multi-row.has-multiple-rows .summary-hero-metric-item:nth-child(-n+2) {
+  border-bottom: 1px solid var(--border-color, rgba(0, 0, 0, 0.07));
+  padding-bottom: 0.65rem;
+}
+
+.summary-hero-metric-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.summary-hero-metric-item:not(:last-child) {
+  border-right: 1px solid var(--border-color, rgba(0, 0, 0, 0.07));
+  padding-right: 0.75rem;
+}
+
+.summary-hero-metric-label {
+  font-size: 0.68rem;
+  color: var(--text-tertiary, #94A3B8);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.15rem;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.summary-hero-metric-value {
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.summary-hero-metric-subtext {
+  font-size: 0.68rem;
+  color: var(--text-tertiary, #94A3B8);
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 480px) {
+  .summary-hero-metrics-grid {
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  }
+
+  .summary-hero-metrics-grid .summary-hero-metric-item:nth-child(2n),
+  .summary-hero-metrics-grid .summary-hero-metric-item:last-child {
+    border-right: none !important;
+    padding-right: 0 !important;
+  }
+
+  .summary-hero-metrics-grid.has-multiple-rows .summary-hero-metric-item:nth-child(-n+2) {
+    border-bottom: 1px solid var(--border-color, rgba(0, 0, 0, 0.07));
+    padding-bottom: 0.65rem;
+  }
+}
+
+.summary-hero-progress {
+  margin-top: 0.85rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border-color, rgba(0, 0, 0, 0.07));
+}
+
+.summary-hero-progress-labels {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.4rem;
+}
+
+.summary-hero-progress-left {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-primary, #0F172A);
+}
+
+.summary-hero-progress-right {
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.summary-hero-progress-track {
+  height: 7px;
+  border-radius: var(--radius-full);
+  background: var(--surface-muted, rgba(0, 0, 0, 0.06));
+  overflow: hidden;
+}
+
+.summary-hero-progress-bar {
+  height: 100%;
+  border-radius: var(--radius-full);
+  transition: width 300ms ease-out;
+}
+
+/* =============================================
+   DASHBOARD
+   ============================================= */
+
+.dashboard-container {
+  padding: 0.75rem 1rem calc(6.5rem + env(safe-area-inset-bottom, 0px));
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding-top: 0.5rem;
+}
+
+.dashboard-user {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.dashboard-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-full);
+  background: var(--accent-light);
+  border: 2px solid white;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary);
+  font-weight: 700;
+  font-size: 0.95rem;
+  overflow: hidden;
+}
+
+.dashboard-greeting-sub {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.dashboard-greeting-name {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.dashboard-retry-btn {
+  padding: 0.75rem 1.5rem;
+  border-radius: var(--radius-sm);
+  background: var(--accent-color, #111827);
+  color: white;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .tactile-press:active:not(:disabled),
   .reports-preset-btn:active:not(:disabled),
   .reports-compare-btn:active:not(:disabled),
   .reports-cta-btn:active:not(:disabled),
-  .reports-retry-btn:active:not(:disabled) {
+  .reports-retry-btn:active:not(:disabled),
+  .summary-hero-card--interactive:active:not(:disabled) {
     transform: none;
   }
 }

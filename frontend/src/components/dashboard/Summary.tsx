@@ -142,7 +142,7 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [],
             <button
               type="button"
               onClick={() => setBalanceVisible(!balanceVisible)}
-              className="balance-toggle"
+              className="balance-toggle tactile-press"
               aria-label={balanceVisible ? 'Ocultar balance' : 'Mostrar balance'}
             >
               {balanceVisible ? <Eye size={18} /> : <EyeOff size={18} />}
@@ -220,6 +220,7 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [],
                 role="tab"
                 aria-selected={equivMode === 'expenses'}
                 onClick={() => setEquivMode('expenses')}
+                className="tactile-press"
                 style={{
                   padding: '0.25rem 0.75rem',
                   borderRadius: '9999px',
@@ -230,11 +231,8 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [],
                   fontSize: '0.75rem',
                   cursor: 'pointer',
                   boxShadow: equivMode === 'expenses' ? 'var(--shadow-sm)' : 'none',
-                  transition: 'transform 150ms ease-out, background 150ms ease-out, color 150ms ease-out',
+                  transition: 'background 150ms ease-out, color 150ms ease-out',
                 }}
-                onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
-                onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
               >
                 Gastos
               </button>
@@ -243,6 +241,7 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [],
                 role="tab"
                 aria-selected={equivMode === 'incomes'}
                 onClick={() => setEquivMode('incomes')}
+                className="tactile-press"
                 style={{
                   padding: '0.25rem 0.75rem',
                   borderRadius: '9999px',
@@ -253,18 +252,15 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [],
                   fontSize: '0.75rem',
                   cursor: 'pointer',
                   boxShadow: equivMode === 'incomes' ? 'var(--shadow-sm)' : 'none',
-                  transition: 'transform 150ms ease-out, background 150ms ease-out, color 150ms ease-out',
+                  transition: 'background 150ms ease-out, color 150ms ease-out',
                 }}
-                onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
-                onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
               >
                 Ingresos
               </button>
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '1rem', overflowX: 'auto', paddingBottom: '1rem', paddingLeft: '0.5rem', paddingRight: '0.5rem', scrollSnapType: 'x mandatory' }} className="hide-scrollbar">
+          <div className="equivalencies-carousel hide-scrollbar">
             {subCurrencies.map(currencyKey => {
               const config = CURRENCY_CONFIGS[currencyKey];
               const totalVal = equivMode === 'expenses'
@@ -277,7 +273,7 @@ const Summary: React.FC<SummaryProps> = ({ summary, dateFilter, categories = [],
               return (
                 <div
                   key={currencyKey}
-                  className="soft-card"
+                  className="soft-card tactile-press"
                   style={{
                     flex: '0 0 142px',
                     minWidth: '142px',

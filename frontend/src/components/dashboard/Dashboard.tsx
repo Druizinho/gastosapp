@@ -237,11 +237,11 @@ const Dashboard: React.FC = () => {
   }, []);
 
   return (
-    <div className="dashboard-container" style={{ padding: '1rem', paddingBottom: '6rem', maxWidth: '600px', margin: '0 auto' }}>
+    <div className="dashboard-container">
       {/* Top Header */}
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', paddingTop: '1rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'var(--accent-light)', border: '2px solid white', boxShadow: 'var(--shadow-sm)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-primary)', fontWeight: 700, fontSize: '0.95rem', overflow: 'hidden' }}>
+      <header className="dashboard-header">
+        <div className="dashboard-user">
+          <div className="dashboard-avatar">
             {avatarUrl ? (
               <img src={avatarUrl} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
             ) : (
@@ -249,8 +249,8 @@ const Dashboard: React.FC = () => {
             )}
           </div>
           <div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Bienvenido,</div>
-            <div style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--text-primary)' }}>{displayName}</div>
+            <div className="dashboard-greeting-sub">Bienvenido,</div>
+            <div className="dashboard-greeting-name">{displayName}</div>
           </div>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -266,15 +266,7 @@ const Dashboard: React.FC = () => {
             </p>
             <button
               onClick={() => { setIsLoading(true); setIsInitialLoad(true); fetchData(); }}
-              style={{
-                padding: '0.75rem 1.5rem',
-                borderRadius: '12px',
-                background: 'var(--accent-primary, #863bff)',
-                color: 'white',
-                border: 'none',
-                fontWeight: 600,
-                cursor: 'pointer'
-              }}
+              className="tactile-press dashboard-retry-btn"
             >
               Reintentar conexión
             </button>
@@ -286,8 +278,8 @@ const Dashboard: React.FC = () => {
             <PushPermissionBanner />
             <PeriodSelector filter={dateFilter} onChange={setDateFilter} />
             <Summary summary={summary} dateFilter={dateFilter} categories={categories} monthlyBudget={monthlyBudget} />
-            <div className="list-header mt-8 mb-4" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Gastos del Período</h2>
+            <div className="list-header mt-8 mb-4">
+              <h2>Gastos del Período</h2>
             </div>
             <ExpenseList 
               expenses={expenses} 

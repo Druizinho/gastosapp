@@ -1,6 +1,12 @@
 import httpx
+from bs4 import BeautifulSoup
 from pyDolarVenezuela.pages import BCV
 from pyDolarVenezuela import Monitor
+try:
+    import pyDolarVenezuela.providers.bcv as _pydolar_bcv
+    _pydolar_bcv._get_rate_by_id = lambda tag_id, soup: float(soup.find(id=tag_id).find('strong').text.strip().replace('.', '').replace(',', '.'))
+except Exception:
+    pass
 from cachetools import TTLCache
 import asyncio
 import logging
@@ -37,12 +43,45 @@ async def _get_db_session(db: Optional[AsyncSession] = None):
             yield session
 
 
+def _parse_bcv_rate_text(text: Optional[str]) -> Optional[Decimal]:
+    if not text:
+        return None
+    cleaned = text.strip().replace(".", "").replace(",", ".")
+    try:
+        val = Decimal(cleaned)
+        return val if val > 0 else None
+    except Exception:
+        return None
+
+
 def _sync_fetch_bcv():
     bcv = Monitor(BCV)
     return bcv.get_all_monitors()
 
 
 async def get_bcv_rates():
+    # 1. Scraping asíncrono directo del portal oficial del BCV (alta velocidad y precisión exacta)
+    url = "https://www.bcv.org.ve/tasas-informativas-sistema-bancario"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    try:
+        async with httpx.AsyncClient(verify=False, timeout=8.0, headers=headers) as client:
+            response = await client.get(url)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, "html.parser")
+                section = soup.find("div", "view-tipo-de-cambio-oficial-del-bcv")
+                if section:
+                    dolar_el = section.find(id="dolar")
+                    euro_el = section.find(id="euro")
+                    usd_rate = _parse_bcv_rate_text(dolar_el.find("strong").text) if (dolar_el and dolar_el.find("strong")) else None
+                    eur_rate = _parse_bcv_rate_text(euro_el.find("strong").text) if (euro_el and euro_el.find("strong")) else None
+                    if usd_rate and usd_rate > 0:
+                        return usd_rate, eur_rate
+    except Exception as e:
+        logging.getLogger(__name__).warning("Direct BCV scrape failed: %s", e)
+
+    # 2. Respaldo: pyDolarVenezuela
     try:
         data = await asyncio.wait_for(asyncio.to_thread(_sync_fetch_bcv), timeout=8.0)
         usd_rate = None
@@ -52,10 +91,34 @@ async def get_bcv_rates():
                 usd_rate = Decimal(str(m.price))
             if 'euro' in m.title.lower():
                 eur_rate = Decimal(str(m.price))
-        return usd_rate, eur_rate
+        if usd_rate and usd_rate > 0:
+            return usd_rate, eur_rate
     except Exception as e:
-        print("Error fetching BCV:", e)
-        return None, None
+        print("Error fetching BCV via pyDolarVenezuela:", e)
+
+    # 3. Respaldo: DolarApi
+    try:
+        async with httpx.AsyncClient(timeout=6.0) as client:
+            resp_usd, resp_eur = await asyncio.gather(
+                client.get("https://ve.dolarapi.com/v1/dolares/oficial"),
+                client.get("https://ve.dolarapi.com/v1/euros/oficial"),
+                return_exceptions=True
+            )
+            usd_rate, eur_rate = None, None
+            if not isinstance(resp_usd, Exception) and resp_usd.status_code == 200:
+                u_val = resp_usd.json().get("promedio")
+                if u_val:
+                    usd_rate = Decimal(str(u_val))
+            if not isinstance(resp_eur, Exception) and resp_eur.status_code == 200:
+                e_val = resp_eur.json().get("promedio")
+                if e_val:
+                    eur_rate = Decimal(str(e_val))
+            if usd_rate and usd_rate > 0:
+                return usd_rate, eur_rate
+    except Exception as e:
+        logging.getLogger(__name__).warning("DolarApi fallback failed: %s", e)
+
+    return None, None
 
 
 async def get_binance_rate():
