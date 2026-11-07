@@ -134,8 +134,8 @@ async def _notification_scheduler_loop():
                 except Exception as e:
                     print(f"⚠️ Error sincronizando tasas diarias en scheduler: {e}")
 
-            # Ventana matutina: 9:00 AM VET
-            if now.hour == 9 and last_morning_date != today:
+            # Ventana matutina: 9:00 AM a 11:59 AM VET
+            if 9 <= now.hour < 12 and last_morning_date != today:
                 try:
                     async with AsyncSessionLocal() as db:
                         await execute_scheduled_notifications(db, "morning", now_vet=now)
@@ -144,8 +144,8 @@ async def _notification_scheduler_loop():
                 except Exception as e:
                     print(f"⚠️ Error en scheduler matutino: {e}")
 
-            # Ventana vespertina: 7:00 PM (19:00) VET
-            if now.hour == 19 and last_evening_date != today:
+            # Ventana vespertina: 7:00 PM (19:00) a 9:59 PM (21:59) VET
+            if 19 <= now.hour < 22 and last_evening_date != today:
                 try:
                     async with AsyncSessionLocal() as db:
                         await execute_scheduled_notifications(db, "evening", now_vet=now)

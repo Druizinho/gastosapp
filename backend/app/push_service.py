@@ -68,11 +68,17 @@ def send_push_notification_to_token(
                 "tag": tag,
             },
             webpush=messaging.WebpushConfig(
+                headers={"Urgency": "high"},
                 notification=messaging.WebpushNotification(
                     icon='/pwa-192x192.png',
                     badge='/pwa-192x192.png',
                     tag=tag,
-                    data={"url": target_url}
+                    data={
+                        "url": target_url,
+                        "title": title,
+                        "body": body,
+                        "tag": tag,
+                    }
                 ),
                 fcm_options=messaging.WebpushFCMOptions(
                     link=target_url

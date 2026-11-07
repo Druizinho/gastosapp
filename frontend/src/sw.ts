@@ -46,19 +46,48 @@ const messaging = (self as any).firebase.messaging();
 
 messaging.onBackgroundMessage((payload: any) => {
   console.log('[sw.ts] Mensaje en segundo plano recibido:', payload);
-  const isDataOnly = !payload.notification && !!payload.data;
-  if (isDataOnly) {
-    const notificationTitle = payload.data.title || 'GastosApp';
-    const notificationOptions = {
-      body: payload.data.body || '',
-      icon: '/pwa-192x192.png',
-      badge: '/pwa-192x192.png',
-      tag: payload.data.tag || 'gastosapp-alert',
+  const notificationTitle = payload.notification?.title || payload.data?.title || 'GastosApp';
+  const notificationOptions: NotificationOptions = {
+    body: payload.notification?.body || payload.data?.body || '',
+    icon: payload.notification?.icon || payload.data?.icon || '/pwa-192x192.png',
+    badge: payload.notification?.badge || payload.data?.badge || '/pwa-192x192.png',
+    tag: payload.notification?.tag || payload.data?.tag || 'gastosapp-alert',
+    data: {
+      url: payload.data?.url || payload.fcmOptions?.link || payload.notification?.click_action || '/',
+      ...(payload.data || {}),
+    },
+  };
+  return self.registration.showNotification(notificationTitle, notificationOptions);
+});
+
+// Fallback push listener para eventos WebPush crudos para evitar que el OS termine el SW
+self.addEventListener('push', (event: PushEvent) => {
+  if (!event.data) return;
+
+  let payload: any = null;
+  try {
+    payload = event.data.json();
+  } catch {
+    payload = { body: event.data.text() };
+  }
+
+  // Si no es un mensaje interno de FCM (que es procesado por onBackgroundMessage), procesar como WebPush crudo
+  const isFcm = payload && (payload.from || payload.fcmMessageId || payload['google.c.sender.id'] || payload.fcmOptions);
+  if (!isFcm && payload) {
+    const notificationTitle = payload.title || payload.notification?.title || payload.data?.title || 'GastosApp';
+    const notificationOptions: NotificationOptions = {
+      body: payload.body || payload.notification?.body || payload.data?.body || '',
+      icon: payload.icon || payload.notification?.icon || payload.data?.icon || '/pwa-192x192.png',
+      badge: payload.badge || payload.notification?.badge || payload.data?.badge || '/pwa-192x192.png',
+      tag: payload.tag || payload.notification?.tag || payload.data?.tag || 'gastosapp-alert',
       data: {
-        url: payload.data.url || '/',
+        url: payload.url || payload.data?.url || '/',
+        ...(payload.data || {}),
       },
     };
-    self.registration.showNotification(notificationTitle, notificationOptions);
+    event.waitUntil(
+      self.registration.showNotification(notificationTitle, notificationOptions)
+    );
   }
 });
 

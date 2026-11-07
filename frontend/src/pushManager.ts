@@ -154,26 +154,36 @@ export const setupForegroundMessageListener = (callback?: ForegroundMessageCallb
       console.log('Mensaje recibido en primer plano:', payload);
       
       const title = payload.notification?.title || payload.data?.title || 'GastosApp';
-      const options = {
-        body: payload.notification?.body || payload.data?.body,
-        icon: '/pwa-192x192.png',
-        badge: '/pwa-192x192.png',
+      const options: NotificationOptions = {
+        body: payload.notification?.body || payload.data?.body || '',
+        icon: payload.notification?.icon || payload.data?.icon || '/pwa-192x192.png',
+        badge: payload.notification?.badge || payload.data?.badge || '/pwa-192x192.png',
+        tag: payload.notification?.tag || payload.data?.tag || 'gastosapp-alert',
         data: { url: payload.fcmOptions?.link || payload.data?.url || '/' },
       };
 
-      if (Notification.permission === 'granted') {
-        // Use ServiceWorker.showNotification — works on Android Chrome AND iOS Safari PWA.
-        // new Notification() in the main thread fails silently on Android Chrome.
+      const isAppVisible = typeof document !== 'undefined' && document.visibilityState === 'visible';
+
+      // Si la app está oculta o en segundo plano en el navegador, emitir notificación nativa del OS.
+      // Si el usuario está mirando activamente la app, evitamos duplicar la notificación del OS
+      // y permitimos que la campanita / estado in-app / toast gestione la experiencia limpiamente.
+      if (!isAppVisible && Notification.permission === 'granted') {
         try {
           const registration = await navigator.serviceWorker.ready;
-          registration.showNotification(title, options);
+          await registration.showNotification(title, options);
         } catch {
-          // Fallback for desktop browsers that don't need the SW approach
+          // Fallback para navegadores que admiten new Notification() en contexto de ventana
           new Notification(title, options);
         }
       }
 
-      listeners.forEach(cb => cb(payload));
+      listeners.forEach(cb => {
+        try {
+          cb(payload);
+        } catch (err) {
+          console.error("Error ejecutando callback de listener en primer plano:", err);
+        }
+      });
     });
     isForegroundListenerSetup = true;
   } catch (err) {

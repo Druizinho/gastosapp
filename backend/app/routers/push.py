@@ -613,8 +613,8 @@ async def trigger_notifications(
     local_now = vet_now()
     
     # Determinar ventana activa según tolerancia especificada
-    is_morning = window == "morning" or (window is None and (local_now.hour == 9 or (local_now.hour == 10 and local_now.minute <= 30)))
-    is_evening = window == "evening" or (window is None and local_now.hour in (19, 20))
+    is_morning = window == "morning" or (window is None and 9 <= local_now.hour <= 11)
+    is_evening = window == "evening" or (window is None and 19 <= local_now.hour <= 21)
     
     if not is_morning and not is_evening:
         return {"status": "awake", "time": local_now.isoformat(), "message": "Ping received. Outside notification window."}

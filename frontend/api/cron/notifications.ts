@@ -1,5 +1,18 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
+// Duración máxima de función serverless en Vercel (permite hasta 60s para absorber Render cold starts)
+export const maxDuration = 60;
+
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export default async function handler(
   request: VercelRequest,
   response: VercelResponse,
@@ -28,21 +41,46 @@ export default async function handler(
       headers['Authorization'] = `Bearer ${cronSecret}`;
     }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 9500); // Timeout de 9.5s para no exceder los 10s de Vercel
-
     const params = new URLSearchParams();
     if (cronSecret) params.set('token', cronSecret);
     if (windowParam) params.set('window', windowParam);
     const queryString = params.toString();
     const targetUrl = `${apiUrl}/push/cron${queryString ? `?${queryString}` : ''}`;
 
-    const result = await fetch(targetUrl, {
-      method: 'POST',
-      headers,
-      signal: controller.signal
-    });
-    clearTimeout(timeout);
+    // Resiliencia ante cold start de Render: 2 intentos con 25s de timeout cada uno
+    const maxAttempts = 2;
+    const timeoutMs = 25000;
+    let result: Response | null = null;
+    let lastError: unknown = null;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        console.log(`Ejecutando ping a ${targetUrl} (intento ${attempt}/${maxAttempts})...`);
+        const res = await fetchWithTimeout(targetUrl, { method: 'POST', headers }, timeoutMs);
+
+        // Render en cold boot suele responder 502, 503 o 504 mientras arranca el contenedor
+        if ([502, 503, 504].includes(res.status) && attempt < maxAttempts) {
+          console.warn(`Intento ${attempt} devolvió HTTP ${res.status} (posible cold start de Render). Reintentando en 2s...`);
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          continue;
+        }
+
+        result = res;
+        break;
+      } catch (err: any) {
+        lastError = err;
+        const isAbort = err?.name === 'AbortError' || err?.message?.includes('aborted');
+        console.warn(`Intento ${attempt} falló: ${err?.message || err} (abortado por timeout: ${isAbort})`);
+        if (attempt < maxAttempts) {
+          console.log('Esperando 2s antes de reintentar tras despertar instancia de Render...');
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+      }
+    }
+
+    if (!result) {
+      throw lastError || new Error('No se pudo obtener respuesta del backend tras reintentar.');
+    }
 
     if (!result.ok) {
       const text = await result.text();
