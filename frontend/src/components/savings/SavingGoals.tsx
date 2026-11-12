@@ -54,6 +54,7 @@ import {
   formatListCardAmounts,
   formatCurrencyAmount,
   convertItemAmountToMainCurrency,
+  convertItemAmountToTargetCurrency,
   isSameCurrency
 } from '../../utils/currencyFormat';
 import { PageHeader } from '../ui/PageHeader';
@@ -255,69 +256,8 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
     };
   }, [highlightId, loading, goals]);
 
-  // Convert amount between currencies using rates helper
-  const convertAmount = (amount: number, fromCurrency: string) => {
-    if (!rates || !amount) return { usd: amount || 0, bs: amount || 0, eur: amount || 0, usdt: amount || 0 };
-    const usd_bs = rates.usd_bs || 1;
-    const eur_bs = rates.eur_bs || 1;
-    const usdt_bs = rates.usdt_bs || 1;
-
-    const curr = fromCurrency === 'USD' ? 'USD_BCV' : fromCurrency === 'EUR' ? 'EUR_BCV' : fromCurrency;
-
-    let bs = 0;
-    if (curr === 'BS') bs = amount;
-    else if (curr === 'USD_BCV') bs = amount * usd_bs;
-    else if (curr === 'EUR_BCV') bs = amount * eur_bs;
-    else if (curr === 'USDT') bs = amount * usdt_bs;
-    else if (curr === 'USD_CASH') {
-      const available_rates = [usd_bs, eur_bs, usdt_bs].filter(r => r > 1);
-      const maxRate = available_rates.length > 0 ? Math.max(...available_rates) : usd_bs;
-      bs = amount * maxRate;
-    } else {
-      bs = amount * usd_bs;
-    }
-
-    return {
-      bs,
-      usd: usd_bs > 0 ? bs / usd_bs : 0,
-      eur: eur_bs > 0 ? bs / eur_bs : 0,
-      usdt: usdt_bs > 0 ? bs / usdt_bs : 0,
-    };
-  };
-
   const calcDepositInGoalCurrency = (d: SavingDeposit, goal: SavingGoal): number => {
-    if (d.currency === goal.currency) return Number(d.amount);
-    if (goal.currency === 'BS' && d.amount_bs != null) return Number(d.amount_bs);
-    if (goal.currency === 'USD_BCV' && d.amount_usd != null) return Number(d.amount_usd);
-    if (goal.currency === 'EUR_BCV') {
-      if (d.amount_eur != null) return Number(d.amount_eur);
-      if (d.amount_bs != null && d.rate_eur_bs != null && Number(d.rate_eur_bs) > 0) {
-        return Number(d.amount_bs) / Number(d.rate_eur_bs);
-      }
-      if (d.amount_usd != null) return Number(d.amount_usd);
-    }
-    if (goal.currency === 'USDT') {
-      if (d.amount_usdt != null) return Number(d.amount_usdt);
-      if (d.amount_bs != null && d.rate_usdt_bs != null && Number(d.rate_usdt_bs) > 0) {
-        return Number(d.amount_bs) / Number(d.rate_usdt_bs);
-      }
-      if (d.amount_usd != null) return Number(d.amount_usd);
-    }
-    if (goal.currency === 'USD_CASH') {
-      if (d.amount_bs != null && Number(d.amount_bs) > 0) {
-        const validRates = [Number(d.rate_usd_bs || 0), Number(d.rate_eur_bs || 0), Number(d.rate_usdt_bs || 0)].filter(r => r > 0);
-        if (validRates.length > 0) {
-          return Number(d.amount_bs) / Math.max(...validRates);
-        }
-      }
-      if (d.amount_usd != null) return Number(d.amount_usd);
-    }
-    const conv = convertAmount(Number(d.amount), d.currency);
-    if (goal.currency === 'USD_BCV' || goal.currency === 'USD_CASH') return conv.usd;
-    if (goal.currency === 'BS') return conv.bs;
-    if (goal.currency === 'EUR_BCV') return conv.eur;
-    if (goal.currency === 'USDT') return conv.usdt;
-    return Number(d.amount);
+    return convertItemAmountToTargetCurrency(d, goal.currency, rates);
   };
 
   // Calculate total saved for a goal in its currency
@@ -536,7 +476,23 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
     const { hexColor: color } = getGoalVisuals(selectedGoal);
 
     const savedInMain = convertItemAmountToMainCurrency({ amount: saved, currency: selectedGoal.currency }, mainCurrency, rates);
-    const targetInMain = hasTarget ? convertItemAmountToMainCurrency({ amount: target, currency: selectedGoal.currency }, mainCurrency, rates) : null;
+    const targetInMain = hasTarget
+      ? convertItemAmountToMainCurrency(
+          {
+            amount: target,
+            currency: selectedGoal.currency,
+            amount_bs: selectedGoal.amount_bs,
+            amount_usd: selectedGoal.amount_usd,
+            amount_eur: selectedGoal.amount_eur,
+            amount_usdt: selectedGoal.amount_usdt,
+            rate_usd_bs: selectedGoal.rate_usd_bs,
+            rate_eur_bs: selectedGoal.rate_eur_bs,
+            rate_usdt_bs: selectedGoal.rate_usdt_bs,
+          },
+          mainCurrency,
+          rates
+        )
+      : null;
     const remainingInMain = remaining !== null ? convertItemAmountToMainCurrency({ amount: remaining, currency: selectedGoal.currency }, mainCurrency, rates) : null;
 
     const isMember = selectedGoal.is_shared && selectedGoal.my_role === 'member';
@@ -1753,7 +1709,17 @@ export const SavingGoals: React.FC<SavingGoalsProps> = ({ onBack }) => {
             let secondaryAmount = '';
             if (hasTarget) {
               const targetInMain = convertItemAmountToMainCurrency(
-                { amount: target, currency: goal.currency },
+                {
+                  amount: target,
+                  currency: goal.currency,
+                  amount_bs: goal.amount_bs,
+                  amount_usd: goal.amount_usd,
+                  amount_eur: goal.amount_eur,
+                  amount_usdt: goal.amount_usdt,
+                  rate_usd_bs: goal.rate_usd_bs,
+                  rate_eur_bs: goal.rate_eur_bs,
+                  rate_usdt_bs: goal.rate_usdt_bs,
+                },
                 mainCurrency,
                 rates
               );

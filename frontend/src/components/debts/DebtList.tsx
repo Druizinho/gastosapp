@@ -55,8 +55,8 @@ import {
   formatListCardAmounts,
   formatCurrencyAmount,
   convertItemAmountToMainCurrency,
-  isSameCurrency,
-  toNumeric
+  convertItemAmountToTargetCurrency,
+  isSameCurrency
 } from '../../utils/currencyFormat';
 import { colorWithOpacity } from '../../utils/toolColors';
 import { PageHeader } from '../ui/PageHeader';
@@ -351,43 +351,7 @@ const DebtList: React.FC<DebtListProps> = ({ type: propType, onBack }) => {
   };
 
   const getPaymentAmountInDebtCurrency = (pay: DebtPayment, debtCurrency: string) => {
-    if (pay.currency === debtCurrency) return Number(pay.amount);
-    if (debtCurrency === 'BS' && pay.amount_bs != null) return Number(pay.amount_bs);
-    if (debtCurrency === 'USD_BCV' && pay.amount_usd != null) return Number(pay.amount_usd);
-    if (debtCurrency === 'EUR_BCV') {
-      if (pay.amount_eur != null) return Number(pay.amount_eur);
-      if (pay.amount_bs != null && toNumeric(pay.rate_eur_bs) > 0) {
-        return Number(pay.amount_bs) / toNumeric(pay.rate_eur_bs);
-      }
-      if (pay.amount_usd != null) return Number(pay.amount_usd);
-    }
-    if (debtCurrency === 'USDT') {
-      if (pay.amount_usdt != null) return Number(pay.amount_usdt);
-      if (pay.amount_bs != null && toNumeric(pay.rate_usdt_bs) > 0) {
-        return Number(pay.amount_bs) / toNumeric(pay.rate_usdt_bs);
-      }
-      if (pay.amount_usd != null) return Number(pay.amount_usd);
-    }
-    if (debtCurrency === 'USD_CASH') {
-      if (pay.amount_bs != null && Number(pay.amount_bs) > 0) {
-        const histRates = [toNumeric(pay.rate_usd_bs), toNumeric(pay.rate_eur_bs), toNumeric(pay.rate_usdt_bs)].filter(r => r > 0);
-        if (histRates.length > 0) {
-          return Number(pay.amount_bs) / Math.max(...histRates);
-        }
-      }
-      if (pay.amount_usd != null) return Number(pay.amount_usd);
-      const payInBs = pay.amount_bs != null && !isNaN(Number(pay.amount_bs))
-        ? Number(pay.amount_bs)
-        : convertItemAmountToMainCurrency({ amount: Number(pay.amount), currency: pay.currency }, 'BS', rates);
-      const rUsd = toNumeric(rates?.usd_bs);
-      const rEur = toNumeric(rates?.eur_bs);
-      const rUsdt = toNumeric(rates?.usdt_bs);
-      const cashRate = Math.max(rUsd, rEur, rUsdt) || (rUsd > 0 ? rUsd : 1);
-      return cashRate > 0 ? payInBs / cashRate : 0;
-    }
-    const payInBs = convertItemAmountToMainCurrency({ amount: Number(pay.amount), currency: pay.currency, amount_bs: pay.amount_bs, rate_usd_bs: pay.rate_usd_bs, rate_eur_bs: pay.rate_eur_bs, rate_usdt_bs: pay.rate_usdt_bs }, 'BS', rates);
-    const debtOneUnitInBs = convertItemAmountToMainCurrency({ amount: 1, currency: debtCurrency }, 'BS', rates);
-    return debtOneUnitInBs > 0 ? payInBs / debtOneUnitInBs : 0;
+    return convertItemAmountToTargetCurrency(pay, debtCurrency, rates);
   };
 
   const calculatePaid = (debt: Debt) =>

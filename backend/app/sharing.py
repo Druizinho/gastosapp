@@ -500,8 +500,13 @@ def sum_children_in_currency(children: List[Any], target_currency: str, amount_a
         val = Decimal("0")
         if ch_cur == target_currency:
             val = Decimal(str(raw_val))
-        elif target_currency == "USD_BCV" and getattr(ch, "amount_usd", None) is not None:
-            val = Decimal(str(ch.amount_usd))
+        elif target_currency == "USD_BCV":
+            if getattr(ch, "amount_usd", None) is not None:
+                val = Decimal(str(ch.amount_usd))
+            elif getattr(ch, "amount_bs", None) is not None and getattr(ch, "rate_usd_bs", None) and Decimal(str(ch.rate_usd_bs)) > 0:
+                val = Decimal(str(ch.amount_bs)) / Decimal(str(ch.rate_usd_bs))
+            else:
+                val = Decimal(str(raw_val))
         elif target_currency == "USD_CASH":
             # Si el pago es en USD_CASH, ya hizo match arriba (1:1).
             # Para pagos en otra moneda (BS, EUR, etc.), convertir usando la tasa efectivo de referencia
@@ -524,10 +529,24 @@ def sum_children_in_currency(children: List[Any], target_currency: str, amount_a
                 val = Decimal(str(raw_val))
         elif target_currency == "BS" and getattr(ch, "amount_bs", None) is not None:
             val = Decimal(str(ch.amount_bs))
-        elif target_currency == "EUR_BCV" and getattr(ch, "amount_eur", None) is not None:
-            val = Decimal(str(ch.amount_eur))
-        elif target_currency == "USDT" and getattr(ch, "amount_usdt", None) is not None:
-            val = Decimal(str(ch.amount_usdt))
+        elif target_currency == "EUR_BCV":
+            if getattr(ch, "amount_eur", None) is not None:
+                val = Decimal(str(ch.amount_eur))
+            elif getattr(ch, "amount_bs", None) is not None and getattr(ch, "rate_eur_bs", None) and Decimal(str(ch.rate_eur_bs)) > 0:
+                val = Decimal(str(ch.amount_bs)) / Decimal(str(ch.rate_eur_bs))
+            elif getattr(ch, "amount_usd", None) is not None:
+                val = Decimal(str(ch.amount_usd))
+            else:
+                val = Decimal(str(raw_val))
+        elif target_currency == "USDT":
+            if getattr(ch, "amount_usdt", None) is not None:
+                val = Decimal(str(ch.amount_usdt))
+            elif getattr(ch, "amount_bs", None) is not None and getattr(ch, "rate_usdt_bs", None) and Decimal(str(ch.rate_usdt_bs)) > 0:
+                val = Decimal(str(ch.amount_bs)) / Decimal(str(ch.rate_usdt_bs))
+            elif getattr(ch, "amount_usd", None) is not None:
+                val = Decimal(str(ch.amount_usd))
+            else:
+                val = Decimal(str(raw_val))
         else:
             val = Decimal(str(raw_val))
 

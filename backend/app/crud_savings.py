@@ -118,13 +118,16 @@ async def create_saving_goal(
             entity_id=db_goal.id,
         )
 
+        goal_id = db_goal.id
         await db.commit()
-        return await get_saving_goal(db, db_goal.id, user_id)
+        return await get_saving_goal(db, goal_id, user_id)
     else:
         db_goal = models.SavingGoal(**data, user_id=user_id)
         db.add(db_goal)
+        await db.flush()
+        goal_id = db_goal.id
         await db.commit()
-        return await get_saving_goal(db, db_goal.id, user_id)
+        return await get_saving_goal(db, goal_id, user_id)
 
 
 async def update_saving_goal(
@@ -144,17 +147,23 @@ async def update_saving_goal(
     update_data.pop('shared_with', None)
     manual_rate = update_data.pop('manual_rate', None)
 
-    if extra_data is None and ('target_amount' in update_data or 'currency' in update_data):
+    if extra_data is None and ('target_amount' in update_data or 'currency' in update_data or manual_rate is not None):
         new_target = update_data.get('target_amount', db_goal.target_amount)
         if new_target is not None:
             raw_curr = update_data.get('currency', db_goal.currency)
             new_curr = raw_curr.value if hasattr(raw_curr, "value") else str(raw_curr)
-            rates = await bcv_service.get_all_rates()
+            existing_date = db_goal.created_at.date() if getattr(db_goal, "created_at", None) else None
+            rates = await bcv_service.resolve_rates_for_update(
+                db_goal, target_date=existing_date, existing_date=existing_date, db=db
+            )
+            eff_manual = bcv_service.resolve_manual_rate_for_update(
+                db_goal, new_curr, manual_rate, date_changed=False
+            )
             extra_data = bcv_service.convert_amount(
                 amount=new_target,
                 currency=new_curr,
                 rates=rates,
-                manual_rate=manual_rate
+                manual_rate=eff_manual
             )
         else:
             extra_data = {
@@ -757,13 +766,14 @@ async def delete_saving_deposit(db: AsyncSession, deposit_id: UUID, user_id: UUI
             if exp_obj:
                 await db.delete(exp_obj)
 
-        if deposit.goal and hasattr(deposit.goal, 'deposits') and deposit in deposit.goal.deposits:
-            deposit.goal.deposits.remove(deposit)
+        loaded_goal = deposit.__dict__.get("goal")
+        if loaded_goal and "deposits" in loaded_goal.__dict__ and deposit in loaded_goal.deposits:
+            loaded_goal.deposits.remove(deposit)
         else:
             await db.delete(deposit)
         await db.flush()
-        if deposit.goal:
-            db.expire(deposit.goal, ['deposits'])
+        if loaded_goal:
+            db.expire(loaded_goal, ['deposits'])
 
         await sharing.recompute_settlement(db, "saving_goal", [goal_id])
 
@@ -789,13 +799,14 @@ async def delete_saving_deposit(db: AsyncSession, deposit_id: UUID, user_id: UUI
             if exp_obj:
                 await db.delete(exp_obj)
 
-        if deposit.goal and hasattr(deposit.goal, 'deposits') and deposit in deposit.goal.deposits:
-            deposit.goal.deposits.remove(deposit)
+        loaded_goal = deposit.__dict__.get("goal")
+        if loaded_goal and "deposits" in loaded_goal.__dict__ and deposit in loaded_goal.deposits:
+            loaded_goal.deposits.remove(deposit)
         else:
             await db.delete(deposit)
         await db.flush()
-        if deposit.goal:
-            db.expire(deposit.goal, ['deposits'])
+        if loaded_goal:
+            db.expire(loaded_goal, ['deposits'])
         await sharing.recompute_settlement(db, "saving_goal", [goal_id])
 
     had_expense = linked_expense_id is not None
@@ -805,8 +816,6 @@ async def delete_saving_deposit(db: AsyncSession, deposit_id: UUID, user_id: UUI
     _exp = db.expire_all()
     if hasattr(_exp, "__await__"):
         await _exp
-    if deposit.goal:
-        db.expire(deposit.goal, ['deposits'])
     if had_expense:
         await check_and_notify_budget_thresholds(db, user_id, dep_date, allow_notify=False)
     return await get_saving_goal(db, goal_id, user_id)

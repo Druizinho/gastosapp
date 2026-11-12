@@ -4,7 +4,7 @@ import { CURRENCY_OPTIONS } from '../../types';
 import { getRates, getConnections } from '../../api';
 import { Users } from 'lucide-react';
 import { ParticipantPicker } from '../panas/ParticipantPicker';
-import { CategorySelect, ExchangeRateField } from '../common';
+import { CategorySelect, ExchangeRateField, getInitialManualRate, resolveSubmittedManualRate } from '../common';
 import { ToastContext } from '../ui/Toast';
 
 interface FixedExpenseFormProps {
@@ -25,7 +25,7 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
   const [category, setCategory] = useState<string>(initialData?.category ?? (!initialData ? 'Gastos Fijos' : ''));
   const [paymentDay, setPaymentDay] = useState<string>(initialData?.payment_day?.toString() || '');
   const [notes, setNotes] = useState<string>(initialData?.notes || '');
-  const [manualRate, setManualRate] = useState<string>('');
+  const [manualRate, setManualRate] = useState<string>(() => getInitialManualRate(initialData));
 
   const [connections, setConnections] = useState<Connection[]>([]);
   const [isSharedChecked, setIsSharedChecked] = useState(() => Boolean(initialData?.is_shared));
@@ -56,16 +56,7 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
         (initialData.shared_members || []).filter(m => m.role === 'admin').map(m => String(m.user_id))
       );
 
-      // Cargar la tasa histórica solo para divisas estándar (no inicializar rate_usd_bs para USD_CASH)
-      if (initialData.currency === 'EUR_BCV' && initialData.rate_eur_bs) {
-        setManualRate(initialData.rate_eur_bs.toString());
-      } else if (initialData.currency === 'USDT' && initialData.rate_usdt_bs) {
-        setManualRate(initialData.rate_usdt_bs.toString());
-      } else if (initialData.currency === 'USD_BCV' && initialData.rate_usd_bs) {
-        setManualRate(initialData.rate_usd_bs.toString());
-      } else {
-        setManualRate('');
-      }
+      setManualRate(getInitialManualRate(initialData));
     }
   }, [initialData]);
 
@@ -114,7 +105,7 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
         category: category || undefined,
         payment_day: paymentDay ? parseInt(paymentDay) : null,
         notes: notes || undefined,
-        manual_rate: manualRate ? parseFloat(manualRate.replace(',', '.')) : undefined,
+        manual_rate: resolveSubmittedManualRate({ manualRate, initialData, currency, rates }),
       };
 
       if (!isReadOnlyMember) {
@@ -232,7 +223,14 @@ const FixedExpenseForm: React.FC<FixedExpenseFormProps> = ({ initialData, onSubm
             </div>
             <div className="form-group half">
               <label>Moneda</label>
-              <select value={currency} onChange={(e) => setCurrency(e.target.value as CurrencyType)} required>
+              <select
+                value={currency}
+                onChange={(e) => {
+                  setCurrency(e.target.value as CurrencyType);
+                  setManualRate('');
+                }}
+                required
+              >
                 {CURRENCY_OPTIONS.map(opt => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
                 ))}

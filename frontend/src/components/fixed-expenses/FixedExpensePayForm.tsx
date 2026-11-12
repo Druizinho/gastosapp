@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext } from 'react';
 import type { FixedExpense, FixedExpenseCheckCreate, CurrencyType, ExchangeRates } from '../../types';
 import { CURRENCY_OPTIONS } from '../../types';
 import { getRates } from '../../api';
-import { CategorySelect, ExchangeRateField, resolveRateForCurrency } from '../common';
+import { CategorySelect, ExchangeRateField, computeCrossCurrencyEquivalent } from '../common';
 import { Receipt, Users } from 'lucide-react';
 import { ToastContext } from '../ui/Toast';
 
@@ -105,19 +105,18 @@ const FixedExpensePayForm: React.FC<FixedExpensePayFormProps> = ({
   })();
 
   const parsedAmount = parseFloat(paidAmount.replace(',', '.'));
-  const currentAmount = !isNaN(parsedAmount) ? parsedAmount : 0;
+  const numericAmount = !isNaN(parsedAmount) ? parsedAmount : 0;
+  const currentAmount = numericAmount;
   const isSameCurrency = currency === activeExpense.currency;
-  const suggestedRate = resolveRateForCurrency(currency, rates);
-  const manualRateNum = manualRate ? parseFloat(manualRate.replace(',', '.')) : 0;
-  const effectiveRate = manualRateNum > 0 ? manualRateNum : (suggestedRate ? Number(suggestedRate) : 0);
-  const amountInBs = currency === 'BS' ? currentAmount : (effectiveRate > 0 ? currentAmount * effectiveRate : 0);
-  const targetCurrencyRate = resolveRateForCurrency(activeExpense.currency, rates);
-  const targetRate = targetCurrencyRate ? Number(targetCurrencyRate) : 0;
-  const convertedEquivalent = isSameCurrency
-    ? currentAmount
-    : activeExpense.currency === 'BS'
-      ? (amountInBs > 0 ? amountInBs : null)
-      : (targetRate > 0 && amountInBs > 0 ? amountInBs / targetRate : null);
+  const effectiveRates = rates;
+  const { amountInBs, convertedEquivalent } = computeCrossCurrencyEquivalent({
+    amount: numericAmount,
+    fromCurrency: currency,
+    targetCurrency: (expense || activeExpense).currency,
+    rates: effectiveRates,
+    manualRate,
+  });
+  void amountInBs;
 
   return (
     <div
@@ -184,7 +183,14 @@ const FixedExpensePayForm: React.FC<FixedExpensePayFormProps> = ({
             </div>
             <div className="form-group half">
               <label>Moneda</label>
-              <select value={currency} onChange={(e) => setCurrency(e.target.value as CurrencyType)} required>
+              <select
+                value={currency}
+                onChange={(e) => {
+                  setCurrency(e.target.value as CurrencyType);
+                  setManualRate('');
+                }}
+                required
+              >
                 {CURRENCY_OPTIONS.map(opt => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
                 ))}
@@ -231,7 +237,10 @@ const FixedExpensePayForm: React.FC<FixedExpensePayFormProps> = ({
             <input
               type="date"
               value={paidDate}
-              onChange={(e) => setPaidDate(e.target.value)}
+              onChange={(e) => {
+                setPaidDate(e.target.value);
+                setManualRate('');
+              }}
               required
             />
           </div>

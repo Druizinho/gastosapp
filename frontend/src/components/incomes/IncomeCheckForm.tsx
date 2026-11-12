@@ -3,8 +3,9 @@ import React, { useState, useEffect, useContext } from 'react';
 import { checkIncome, getRates } from '../../api';
 import type { EstimatedIncome, IncomeCheckCreate, CurrencyType, ExchangeRates } from '../../types';
 import { CURRENCY_OPTIONS } from '../../types';
-import { ExchangeRateField, resolveRateForCurrency } from '../common';
+import { ExchangeRateField, computeCrossCurrencyEquivalent } from '../common';
 import { ToastContext } from '../ui/Toast';
+import { convertItemAmountToTargetCurrency } from '../../utils/currencyFormat';
 
 interface IncomeCheckFormProps {
   income: EstimatedIncome;
@@ -20,17 +21,37 @@ const getLocalToday = () => {
 
 const IncomeCheckForm: React.FC<IncomeCheckFormProps> = ({ income, monthYear, onClose, onSaved }) => {
   const toast = useContext(ToastContext);
+  const [rates, setRates] = useState<ExchangeRates | null>(null);
+  const effectiveRates = rates;
+
   const isPreviouslyPartial = Boolean(income.checks?.[0]?.is_partial);
+  const alreadyPaid = (isPreviouslyPartial && income.checks?.[0])
+    ? convertItemAmountToTargetCurrency(
+        {
+          amount: income.checks[0].real_amount,
+          currency: income.checks[0].currency,
+          amount_bs: (income.checks[0] as any).amount_bs,
+          amount_usd: (income.checks[0] as any).amount_usd,
+          amount_eur: (income.checks[0] as any).amount_eur,
+          amount_usdt: (income.checks[0] as any).amount_usdt,
+          rate_usd_bs: (income.checks[0] as any).rate_usd_bs,
+          rate_eur_bs: (income.checks[0] as any).rate_eur_bs,
+          rate_usdt_bs: (income.checks[0] as any).rate_usdt_bs,
+        },
+        income.currency,
+        effectiveRates
+      )
+    : 0;
+
   const remainingAmount = isPreviouslyPartial
-    ? Math.max(Number(income.expected_amount) - Number(income.checks![0].real_amount), 0).toString()
-    : income.expected_amount.toString();
+    ? Number(Math.max(Number(income.expected_amount) - alreadyPaid, 0).toFixed(2)).toString()
+    : Number(Number(income.expected_amount).toFixed(2)).toString();
 
   const [isPartial, setIsPartial] = useState(false);
   const [realAmount, setRealAmount] = useState(remainingAmount);
   const [currency, setCurrency] = useState<CurrencyType>(income.currency);
   const [paymentDate, setPaymentDate] = useState<string>(getLocalToday());
   const [manualRate, setManualRate] = useState<string>('');
-  const [rates, setRates] = useState<ExchangeRates | null>(null);
   const [pendingDate, setPendingDate] = useState('');
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -41,17 +62,15 @@ const IncomeCheckForm: React.FC<IncomeCheckFormProps> = ({ income, monthYear, on
   }, [paymentDate]);
 
   useEffect(() => {
-    if (!isPartial) {
-      const defaultAmount = income.checks?.[0]?.is_partial
-        ? Math.max(Number(income.expected_amount) - Number(income.checks[0].real_amount), 0).toString()
-        : income.expected_amount.toString();
-      setRealAmount(defaultAmount);
-      setCurrency(income.currency);
-    } else if (income.checks?.[0]?.is_partial) {
-      const remaining = Math.max(Number(income.expected_amount) - Number(income.checks[0].real_amount), 0).toString();
-      setRealAmount(remaining);
-    }
-  }, [isPartial, income]);
+    setCurrency(income.currency);
+  }, [income]);
+
+  useEffect(() => {
+    const remaining = isPreviouslyPartial
+      ? Number(Math.max(Number(income.expected_amount) - alreadyPaid, 0).toFixed(2)).toString()
+      : Number(Number(income.expected_amount).toFixed(2)).toString();
+    setRealAmount(remaining);
+  }, [isPartial, income, isPreviouslyPartial]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -97,17 +116,14 @@ const IncomeCheckForm: React.FC<IncomeCheckFormProps> = ({ income, monthYear, on
   const parsedAmount = parseFloat(receivedAmount.replace(',', '.'));
   const currentAmount = !isNaN(parsedAmount) ? parsedAmount : 0;
   const isSameCurrency = currency === income.currency;
-  const suggestedRate = resolveRateForCurrency(currency, rates);
-  const manualRateNum = manualRate ? parseFloat(manualRate.replace(',', '.')) : 0;
-  const effectiveRate = manualRateNum > 0 ? manualRateNum : (suggestedRate ? Number(suggestedRate) : 0);
-  const amountInBs = currency === 'BS' ? currentAmount : (effectiveRate > 0 ? currentAmount * effectiveRate : 0);
-  const targetCurrencyRate = resolveRateForCurrency(income.currency, rates);
-  const targetRate = targetCurrencyRate ? Number(targetCurrencyRate) : 0;
-  const convertedEquivalent = isSameCurrency
-    ? currentAmount
-    : income.currency === 'BS'
-      ? (amountInBs > 0 ? amountInBs : null)
-      : (targetRate > 0 && amountInBs > 0 ? amountInBs / targetRate : null);
+
+  const { convertedEquivalent } = computeCrossCurrencyEquivalent({
+    amount: currentAmount,
+    fromCurrency: currency,
+    targetCurrency: income.currency,
+    rates: effectiveRates,
+    manualRate,
+  });
 
   return (
     <div
@@ -174,7 +190,10 @@ const IncomeCheckForm: React.FC<IncomeCheckFormProps> = ({ income, monthYear, on
               <label>Moneda</label>
               <select
                 value={currency}
-                onChange={(e) => setCurrency(e.target.value as CurrencyType)}
+                onChange={(e) => {
+                  setCurrency(e.target.value as CurrencyType);
+                  setManualRate('');
+                }}
                 required
               >
                 {CURRENCY_OPTIONS.map(opt => (
@@ -224,7 +243,10 @@ const IncomeCheckForm: React.FC<IncomeCheckFormProps> = ({ income, monthYear, on
             <input
               type="date"
               value={paymentDate}
-              onChange={(e) => setPaymentDate(e.target.value)}
+              onChange={(e) => {
+                setPaymentDate(e.target.value);
+                setManualRate('');
+              }}
               required
             />
           </div>

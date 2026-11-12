@@ -66,31 +66,8 @@ async def update_saving_goal(
     db: AsyncSession = Depends(get_db),
     user_id: UUID = Depends(get_current_user)
 ):
-    extra_data = None
-    update_dict = goal.model_dump(exclude_unset=True)
-    if 'target_amount' in update_dict or 'currency' in update_dict:
-        if goal.target_amount is not None and goal.currency is not None:
-            rates = await bcv_service.get_all_rates()
-            curr = goal.currency.value if hasattr(goal.currency, "value") else str(goal.currency)
-            extra_data = bcv_service.convert_amount(
-                amount=goal.target_amount,
-                currency=curr,
-                rates=rates,
-                manual_rate=goal.manual_rate
-            )
-        elif 'target_amount' in update_dict and goal.target_amount is None:
-            extra_data = {
-                "amount_usd": None,
-                "amount_bs": None,
-                "amount_eur": None,
-                "amount_usdt": None,
-                "rate_usd_bs": None,
-                "rate_eur_bs": None,
-                "rate_usdt_bs": None,
-            }
-
     db_goal = await crud_savings.update_saving_goal(
-        db, goal_id=goal_id, goal=goal, user_id=user_id, extra_data=extra_data
+        db, goal_id=goal_id, goal=goal, user_id=user_id, extra_data=None
     )
     if not db_goal:
         raise HTTPException(status_code=404, detail="Meta de ahorro no encontrada")

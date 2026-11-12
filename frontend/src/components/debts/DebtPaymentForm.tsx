@@ -3,9 +3,14 @@ import { Users, Receipt } from 'lucide-react';
 import type { DebtPayment, DebtPaymentCreate, DebtPaymentUpdate, ExchangeRates, DebtTransactionType, CurrencyType } from '../../types';
 import { CURRENCY_OPTIONS } from '../../types';
 import { getRates } from '../../api';
-import { formatRateForInput } from '../../utils/currencyFormat';
 import ConfirmModal from '../ui/ConfirmModal';
-import { CategorySelect, ExchangeRateField, resolveRateForCurrency } from '../common';
+import {
+  CategorySelect,
+  ExchangeRateField,
+  getInitialManualRate,
+  resolveSubmittedManualRate,
+  computeCrossCurrencyEquivalent,
+} from '../common';
 import { ToastContext } from '../ui/Toast';
 
 const getLocalToday = () => {
@@ -79,7 +84,7 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
     transaction_type: defaultTxType,
   });
   const [rates, setRates] = useState<ExchangeRates | null>(null);
-  const [manualRate, setManualRate] = useState<string>('');
+  const [manualRate, setManualRate] = useState<string>(() => getInitialManualRate(initialData));
   const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -98,17 +103,7 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
         transaction_type: (initialData.transaction_type || initialTransactionType || 'payment') as DebtTransactionType,
       });
 
-      if (initialData.currency === 'EUR_BCV' && initialData.rate_eur_bs) {
-        setManualRate(formatRateForInput(initialData.rate_eur_bs));
-      } else if (initialData.currency === 'USDT' && initialData.rate_usdt_bs) {
-        setManualRate(formatRateForInput(initialData.rate_usdt_bs));
-      } else if ((initialData.currency === 'USD_BCV' || initialData.currency === 'BS') && initialData.rate_usd_bs) {
-        setManualRate(formatRateForInput(initialData.rate_usd_bs));
-      } else if (initialData.currency === 'USD_CASH' && initialData.amount && initialData.amount_bs) {
-        setManualRate(formatRateForInput(Number(initialData.amount_bs) / Number(initialData.amount)));
-      } else {
-        setManualRate('');
-      }
+      setManualRate(getInitialManualRate(initialData));
     } else {
       setAmount('');
       setManualRate('');
@@ -123,35 +118,29 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
       .catch((err) => console.error('Failed to load exchange rates', err));
   }, [formData.payment_date]);
 
-  const suggestedRate = resolveRateForCurrency(formData.currency, rates);
-
   // Decimal parsing and cross-currency conversion
   const parsedAmount = parseFloat(amount.replace(',', '.'));
   const currentAmount = !isNaN(parsedAmount) ? parsedAmount : 0;
   const isSameCurrency = formData.currency === debtCurrency;
   const isOverpaying = !isEditing && !isIncrease && isSameCurrency && currentAmount > remaining && remaining > 0;
 
-  const manualRateNum = manualRate ? parseFloat(manualRate.replace(',', '.')) : 0;
-  const effectiveRate = manualRateNum > 0 ? manualRateNum : (suggestedRate ? Number(suggestedRate) : 0);
-
-  const amountInBs = formData.currency === 'BS'
-    ? currentAmount
-    : (effectiveRate > 0 ? currentAmount * effectiveRate : 0);
-
-  let convertedEquivalent: number | null = null;
-  if (debtCurrency === 'BS') {
-    convertedEquivalent = amountInBs > 0 ? amountInBs : null;
-  } else {
-    const debtRate = resolveRateForCurrency(debtCurrency, rates);
-    if (debtRate && Number(debtRate) > 0 && amountInBs > 0) {
-      convertedEquivalent = amountInBs / Number(debtRate);
-    }
-  }
+  const effectiveRates = rates;
+  const { amountInBs, convertedEquivalent } = computeCrossCurrencyEquivalent({
+    amount: currentAmount,
+    fromCurrency: formData.currency || 'USD_BCV',
+    targetCurrency: debtCurrency,
+    rates: effectiveRates,
+    manualRate,
+  });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target as HTMLInputElement;
     const checked = (e.target as HTMLInputElement).checked;
     setError(null);
+
+    if (name === 'currency' || name === 'payment_date') {
+      setManualRate('');
+    }
 
     setFormData(prev => ({
       ...prev,
@@ -171,7 +160,15 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
       return;
     }
 
-    const parsedRate = manualRate ? parseFloat(manualRate.replace(',', '.')) : undefined;
+    const effectiveRates = rates;
+    const parsedRate = resolveSubmittedManualRate({
+      manualRate,
+      initialData,
+      currency: formData.currency || 'USD_BCV',
+      date: formData.payment_date,
+      initialDate: initialData?.payment_date,
+      rates: effectiveRates,
+    });
 
     const submitData: DebtPaymentCreate = {
       ...formData,
@@ -179,7 +176,7 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
       transaction_type: formData.transaction_type,
       register_as_expense: isIncrease ? false : Boolean(formData.register_as_expense),
       category: (!isIncrease && formData.register_as_expense) ? (formData.category || debtCategory || defaultCatFallback) : null,
-      manual_rate: parsedRate && !isNaN(parsedRate) && parsedRate > 0 ? parsedRate : undefined,
+      manual_rate: parsedRate,
     };
     
     if (!isEditing && !isIncrease && isSameCurrency && submitData.amount > remaining) {
@@ -202,7 +199,15 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
     setError(null);
 
     const parsed = parseFloat(amount.replace(',', '.'));
-    const parsedRate = manualRate ? parseFloat(manualRate.replace(',', '.')) : undefined;
+    const effectiveRates = rates;
+    const parsedRate = resolveSubmittedManualRate({
+      manualRate,
+      initialData,
+      currency: formData.currency || 'USD_BCV',
+      date: formData.payment_date,
+      initialDate: initialData?.payment_date,
+      rates: effectiveRates,
+    });
 
     const submitData: DebtPaymentCreate = {
       ...formData,
@@ -210,7 +215,7 @@ const DebtPaymentForm: React.FC<DebtPaymentFormProps> = ({
       transaction_type: formData.transaction_type,
       register_as_expense: isIncrease ? false : Boolean(formData.register_as_expense),
       category: (!isIncrease && formData.register_as_expense) ? (formData.category || debtCategory || defaultCatFallback) : null,
-      manual_rate: parsedRate && !isNaN(parsedRate) && parsedRate > 0 ? parsedRate : undefined,
+      manual_rate: parsedRate,
     };
 
     try {

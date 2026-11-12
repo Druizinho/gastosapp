@@ -155,6 +155,61 @@ class TestSavingsAndDebtsSorting(unittest.IsolatedAsyncioTestCase):
             mock_recompute.assert_awaited_once_with(db, "saving_goal", [expected_goal_id])
             mock_get_goal.assert_awaited_once_with(db, expected_goal_id, user_id)
 
+    async def test_delete_saving_deposit_does_not_lazy_load_or_access_goal_after_expire_all(self):
+        """
+        delete_saving_deposit should succeed when deposit has no goal in __dict__
+        and when accessing deposit.goal property raises RuntimeError("MissingGreenlet").
+        """
+        user_id = uuid.uuid4()
+        deposit_id = uuid.uuid4()
+        expected_goal_id = uuid.uuid4()
+
+        class MockDeposit:
+            def __init__(self, goal_id):
+                self.id = deposit_id
+                self.goal_id = goal_id
+                self.amount = Decimal("50.00")
+                self.currency = "USD"
+                self.expense_id = None
+                self.paid_by_user_id = user_id
+                self.deposit_date = date.today()
+
+            @property
+            def goal(self):
+                raise RuntimeError("MissingGreenlet")
+
+        mock_deposit = MockDeposit(expected_goal_id)
+
+        db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.first.return_value = mock_deposit
+        db.execute = AsyncMock(return_value=mock_result)
+        db.expire_all = MagicMock()
+        db.commit = AsyncMock()
+        db.flush = AsyncMock()
+        db.delete = AsyncMock()
+        db.expire = MagicMock()
+
+        with patch("app.sharing.get_membership", new_callable=AsyncMock) as mock_get_membership, \
+             patch("app.sharing.recompute_settlement", new_callable=AsyncMock) as mock_recompute, \
+             patch("app.crud_savings.get_saving_goal", new_callable=AsyncMock) as mock_get_goal:
+
+            mock_get_membership.return_value = None
+            fake_goal = models.SavingGoal(id=expected_goal_id, user_id=user_id, name="Test Goal")
+            mock_get_goal.return_value = fake_goal
+
+            res = await crud_savings.delete_saving_deposit(
+                db=db,
+                deposit_id=deposit_id,
+                user_id=user_id
+            )
+
+            self.assertEqual(res, fake_goal)
+            db.delete.assert_awaited_once_with(mock_deposit)
+            mock_recompute.assert_awaited_once_with(db, "saving_goal", [expected_goal_id])
+            mock_get_goal.assert_awaited_once_with(db, expected_goal_id, user_id)
+
+
 
 if __name__ == "__main__":
     unittest.main()

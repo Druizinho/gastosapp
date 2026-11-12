@@ -25,6 +25,7 @@ async def create_fixed_expense(db: AsyncSession, expense: schemas.FixedExpenseCr
     db_expense = models.FixedExpense(**data, user_id=user_id)
     db.add(db_expense)
     await db.flush()
+    expense_id = db_expense.id
 
     if shared_with_ids:
         await sharing.assert_can_add(db, user_id, shared_with_ids)
@@ -59,8 +60,7 @@ async def create_fixed_expense(db: AsyncSession, expense: schemas.FixedExpenseCr
     _exp = db.expire_all()
     if hasattr(_exp, "__await__"):
         await _exp
-    await db.refresh(db_expense)
-    return await get_fixed_expense(db, db_expense.id, user_id)
+    return await get_fixed_expense(db, expense_id, user_id)
 
 
 async def get_fixed_expenses(db: AsyncSession, user_id: UUID, active_only: bool = False):
@@ -409,9 +409,6 @@ async def check_fixed_expense(
         )
 
     await db.commit()
-    _exp = db.expire_all()
-    if hasattr(_exp, "__await__"):
-        await _exp
     await db.refresh(db_check)
     return db_check
 
@@ -488,9 +485,6 @@ async def update_fixed_expense_check(
                     setattr(linked_exp, key, update_dict[key])
 
     await db.commit()
-    _exp = db.expire_all()
-    if hasattr(_exp, "__await__"):
-        await _exp
     await db.refresh(check)
     return check
 

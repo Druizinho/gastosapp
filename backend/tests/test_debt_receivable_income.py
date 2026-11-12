@@ -31,6 +31,27 @@ if str(backend_dir) not in sys.path:
 from app import models, schemas, crud_debts
 
 
+class ExpiringModelProxy:
+    def __init__(self, target, expired_attrs=("type", "debt_id", "payment_date")):
+        object.__setattr__(self, "_target", target)
+        object.__setattr__(self, "_is_expired", False)
+        object.__setattr__(self, "_expired_attrs", set(expired_attrs))
+
+    def expire(self):
+        object.__setattr__(self, "_is_expired", True)
+
+    def __getattr__(self, name):
+        if object.__getattribute__(self, "_is_expired") and name in object.__getattribute__(self, "_expired_attrs"):
+            raise RuntimeError(f"MissingGreenlet: expired attribute '{name}' accessed after expire_all()")
+        return getattr(object.__getattribute__(self, "_target"), name)
+
+    def __setattr__(self, name, value):
+        if name in ("_target", "_is_expired", "_expired_attrs"):
+            object.__setattr__(self, name, value)
+        else:
+            setattr(object.__getattribute__(self, "_target"), name, value)
+
+
 class TestDebtReceivableIncome(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.user_id = uuid.uuid4()
@@ -240,6 +261,196 @@ class TestDebtReceivableIncome(unittest.IsolatedAsyncioTestCase):
             if "delete from incomes" in str(s).lower() or "delete" in str(s).lower() and "incomes" in str(s).lower()
         ]
         self.assertGreater(len(income_delete_stmts), 0, "Must execute delete query on models.Income when income_id exists")
+
+    @patch("app.crud_debts.check_and_notify_budget_thresholds", new_callable=AsyncMock)
+    @patch("app.sharing.recompute_settlement", new_callable=AsyncMock)
+    @patch("app.sharing.get_membership", new_callable=AsyncMock)
+    @patch("app.crud_debts.get_debt", new_callable=AsyncMock)
+    async def test_add_debt_payment_does_not_access_expired_debt_after_expire_all(
+        self, mock_get_debt, mock_get_membership, mock_recompute, mock_check_budget
+    ):
+        mock_get_membership.return_value = None
+
+        for debt_type in ("owed", "receivable"):
+            with self.subTest(debt_type=debt_type):
+                mock_check_budget.reset_mock()
+                raw_debt = models.Debt(
+                    id=self.debt_id,
+                    user_id=self.user_id,
+                    type=debt_type,
+                    counterpart="Carlos",
+                    concept="Préstamo" if debt_type == "receivable" else "Deuda comida",
+                    total_amount=Decimal("100.00"),
+                    currency="USD_BCV",
+                    category="Comida" if debt_type == "owed" else "Otros ingresos",
+                    payments=[],
+                    is_settled=False,
+                )
+                debt_proxy = ExpiringModelProxy(raw_debt, expired_attrs=("type", "debt_id", "payment_date"))
+                mock_get_debt.return_value = debt_proxy
+
+                db = AsyncMock()
+                db.add = MagicMock()
+                db.flush = AsyncMock()
+                db.commit = AsyncMock()
+                db.expire_all = MagicMock(side_effect=lambda: debt_proxy.expire())
+
+                mock_prof_res = MagicMock()
+                mock_prof_res.scalars.return_value.first.return_value = models.Profile(id=self.user_id, display_name="Diego")
+                db.execute = AsyncMock(return_value=mock_prof_res)
+
+                pay_date = date(2026, 11, 5)
+                pay_create = schemas.DebtPaymentCreate(
+                    amount=Decimal("30.00"),
+                    currency="USD_BCV",
+                    register_as_expense=True,
+                    payment_date=pay_date,
+                )
+
+                await crud_debts.add_debt_payment(
+                    db, self.debt_id, self.user_id, pay_create, extra_data={"amount_usd": Decimal("30.00")}
+                )
+
+                if debt_type == "owed":
+                    mock_check_budget.assert_awaited_once_with(
+                        db, self.user_id, pay_date, allow_notify=True
+                    )
+                else:
+                    mock_check_budget.assert_not_called()
+
+    @patch("app.crud_debts.check_and_notify_budget_thresholds", new_callable=AsyncMock)
+    @patch("app.sharing.recompute_settlement", new_callable=AsyncMock)
+    @patch("app.sharing.get_membership", new_callable=AsyncMock)
+    @patch("app.crud_debts.get_debt", new_callable=AsyncMock)
+    async def test_update_debt_payment_does_not_access_expired_objects_after_expire_all(
+        self, mock_get_debt, mock_get_membership, mock_recompute, mock_check_budget
+    ):
+        mock_get_membership.return_value = None
+
+        # 1. Full update with register_as_expense=True on "owed" debt
+        with self.subTest(case="full_update_owed"):
+            mock_check_budget.reset_mock()
+            raw_debt = models.Debt(
+                id=self.debt_id,
+                user_id=self.user_id,
+                type="owed",
+                counterpart="Pedro",
+                concept="Almuerzo",
+                total_amount=Decimal("100.00"),
+                currency="USD_BCV",
+                category="Restaurantes",
+                payments=[],
+                is_settled=False,
+            )
+            raw_payment = models.DebtPayment(
+                id=uuid.uuid4(),
+                debt_id=self.debt_id,
+                amount=Decimal("20.00"),
+                currency="USD_BCV",
+                paid_by_user_id=self.user_id,
+                category="Restaurantes",
+                create_expense=False,
+                expense_id=None,
+                income_id=None,
+                payment_date=date(2026, 11, 3),
+            )
+
+            debt_proxy = ExpiringModelProxy(raw_debt, expired_attrs=("type", "debt_id", "payment_date"))
+            payment_proxy = ExpiringModelProxy(raw_payment, expired_attrs=("type", "debt_id", "payment_date"))
+            mock_get_debt.return_value = debt_proxy
+
+            db = AsyncMock()
+            db.add = MagicMock()
+            db.flush = AsyncMock()
+            db.commit = AsyncMock()
+            db.expire_all = MagicMock(side_effect=lambda: (debt_proxy.expire(), payment_proxy.expire()))
+
+            async def mock_execute(stmt, *args, **kwargs):
+                mock_res = MagicMock()
+                stmt_str = str(stmt).lower()
+                if "debt_payments" in stmt_str and "debts" in stmt_str:
+                    mock_res.first.return_value = (payment_proxy, debt_proxy)
+                elif "expenses" in stmt_str:
+                    mock_res.scalars.return_value.first.return_value = None
+                else:
+                    mock_res.first.return_value = None
+                    mock_res.scalars.return_value.first.return_value = None
+                return mock_res
+
+            db.execute.side_effect = mock_execute
+
+            pay_update = schemas.DebtPaymentUpdate(
+                amount=Decimal("45.00"),
+                register_as_expense=True,
+                payment_date=date(2026, 11, 4),
+            )
+            await crud_debts.update_debt_payment(
+                db, raw_payment.id, self.user_id, pay_update, extra_data={"amount_usd": Decimal("45.00")}
+            )
+
+            mock_check_budget.assert_awaited_once_with(
+                db, self.user_id, date(2026, 11, 4), allow_notify=True
+            )
+            mock_get_debt.assert_awaited_with(db, self.debt_id, self.user_id)
+
+        # 2. Category-only update early return
+        with self.subTest(case="category_only_early_return"):
+            mock_check_budget.reset_mock()
+            mock_get_debt.reset_mock()
+            raw_debt = models.Debt(
+                id=self.debt_id,
+                user_id=self.user_id,
+                type="owed",
+                counterpart="Pedro",
+                concept="Almuerzo",
+                total_amount=Decimal("100.00"),
+                currency="USD_BCV",
+                category="Restaurantes",
+                payments=[],
+                is_settled=False,
+            )
+            raw_payment = models.DebtPayment(
+                id=uuid.uuid4(),
+                debt_id=self.debt_id,
+                amount=Decimal("20.00"),
+                currency="USD_BCV",
+                paid_by_user_id=self.user_id,
+                category="Restaurantes",
+                create_expense=False,
+                expense_id=None,
+                income_id=None,
+                payment_date=date(2026, 11, 3),
+            )
+
+            debt_proxy = ExpiringModelProxy(raw_debt, expired_attrs=("type", "debt_id", "payment_date"))
+            payment_proxy = ExpiringModelProxy(raw_payment, expired_attrs=("type", "debt_id", "payment_date"))
+            mock_get_debt.return_value = debt_proxy
+
+            db = AsyncMock()
+            db.commit = AsyncMock()
+            # Also test expire_all as async / awaitable to ensure hasattr(_exp, "__await__") handles it
+            async def async_expire():
+                debt_proxy.expire()
+                payment_proxy.expire()
+            db.expire_all = MagicMock(side_effect=async_expire)
+
+            async def mock_execute_cat(stmt, *args, **kwargs):
+                mock_res = MagicMock()
+                mock_res.first.return_value = (payment_proxy, debt_proxy)
+                mock_res.scalars.return_value.first.return_value = None
+                return mock_res
+
+            db.execute.side_effect = mock_execute_cat
+
+            pay_update = schemas.DebtPaymentUpdate(
+                category="Comida Rápida"
+            )
+            await crud_debts.update_debt_payment(
+                db, raw_payment.id, self.user_id, pay_update
+            )
+
+            mock_check_budget.assert_not_called()
+            mock_get_debt.assert_awaited_with(db, self.debt_id, self.user_id)
 
 
 if __name__ == "__main__":

@@ -242,6 +242,66 @@ export function convertItemAmountToMainCurrency(
   return amount;
 }
 
+export function convertItemAmountToTargetCurrency(
+  item: CurrencyItemLike,
+  targetCurrency: CurrencyType | string,
+  rates?: ExchangeRates | null
+): number {
+  const normalize = (c: CurrencyType | string): string => {
+    const u = (c || '').toUpperCase();
+    if (u === 'USD') return 'USD_BCV';
+    if (u === 'EUR') return 'EUR_BCV';
+    if (u === 'VES') return 'BS';
+    return u;
+  };
+
+  const normItem = normalize(item?.currency);
+  const normTarget = normalize(targetCurrency);
+
+  if (normItem === normTarget) {
+    return toNumeric(item?.amount);
+  }
+
+  if (normTarget === 'BS') {
+    return convertItemAmountToMainCurrency(item, 'BS', rates);
+  }
+  if (normTarget === 'USD_BCV') {
+    return convertItemAmountToMainCurrency(item, 'USD', rates);
+  }
+  if (normTarget === 'EUR_BCV') {
+    return convertItemAmountToMainCurrency(item, 'EUR', rates);
+  }
+  if (normTarget === 'USDT') {
+    return convertItemAmountToMainCurrency(item, 'USDT', rates);
+  }
+
+  if (normTarget === 'USD_CASH') {
+    if (toNumeric(item?.amount_bs) > 0) {
+      const histRates = [
+        toNumeric(item?.rate_usd_bs),
+        toNumeric(item?.rate_eur_bs),
+        toNumeric(item?.rate_usdt_bs),
+      ].filter((r) => r > 0);
+      if (histRates.length > 0) {
+        return toNumeric(item?.amount_bs) / Math.max(...histRates);
+      }
+    }
+
+    const inBs = convertItemAmountToMainCurrency(item, 'BS', rates);
+    const liveCashRate = Math.max(
+      toNumeric(rates?.usd_bs),
+      toNumeric(rates?.eur_bs),
+      toNumeric(rates?.usdt_bs)
+    );
+    if (liveCashRate > 0) {
+      return inBs / liveCashRate;
+    }
+    return toNumeric(item?.amount_usd) || toNumeric(item?.amount);
+  }
+
+  return toNumeric(item?.amount);
+}
+
 export function formatListCardAmounts(
   item: CurrencyItemLike,
   mainCurrency: MainCurrencyPreference,
@@ -283,6 +343,7 @@ export function getHistoricalRateDisplay(
   item: {
     currency: string;
     amount?: number | string;
+    amount_usd?: number | string | null;
     amount_bs?: number | string | null;
     rate_usd_bs?: number | string | null;
     rate_eur_bs?: number | string | null;
@@ -382,9 +443,18 @@ export function getHistoricalRateDisplay(
       }
     }
 
-    const refUsd = isUsdHistorical
+    let refUsd = isUsdHistorical
       ? usdRate
       : (!hasAnyHistorical && fallbackRates?.usd_bs ? Number(fallbackRates.usd_bs) : null);
+
+    if (amtBs != null && amtBs > 0 && item?.amount_usd != null && Number(item.amount_usd) > 0) {
+      const derivedBcvUsd = amtBs / Number(item.amount_usd);
+      if (derivedBcvUsd > 0 && isFinite(derivedBcvUsd)) {
+        if (usdRate == null || (effRate != null && Math.abs(usdRate - effRate) < 0.01)) {
+          refUsd = derivedBcvUsd;
+        }
+      }
+    }
 
     const rateVal = effRate || 0;
     const label = isHistorical ? 'Tasa Efectivo registrada' : 'Tasa Efectivo';

@@ -13,7 +13,7 @@ import logging
 import csv
 import io
 from datetime import datetime, timezone, date, timedelta
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional, Any
 from contextlib import asynccontextmanager
 from sqlalchemy import select
@@ -363,7 +363,8 @@ def convert_amount(amount: Decimal, currency: str, rates: dict, manual_rate: Dec
             amount_usd = (amount_bs / d_usd) if d_usd > 0 else d_amount
             amount_eur = (amount_bs / d_eur) if d_eur > 0 else None
             amount_usdt = (amount_bs / d_usdt) if d_usdt > 0 else None
-            usd_bs = cash_rate
+            if d_usd <= 0:
+                usd_bs = cash_rate
         else:
             amount_bs = Decimal("0")
             amount_usd = d_amount
@@ -732,12 +733,23 @@ async def resolve_rates_for_update(
 ) -> dict:
     date_changed = (target_date is not None and existing_date is not None and target_date != existing_date)
     if not date_changed and existing_record is not None:
+        rec_curr = getattr(existing_record, "currency", None)
+        rec_curr = rec_curr.value if hasattr(rec_curr, "value") else rec_curr
         r_usd = getattr(existing_record, "rate_usd_bs", None)
         r_eur = getattr(existing_record, "rate_eur_bs", None)
         r_usdt = getattr(existing_record, "rate_usdt_bs", None)
         has_usd = r_usd is not None and Decimal(str(r_usd)) > 0
         has_eur = r_eur is not None and Decimal(str(r_eur)) > 0
         has_usdt = r_usdt is not None and Decimal(str(r_usdt)) > 0
+
+        if rec_curr == "USD_CASH":
+            amt_bs = getattr(existing_record, "amount_bs", None)
+            amt_usd = getattr(existing_record, "amount_usd", None)
+            if amt_bs is not None and Decimal(str(amt_bs)) > 0 and amt_usd is not None and Decimal(str(amt_usd)) > 0:
+                true_usd_bs = (Decimal(str(amt_bs)) / Decimal(str(amt_usd))).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+                if has_usd and abs(Decimal(str(r_usd)) - true_usd_bs) > Decimal("0.01"):
+                    r_usd = true_usd_bs
+
         if has_usd or has_eur or has_usdt:
             return {
                 "usd_bs": Decimal(str(r_usd)) if has_usd else None,

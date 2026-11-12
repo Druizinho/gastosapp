@@ -2,11 +2,11 @@ import { useState, useEffect, useContext } from 'react';
 import type { ExpenseCreate, ExpenseUpdate, Expense, CurrencyType, ExchangeRates, Income, IncomeCreate, IncomeUpdate, EstimatedIncome } from '../../types';
 import { CURRENCY_OPTIONS, getCurrencyLabel } from '../../types';
 import { getRates, getMonthlyIncomes } from '../../api';
-import { CategorySelect, ExchangeRateField } from '../common';
+import { CategorySelect, ExchangeRateField, getInitialManualRate, resolveSubmittedManualRate, computeCrossCurrencyEquivalent } from '../common';
 import { useCategories } from '../../context/CategoriesContext';
 import { SegmentedTabs } from '../ui/SegmentedTabs';
 import { ToastContext } from '../ui/Toast';
-import { formatAmountForInput, formatRateForInput } from '../../utils/currencyFormat';
+import { formatAmountForInput, convertItemAmountToTargetCurrency } from '../../utils/currencyFormat';
 
 interface ExpenseFormProps {
   initialData?: Expense | null;
@@ -59,35 +59,10 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
     initialIncomeData ? initialIncomeData.currency : (initialData?.currency || 'BS')
   );
   const [manualRate, setManualRate] = useState<string>(() => {
-    const item = initialIncomeData || initialData;
-    if (!item || item.currency === 'BS') return '';
-    if (item.currency === 'USD_CASH') {
-      const customRate = (item as any).manual_rate;
-      return customRate ? formatRateForInput(customRate) : '';
-    }
-    if (item.currency === 'EUR_BCV' && item.rate_eur_bs) return formatRateForInput(item.rate_eur_bs);
-    if (item.currency === 'USDT' && item.rate_usdt_bs) return formatRateForInput(item.rate_usdt_bs);
-    if (item.currency === 'USD_BCV' && item.rate_usd_bs) return formatRateForInput(item.rate_usd_bs);
-    return '';
+    return getInitialManualRate(initialIncomeData || initialData);
   });
   const [showManualRate, setShowManualRate] = useState<boolean>(() => {
-    if (initialIncomeData) {
-      if (initialIncomeData.currency === 'BS') return false;
-      if (initialIncomeData.currency === 'USD_CASH') {
-        const customRate = (initialIncomeData as any).manual_rate;
-        return Boolean(customRate && Number(customRate) > 0);
-      }
-      return Boolean(initialIncomeData.rate_usd_bs || initialIncomeData.rate_eur_bs || initialIncomeData.rate_usdt_bs);
-    }
-    if (initialData) {
-      if (initialData.currency === 'BS') return false;
-      if (initialData.currency === 'USD_CASH') {
-        const customRate = (initialData as any).manual_rate;
-        return Boolean(customRate && Number(customRate) > 0);
-      }
-      return Boolean(initialData.rate_usd_bs || initialData.rate_eur_bs || initialData.rate_usdt_bs);
-    }
-    return false;
+    return Boolean(getInitialManualRate(initialIncomeData || initialData));
   });
 
   const [rates, setRates] = useState<ExchangeRates | null>(null);
@@ -105,22 +80,9 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
       setDate(initialIncomeData.date);
       setCurrency(initialIncomeData.currency);
 
-      if (initialIncomeData.currency === 'EUR_BCV' && initialIncomeData.rate_eur_bs) {
-        setManualRate(formatRateForInput(initialIncomeData.rate_eur_bs));
-        setShowManualRate(true);
-      } else if (initialIncomeData.currency === 'USDT' && initialIncomeData.rate_usdt_bs) {
-        setManualRate(formatRateForInput(initialIncomeData.rate_usdt_bs));
-        setShowManualRate(true);
-      } else if (initialIncomeData.currency === 'USD_BCV' && initialIncomeData.rate_usd_bs) {
-        setManualRate(formatRateForInput(initialIncomeData.rate_usd_bs));
-        setShowManualRate(true);
-      } else if (initialIncomeData.currency === 'USD_CASH' && (initialIncomeData as any).manual_rate) {
-        setManualRate(formatRateForInput((initialIncomeData as any).manual_rate));
-        setShowManualRate(true);
-      } else {
-        setManualRate('');
-        setShowManualRate(false);
-      }
+      const initRate = getInitialManualRate(initialIncomeData);
+      setManualRate(initRate);
+      setShowManualRate(Boolean(initRate));
     } else if (initialData) {
       setMode('expense');
       setAmount(formatAmountForInput(initialData.amount));
@@ -129,23 +91,9 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
       setDate(initialData.date);
       setCurrency(initialData.currency);
 
-      // Cargar la tasa histórica solo para divisas estándar (no inicializar rate_usd_bs para USD_CASH)
-      if (initialData.currency === 'EUR_BCV' && initialData.rate_eur_bs) {
-        setManualRate(formatRateForInput(initialData.rate_eur_bs));
-        setShowManualRate(true);
-      } else if (initialData.currency === 'USDT' && initialData.rate_usdt_bs) {
-        setManualRate(formatRateForInput(initialData.rate_usdt_bs));
-        setShowManualRate(true);
-      } else if (initialData.currency === 'USD_BCV' && initialData.rate_usd_bs) {
-        setManualRate(formatRateForInput(initialData.rate_usd_bs));
-        setShowManualRate(true);
-      } else if (initialData.currency === 'USD_CASH' && (initialData as any).manual_rate) {
-        setManualRate(formatRateForInput((initialData as any).manual_rate));
-        setShowManualRate(true);
-      } else {
-        setManualRate('');
-        setShowManualRate(false);
-      }
+      const initRate = getInitialManualRate(initialData);
+      setManualRate(initRate);
+      setShowManualRate(Boolean(initRate));
     } else {
       if (mode === 'income') {
         const categoryExistsInIncome = incomeCategories.some(
@@ -244,7 +192,23 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
 
     const check = tpl.checks?.find((c) => c.month_year === monthYear) || tpl.checks?.[0];
     const expectedNum = Number(tpl.expected_amount) || 0;
-    const realNum = Number(check?.real_amount) || 0;
+    const realNum = check
+      ? convertItemAmountToTargetCurrency(
+          {
+            amount: check.real_amount,
+            currency: check.currency,
+            amount_bs: (check as any).amount_bs,
+            amount_usd: (check as any).amount_usd,
+            amount_eur: (check as any).amount_eur,
+            amount_usdt: (check as any).amount_usdt,
+            rate_usd_bs: (check as any).rate_usd_bs,
+            rate_eur_bs: (check as any).rate_eur_bs,
+            rate_usdt_bs: (check as any).rate_usdt_bs,
+          },
+          tpl.currency,
+          rates
+        )
+      : 0;
     const remaining = check && check.is_partial && expectedNum > realNum
       ? Number((expectedNum - realNum).toFixed(2))
       : expectedNum;
@@ -281,7 +245,15 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
     setIsSubmitting(true);
     try {
       const parsedAmount = parseFloat(amount.replace(',', '.'));
-      const parsedManualRate = manualRate ? parseFloat(manualRate.replace(',', '.')) : undefined;
+      const effectiveRates = rates;
+      const parsedManualRate = resolveSubmittedManualRate({
+        manualRate,
+        initialData: mode === 'income' ? initialIncomeData : initialData,
+        currency,
+        date,
+        initialDate: mode === 'income' ? initialIncomeData?.date : initialData?.date,
+        rates: effectiveRates,
+      });
 
       if (isNaN(parsedAmount) || parsedAmount <= 0) {
         const errorMsg = 'Por favor ingresa un monto válido mayor a 0';
@@ -309,9 +281,34 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
             if (selectedTemplateId) {
               const tpl = pendingTemplates.find((t) => t.id === selectedTemplateId);
               const check = tpl?.checks?.find((c) => c.month_year === date.slice(0, 7)) || tpl?.checks?.[0];
-              const alreadyPaid = Number(check?.real_amount) || 0;
+              const alreadyPaid = check && tpl
+                ? convertItemAmountToTargetCurrency(
+                    {
+                      amount: check.real_amount,
+                      currency: check.currency,
+                      amount_bs: (check as any).amount_bs,
+                      amount_usd: (check as any).amount_usd,
+                      amount_eur: (check as any).amount_eur,
+                      amount_usdt: (check as any).amount_usdt,
+                      rate_usd_bs: (check as any).rate_usd_bs,
+                      rate_eur_bs: (check as any).rate_eur_bs,
+                      rate_usdt_bs: (check as any).rate_usdt_bs,
+                    },
+                    tpl.currency,
+                    rates
+                  )
+                : 0;
               const expectedNum = Number(tpl?.expected_amount) || 0;
-              const isPartialPayment = expectedNum > 0 ? (alreadyPaid + parsedAmount) < expectedNum : false;
+              const parsedInTplCurrency = tpl
+                ? computeCrossCurrencyEquivalent({
+                    amount: parsedAmount,
+                    fromCurrency: currency,
+                    targetCurrency: tpl.currency,
+                    rates: effectiveRates,
+                    manualRate,
+                  }).convertedEquivalent ?? parsedAmount
+                : parsedAmount;
+              const isPartialPayment = expectedNum > 0 ? (alreadyPaid + parsedInTplCurrency) < (expectedNum - 0.01) : false;
 
               incomeCheckTarget = {
                 estimated_income_id: selectedTemplateId,
@@ -404,8 +401,25 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
                 <option value="">Ninguno (ingreso suelto)</option>
                 {pendingTemplates.map((tpl) => {
                   const check = tpl.checks?.find((c) => c.month_year === monthYear) || tpl.checks?.[0];
-                  const remaining = check?.is_partial && Number(tpl.expected_amount) > Number(check.real_amount)
-                    ? Number(tpl.expected_amount) - Number(check.real_amount)
+                  const paidInTpl = check
+                    ? convertItemAmountToTargetCurrency(
+                        {
+                          amount: check.real_amount,
+                          currency: check.currency,
+                          amount_bs: (check as any).amount_bs,
+                          amount_usd: (check as any).amount_usd,
+                          amount_eur: (check as any).amount_eur,
+                          amount_usdt: (check as any).amount_usdt,
+                          rate_usd_bs: (check as any).rate_usd_bs,
+                          rate_eur_bs: (check as any).rate_eur_bs,
+                          rate_usdt_bs: (check as any).rate_usdt_bs,
+                        },
+                        tpl.currency,
+                        rates
+                      )
+                    : 0;
+                  const remaining = check?.is_partial && Number(tpl.expected_amount) > paidInTpl
+                    ? Number(tpl.expected_amount) - paidInTpl
                     : Number(tpl.expected_amount);
                   const currLabel = getCurrencyLabel(tpl.currency);
                   const conciseStatus = check?.is_partial
@@ -424,7 +438,23 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
                 if (!tpl) return null;
                 const check = tpl.checks?.find((c) => c.month_year === monthYear) || tpl.checks?.[0];
                 const expectedNum = Number(tpl.expected_amount) || 0;
-                const realNum = Number(check?.real_amount) || 0;
+                const realNum = check
+                  ? convertItemAmountToTargetCurrency(
+                      {
+                        amount: check.real_amount,
+                        currency: check.currency,
+                        amount_bs: (check as any).amount_bs,
+                        amount_usd: (check as any).amount_usd,
+                        amount_eur: (check as any).amount_eur,
+                        amount_usdt: (check as any).amount_usdt,
+                        rate_usd_bs: (check as any).rate_usd_bs,
+                        rate_eur_bs: (check as any).rate_eur_bs,
+                        rate_usdt_bs: (check as any).rate_usdt_bs,
+                      },
+                      tpl.currency,
+                      rates
+                    )
+                  : 0;
                 const remaining = check?.is_partial && expectedNum > realNum ? expectedNum - realNum : expectedNum;
                 const isPartial = Boolean(check?.is_partial);
 
@@ -489,7 +519,15 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
             </div>
             <div className="form-group half">
               <label>Moneda</label>
-              <select value={currency} onChange={(e) => setCurrency(e.target.value as CurrencyType)} required>
+              <select
+                value={currency}
+                onChange={(e) => {
+                  setCurrency(e.target.value as CurrencyType);
+                  setManualRate('');
+                  setShowManualRate(false);
+                }}
+                required
+              >
                 {CURRENCY_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>
                     {opt.label}
@@ -548,7 +586,11 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
               <input
                 type="date"
                 value={date}
-                onChange={(e) => setDate(e.target.value)}
+                onChange={(e) => {
+                  setDate(e.target.value);
+                  setManualRate('');
+                  setShowManualRate(false);
+                }}
                 required
               />
             </div>

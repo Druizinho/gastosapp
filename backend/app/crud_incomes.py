@@ -8,7 +8,7 @@ from uuid import UUID
 from datetime import datetime, timezone, timedelta, date
 import calendar
 from decimal import Decimal
-from . import models, schemas
+from . import models, schemas, sharing
 from .push_service import resolve_notifications_for_entity
 
 
@@ -77,7 +77,9 @@ async def _recalculate_or_delete_income_check(
     else:
         target_currency = (template.currency if template and template.currency else db_check.currency)
         db_check.currency = target_currency
-        if target_currency in ("USD", "USD_BCV", "USD_CASH", "USD_PARALELO", "USD_PARALLEL"):
+        if target_currency == "USD_CASH":
+            db_check.real_amount = sharing.sum_children_in_currency(linked, "USD_CASH", "amount")
+        elif target_currency in ("USD", "USD_BCV", "USD_PARALELO", "USD_PARALLEL"):
             db_check.real_amount = total_usd
         elif target_currency in ("BS", "VES"):
             db_check.real_amount = total_bs
@@ -95,9 +97,12 @@ async def _recalculate_or_delete_income_check(
 
     if template:
         t_curr = template.currency
+        all_incomes = linked
         if db_check.currency == t_curr:
             cumulative = db_check.real_amount or Decimal("0")
-        elif t_curr in ("USD", "USD_BCV", "USD_CASH", "USD_PARALELO", "USD_PARALLEL"):
+        elif t_curr == "USD_CASH":
+            cumulative = sharing.sum_children_in_currency(all_incomes, "USD_CASH", "amount")
+        elif t_curr in ("USD", "USD_BCV", "USD_PARALELO", "USD_PARALLEL"):
             cumulative = db_check.amount_usd or Decimal("0")
         elif t_curr in ("BS", "VES"):
             cumulative = db_check.amount_bs or Decimal("0")
@@ -124,8 +129,10 @@ async def create_estimated_income(db: AsyncSession, income: schemas.EstimatedInc
         data["category"] = "Otros ingresos"
     db_income = models.EstimatedIncome(**data, user_id=user_id)
     db.add(db_income)
+    await db.flush()
+    income_id = db_income.id
     await db.commit()
-    return await get_estimated_income(db, db_income.id, user_id)
+    return await get_estimated_income(db, income_id, user_id)
 
 
 async def get_estimated_incomes(db: AsyncSession, user_id: UUID, active_only: bool = False):
@@ -150,6 +157,7 @@ async def get_estimated_income(db: AsyncSession, income_id: UUID, user_id: UUID)
         select(models.EstimatedIncome)
         .options(selectinload(models.EstimatedIncome.checks))
         .filter(models.EstimatedIncome.id == income_id, models.EstimatedIncome.user_id == user_id)
+        .execution_options(populate_existing=True)
     )
     return result.scalars().first()
 
@@ -408,6 +416,7 @@ async def create_income(
     )
     db.add(db_income)
     await db.flush()
+    income_id = db_income.id
 
     if db_check:
         allow_mark = bool(is_partial is None)
@@ -418,7 +427,7 @@ async def create_income(
             await resolve_notifications_for_entity(db, "estimated_income", est_id, user_id=user_id)
 
     await db.commit()
-    loaded = await get_income(db, db_income.id, user_id)
+    loaded = await get_income(db, income_id, user_id)
     return loaded or _populate_income_template_info(db_income, template=db_est)
 
 
@@ -457,6 +466,7 @@ async def get_income(db: AsyncSession, entry_id: UUID, user_id: UUID) -> Optiona
             selectinload(models.Income.income_check).selectinload(models.IncomeCheck.income)
         )
         .filter(models.Income.id == entry_id, models.Income.user_id == user_id)
+        .execution_options(populate_existing=True)
     )
     res = await db.execute(query)
     db_income = res.scalars().first()

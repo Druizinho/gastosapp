@@ -29,9 +29,10 @@ async def create_expense(db: AsyncSession, expense: schemas.ExpenseCreate, user_
         db_expense.date = date.today()
         
     db.add(db_expense)
+    exp_date = db_expense.date
     await db.commit()
+    await check_and_notify_budget_thresholds(db, user_id, exp_date, allow_notify=True)
     await db.refresh(db_expense)
-    await check_and_notify_budget_thresholds(db, user_id, db_expense.date, allow_notify=True)
     return db_expense
 
 async def get_expenses(db: AsyncSession, user_id: UUID, skip: int = 0, limit: int = 100, date_from: date = None, date_to: date = None):
@@ -66,9 +67,10 @@ async def update_expense(db: AsyncSession, expense_id: UUID, expense: schemas.Ex
     for key, value in update_data.items():
         setattr(db_expense, key, value)
         
+    exp_date = db_expense.date
     await db.commit()
+    await check_and_notify_budget_thresholds(db, user_id, exp_date, allow_notify=True)
     await db.refresh(db_expense)
-    await check_and_notify_budget_thresholds(db, user_id, db_expense.date, allow_notify=True)
     return db_expense
 
 async def delete_expense(db: AsyncSession, expense_id: UUID, user_id: UUID):

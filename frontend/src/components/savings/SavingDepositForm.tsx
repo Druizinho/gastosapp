@@ -2,8 +2,13 @@ import React, { useState, useEffect, useContext } from 'react';
 import type { SavingDeposit, SavingDepositCreate, SavingDepositUpdate, SavingTransactionType, CurrencyType, Category, ExchangeRates } from '../../types';
 import { CURRENCY_OPTIONS } from '../../types';
 import { getCategories, getRates } from '../../api';
-import { formatRateForInput } from '../../utils/currencyFormat';
-import { CategorySelect, ExchangeRateField, resolveRateForCurrency } from '../common';
+import {
+  CategorySelect,
+  ExchangeRateField,
+  getInitialManualRate,
+  resolveSubmittedManualRate,
+  computeCrossCurrencyEquivalent,
+} from '../common';
 import { ToastContext } from '../ui/Toast';
 import { Users, Receipt } from 'lucide-react';
 
@@ -27,23 +32,6 @@ interface SavingDepositFormProps {
 const getLocalToday = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
-
-const getInitialDepositRate = (data?: SavingDeposit): string => {
-  if (!data) return '';
-  if (data.currency === 'EUR_BCV' && data.rate_eur_bs) {
-    return formatRateForInput(data.rate_eur_bs);
-  }
-  if (data.currency === 'USDT' && data.rate_usdt_bs) {
-    return formatRateForInput(data.rate_usdt_bs);
-  }
-  if ((data.currency === 'USD_BCV' || data.currency === 'BS') && data.rate_usd_bs) {
-    return formatRateForInput(data.rate_usd_bs);
-  }
-  if (data.currency === 'USD_CASH' && Number(data.amount_bs) > 0 && Number(data.amount) > 0) {
-    return formatRateForInput(Number(data.amount_bs) / Number(data.amount));
-  }
-  return '';
 };
 
 const currencyLabels: Record<string, string> = {
@@ -85,7 +73,7 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
   const [amount, setAmount] = useState<string>(() =>
     initialData?.amount != null ? String(initialData.amount) : ''
   );
-  const [manualRate, setManualRate] = useState<string>(() => getInitialDepositRate(initialData));
+  const [manualRate, setManualRate] = useState<string>(() => getInitialManualRate(initialData));
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [rates, setRates] = useState<ExchangeRates | null>(null);
@@ -104,7 +92,7 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
     currency: (initialData?.currency || goalCurrency) as CurrencyType,
     deposit_date: initialData?.deposit_date || getLocalToday(),
     note: initialData?.note || '',
-    manual_rate: getInitialDepositRate(initialData) as any,
+    manual_rate: getInitialManualRate(initialData) as any,
     register_as_expense: isProject,
     category: defaultCategory,
     transaction_type: (initialData?.transaction_type || initialTransactionType || 'deposit') as SavingTransactionType,
@@ -119,13 +107,13 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
   useEffect(() => {
     if (initialData) {
       setAmount(initialData.amount != null ? String(initialData.amount) : '');
-      setManualRate(getInitialDepositRate(initialData));
+      setManualRate(getInitialManualRate(initialData));
       setFormData({
         amount: initialData.amount,
         currency: initialData.currency,
         deposit_date: initialData.deposit_date,
         note: initialData.note || '',
-        manual_rate: getInitialDepositRate(initialData) as any,
+        manual_rate: getInitialManualRate(initialData) as any,
         register_as_expense: Boolean(initialData.create_expense || initialData.expense_id),
         category: initialData.category || goalCategory || (isProject ? 'Proyectos' : 'Ahorro'),
         transaction_type: (initialData.transaction_type || initialTransactionType || 'deposit') as SavingTransactionType,
@@ -146,6 +134,10 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
     const { name, value, type } = e.target;
     const checked = (e.target as HTMLInputElement).checked;
     setError(null);
+
+    if (name === 'currency' || name === 'deposit_date') {
+      setManualRate('');
+    }
 
     setFormData(prev => ({
       ...prev,
@@ -169,9 +161,17 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
 
     const submitData: any = { ...formData };
     submitData.amount = parsed;
-    if (manualRate.trim()) {
-      const parsedRate = parseFloat(manualRate.replace(',', '.'));
-      submitData.manual_rate = !isNaN(parsedRate) && parsedRate > 0 ? parsedRate : undefined;
+    const effectiveRates = rates;
+    const resolvedRate = resolveSubmittedManualRate({
+      manualRate,
+      initialData,
+      currency: formData.currency || goalCurrency || 'USD_BCV',
+      date: formData.deposit_date,
+      initialDate: initialData?.deposit_date,
+      rates: effectiveRates,
+    });
+    if (resolvedRate !== undefined) {
+      submitData.manual_rate = resolvedRate;
     } else {
       delete submitData.manual_rate;
     }
@@ -207,29 +207,20 @@ export const SavingDepositForm: React.FC<SavingDepositFormProps> = ({
     }
   };
 
-  const suggestedRate = resolveRateForCurrency(formData.currency, rates);
-
+  const effectiveRates = rates;
   const parsedAmount = parseFloat(amount.replace(',', '.'));
-  const currentAmount = !isNaN(parsedAmount) ? parsedAmount : 0;
+  const numericAmount = !isNaN(parsedAmount) ? parsedAmount : 0;
+  const currentAmount = numericAmount;
   const isSameCurrency = formData.currency === goalCurrency;
   const willComplete = !isWithdrawal && !isProject && !isEditing && isSameCurrency && remaining !== null && currentAmount >= remaining && remaining > 0;
 
-  const manualRateNum = manualRate ? parseFloat(manualRate.replace(',', '.')) : 0;
-  const effectiveRate = manualRateNum > 0 ? manualRateNum : (suggestedRate ? Number(suggestedRate) : 0);
-
-  const amountInBs = formData.currency === 'BS'
-    ? currentAmount
-    : (effectiveRate > 0 ? currentAmount * effectiveRate : 0);
-
-  let convertedEquivalent: number | null = null;
-  if (goalCurrency === 'BS') {
-    convertedEquivalent = amountInBs > 0 ? amountInBs : null;
-  } else {
-    const targetGoalRate = resolveRateForCurrency(goalCurrency, rates);
-    if (targetGoalRate && Number(targetGoalRate) > 0 && amountInBs > 0) {
-      convertedEquivalent = amountInBs / Number(targetGoalRate);
-    }
-  }
+  const { amountInBs, convertedEquivalent } = computeCrossCurrencyEquivalent({
+    amount: numericAmount,
+    fromCurrency: formData.currency || goalCurrency || 'USD_BCV',
+    targetCurrency: goalCurrency,
+    rates: effectiveRates,
+    manualRate,
+  });
 
   return (
     <div

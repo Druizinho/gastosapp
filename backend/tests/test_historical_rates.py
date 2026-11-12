@@ -739,7 +739,8 @@ class TestHistoricalRates(unittest.IsolatedAsyncioTestCase):
             manual_rate=Decimal("50.0")
         )
         self.assertEqual(res["amount_bs"], Decimal("500.0000"))
-        self.assertEqual(res["rate_usd_bs"], Decimal("50.0"))
+        self.assertEqual(res["amount_usd"], Decimal("12.5000"))
+        self.assertEqual(res["rate_usd_bs"], Decimal("40.0"))
 
         res_default = convert_amount(
             amount=Decimal("10.0"),
@@ -748,7 +749,45 @@ class TestHistoricalRates(unittest.IsolatedAsyncioTestCase):
             manual_rate=None
         )
         self.assertEqual(res_default["amount_bs"], Decimal("450.0000"))
-        self.assertEqual(res_default["rate_usd_bs"], Decimal("45.0"))
+        self.assertEqual(res_default["amount_usd"], Decimal("11.2500"))
+        self.assertEqual(res_default["rate_usd_bs"], Decimal("40.0"))
+
+    async def test_resolve_rates_for_update_heals_polluted_usd_cash_rate(self):
+        record = MagicMock()
+        record.currency = "USD_CASH"
+        record.amount = Decimal("20")
+        record.amount_bs = Decimal("12160")
+        record.amount_usd = Decimal("25.4393")
+        record.rate_usd_bs = Decimal("608")
+        record.rate_eur_bs = None
+        record.rate_usdt_bs = None
+
+        rates = await bcv_service.resolve_rates_for_update(
+            existing_record=record,
+            target_date=date(2026, 5, 10),
+            existing_date=date(2026, 5, 10),
+        )
+        self.assertEqual(rates["usd_bs"], Decimal("478.0006"))
+
+    def test_sum_children_in_currency_cross_currency_fallbacks(self):
+        from app import sharing
+        child = MagicMock()
+        child.currency = "BS"
+        child.amount = Decimal("5000")
+        child.amount_bs = Decimal("5000")
+        child.amount_usd = Decimal("100")
+        child.amount_usdt = None
+        child.amount_eur = None
+        child.rate_usd_bs = Decimal("50")
+        child.rate_usdt_bs = None
+        child.rate_eur_bs = None
+        child.transaction_type = None
+
+        total_usdt = sharing.sum_children_in_currency([child], "USDT", "amount")
+        total_eur = sharing.sum_children_in_currency([child], "EUR_BCV", "amount")
+
+        self.assertEqual(total_usdt, Decimal("100"))
+        self.assertEqual(total_eur, Decimal("100"))
 
     def test_parse_bcv_rate_text_thousands_separator(self):
         self.assertEqual(bcv_service._parse_bcv_rate_text("894,88760000"), Decimal("894.88760000"))
@@ -773,6 +812,63 @@ class TestHistoricalRates(unittest.IsolatedAsyncioTestCase):
             usd, eur = await bcv_service.get_bcv_rates()
             self.assertEqual(usd, Decimal("894.88760000"))
             self.assertEqual(eur, Decimal("1006.03263992"))
+
+    async def test_recalculate_income_check_usd_cash_separates_from_usd_bcv(self):
+        from app import crud_incomes
+        db = AsyncMock()
+        db_check = MagicMock()
+        db_check.id = uuid.uuid4()
+        db_check.currency = "USD_CASH"
+        db_check.income_id = None
+        db_check.income = None
+
+        template = MagicMock()
+        template.currency = "USD_CASH"
+        template.expected_amount = Decimal("100")
+
+        inc1 = MagicMock()
+        inc1.currency = "BS"
+        inc1.amount = Decimal("3000")
+        inc1.amount_bs = Decimal("3000")
+        inc1.amount_usd = Decimal("60")
+        inc1.amount_eur = None
+        inc1.amount_usdt = None
+        inc1.rate_usd_bs = Decimal("50")
+        inc1.rate_eur_bs = None
+        inc1.rate_usdt_bs = None
+        inc1.date = date(2026, 5, 10)
+        inc1.transaction_type = None
+
+        inc2 = MagicMock()
+        inc2.currency = "USD_CASH"
+        inc2.amount = Decimal("50")
+        inc2.amount_bs = Decimal("3000")
+        inc2.amount_usd = Decimal("60")
+        inc2.amount_eur = None
+        inc2.amount_usdt = None
+        inc2.rate_usd_bs = Decimal("50")
+        inc2.rate_eur_bs = None
+        inc2.rate_usdt_bs = None
+        inc2.date = date(2026, 5, 10)
+        inc2.transaction_type = None
+
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [inc1, inc2]
+        mock_scalars.first.return_value = template
+        mock_res = MagicMock()
+        mock_res.scalars.return_value = mock_scalars
+        db.execute.return_value = mock_res
+
+        res = await crud_incomes._recalculate_or_delete_income_check(
+            db=db,
+            db_check=db_check,
+            template=template,
+        )
+        self.assertEqual(res.currency, "USD_CASH")
+        # Under old behavior, real_amount was total_usd = 60 + 60 = 120.
+        # Under new behavior with sharing.sum_children_in_currency, real_amount is (3000 / 50) + 50 = 110.
+        self.assertEqual(res.real_amount, Decimal("110"))
+
 
 
 if __name__ == "__main__":

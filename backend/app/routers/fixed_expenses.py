@@ -82,21 +82,27 @@ async def update_fixed_expense(
     if not db_expense:
         raise HTTPException(status_code=404, detail="Fixed expense not found")
     
-    equivalents = None
+    extra_data = None
     if expense.amount is not None or expense.currency is not None or expense.manual_rate is not None:
         amount = expense.amount if expense.amount is not None else db_expense.amount
-        currency = expense.currency.value if expense.currency is not None else db_expense.currency
+        currency = expense.currency.value if hasattr(expense.currency, "value") else (expense.currency if expense.currency is not None else db_expense.currency)
         
-        rates = await bcv_service.get_all_rates()
-        equivalents = bcv_service.convert_amount(
+        existing_date = db_expense.created_at.date() if getattr(db_expense, "created_at", None) else None
+        rates = await bcv_service.resolve_rates_for_update(
+            db_expense, target_date=existing_date, existing_date=existing_date, db=db
+        )
+        eff_manual = bcv_service.resolve_manual_rate_for_update(
+            db_expense, currency, expense.manual_rate, date_changed=False
+        )
+        extra_data = bcv_service.convert_amount(
             amount=amount,
             currency=currency,
             rates=rates,
-            manual_rate=expense.manual_rate
+            manual_rate=eff_manual
         )
     
     return await crud_fixed_expenses.update_fixed_expense(
-        db, expense_id=expense_id, expense=expense, user_id=user_id, extra_data=equivalents
+        db, expense_id=expense_id, expense=expense, user_id=user_id, extra_data=extra_data
     )
 
 

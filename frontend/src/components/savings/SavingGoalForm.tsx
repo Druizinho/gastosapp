@@ -9,10 +9,9 @@ import type { SavingGoal, SavingGoalCreate, SavingGoalUpdate, Connection, Catego
 import { CURRENCY_OPTIONS } from '../../types';
 import { getConnections, getCategories, getRates } from '../../api';
 import { ParticipantPicker } from '../panas/ParticipantPicker';
-import { CategorySelect, ExchangeRateField } from '../common';
+import { CategorySelect, ExchangeRateField, getInitialManualRate, resolveSubmittedManualRate } from '../common';
 import { SegmentedTabs } from '../ui/SegmentedTabs';
 import { resolveCategoryVisuals } from '../../utils/categoryVisuals';
-import { formatRateForInput } from '../../utils/currencyFormat';
 import { ToastContext } from '../ui/Toast';
 
 interface SavingGoalFormProps {
@@ -38,7 +37,7 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
   const [targetAmount, setTargetAmount] = useState<string>(() =>
     initialData?.target_amount != null ? String(initialData.target_amount) : ''
   );
-  const [manualRate, setManualRate] = useState<string>('');
+  const [manualRate, setManualRate] = useState<string>(() => getInitialManualRate(initialData));
 
   // Categories & Panas connections
   const [categories, setCategories] = useState<Category[]>([]);
@@ -111,15 +110,7 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
         (initialData.shared_members || []).filter(m => m.role === 'admin').map(m => String(m.user_id))
       );
 
-      if (initialData.currency === 'EUR_BCV' && initialData.rate_eur_bs) {
-        setManualRate(formatRateForInput(initialData.rate_eur_bs));
-      } else if (initialData.currency === 'USDT' && initialData.rate_usdt_bs) {
-        setManualRate(formatRateForInput(initialData.rate_usdt_bs));
-      } else if ((initialData.currency === 'USD_BCV' || initialData.currency === 'BS') && initialData.rate_usd_bs) {
-        setManualRate(formatRateForInput(initialData.rate_usd_bs));
-      } else {
-        setManualRate('');
-      }
+      setManualRate(getInitialManualRate(initialData));
     }
   }, [initialData]);
 
@@ -127,6 +118,10 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
     const { name, value, type } = e.target;
     const checked = (e.target as HTMLInputElement).checked;
     setSubmitError(null);
+
+    if (name === 'currency') {
+      setManualRate('');
+    }
 
     setFormData(prev => ({
       ...prev,
@@ -167,13 +162,14 @@ export const SavingGoalForm: React.FC<SavingGoalFormProps> = ({
     submitData.color = visuals.hexColor;
     submitData.icon = visuals.iconName;
 
-    if (manualRate.trim()) {
-      const parsedRate = parseFloat(manualRate.replace(',', '.'));
-      if (!isNaN(parsedRate) && parsedRate > 0) {
-        submitData.manual_rate = parsedRate;
-      } else {
-        delete submitData.manual_rate;
-      }
+    const resolvedRate = resolveSubmittedManualRate({
+      manualRate,
+      initialData,
+      currency: formData.currency || 'USD_BCV',
+      rates,
+    });
+    if (resolvedRate !== undefined) {
+      submitData.manual_rate = resolvedRate;
     } else {
       delete submitData.manual_rate;
     }
